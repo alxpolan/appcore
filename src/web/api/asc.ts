@@ -87,7 +87,11 @@ function handle(label: string, fn: (req: Request, res: Response) => Promise<void
     } catch (err: any) {
       const ascErrors = err?.response?.data?.errors;
       logger.error(`ASC ${label} failed`, ascErrors ?? err);
-      res.status(500).json({ error: "An error occurred. Please try again." });
+      const detail =
+        ascErrors?.map((e: any) => e.detail ?? e.title).filter(Boolean).join("; ") ||
+        err?.message ||
+        "An error occurred. Please try again.";
+      res.status(500).json({ error: detail, _debug: { label, ascErrors: ascErrors ?? null } });
     }
   };
 }
@@ -2013,10 +2017,11 @@ ascRouter.post(
 ascRouter.post(
   "/subscriptions/prices/bulk",
   handle("bulkCreateSubscriptionPrices", async (req, res) => {
-    const { subscriptionId, items, preserveCurrentPrice } = req.body as {
+    const { subscriptionId, items, preserveCurrentPrice, startDate } = req.body as {
       subscriptionId?: string;
       items?: Array<{ territory?: string; pricePointId?: string }>;
       preserveCurrentPrice?: boolean;
+      startDate?: string;
     };
     if (!subscriptionId || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "subscriptionId and a non-empty items array are required" });
@@ -2027,7 +2032,39 @@ ascRouter.post(
       return;
     }
 
+    // For an already-approved subscription, a price without a startDate is
+    // treated as the (immutable) initial price and rejected with "Initial price
+    // cannot be created again after subscription is approved." Scheduling the
+    // change with a startDate makes it a valid price change. ASC additionally
+    // enforces a minimum lead time (~2 days), so today's date is rejected with
+    // "a future date is expected, and must be on or after YYYY-MM-DD". Default
+    // to today + 2 days, and if ASC still demands a later date, parse it from
+    // the error and retry once.
+    const daysFromNow = (n: number) => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    const defaultStartDate = startDate ?? daysFromNow(2);
+
     const asc = await ascClientForUser(req.user!.userId);
+
+    const postPrice = (item: { territory?: string; pricePointId?: string }, start: string) =>
+      asc.client.post("/subscriptionPrices", {
+        data: {
+          type: "subscriptionPrices",
+          attributes: {
+            startDate: start,
+            ...(preserveCurrentPrice !== undefined ? { preserveCurrentPrice } : {}),
+          },
+          relationships: {
+            subscription: { data: { type: "subscriptions", id: subscriptionId } },
+            subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: item.pricePointId! } },
+            territory: { data: { type: "territories", id: item.territory! } },
+          },
+        },
+      });
+
     const results: Array<{ territory: string; ok: boolean; error?: string }> = [];
     const CONCURRENCY = 4;
     for (let i = 0; i < items.length; i += CONCURRENCY) {
@@ -2035,22 +2072,26 @@ ascRouter.post(
       const chunkResults = await Promise.all(
         chunk.map(async (item) => {
           try {
-            await asc.client.post("/subscriptionPrices", {
-              data: {
-                type: "subscriptionPrices",
-                attributes: {
-                  ...(preserveCurrentPrice !== undefined ? { preserveCurrentPrice } : {}),
-                },
-                relationships: {
-                  subscription: { data: { type: "subscriptions", id: subscriptionId } },
-                  subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: item.pricePointId! } },
-                  territory: { data: { type: "territories", id: item.territory! } },
-                },
-              },
-            });
+            await postPrice(item, defaultStartDate);
             return { territory: item.territory!, ok: true };
           } catch (err: any) {
             const detail = err?.response?.data?.errors?.[0]?.detail ?? err?.message ?? "Unknown error";
+            // ASC tells us the earliest allowed date; retry once with it.
+            const requiredDate = /on or after (\d{4}-\d{2}-\d{2})/.exec(detail)?.[1];
+            if (requiredDate && requiredDate !== defaultStartDate) {
+              try {
+                await postPrice(item, requiredDate);
+                return { territory: item.territory!, ok: true };
+              } catch (retryErr: any) {
+                const retryDetail =
+                  retryErr?.response?.data?.errors?.[0]?.detail ?? retryErr?.message ?? "Unknown error";
+                logger.error(
+                  `ASC bulkCreateSubscriptionPrices retry failed for ${item.territory}`,
+                  retryErr?.response?.data?.errors ?? retryErr,
+                );
+                return { territory: item.territory!, ok: false, error: retryDetail };
+              }
+            }
             logger.error(
               `ASC bulkCreateSubscriptionPrices failed for ${item.territory}`,
               err?.response?.data?.errors ?? err,
@@ -2507,7 +2548,10 @@ async function fetchProductEqualizations(
   asc: AppStoreConnectClient,
   pricePointId: string,
 ): Promise<EqualizedPricePoint[]> {
-  const { data: resp } = await asc.client.get(`${ASC_V2}/inAppPurchasePricePoints/${pricePointId}/equalizations`, {
+  // equalizations lives on the v1 API (like subscriptionPricePoints), so use a
+  // relative path against the v1 base rather than the v2 host. Hitting /v2 here
+  // returns 404 "The path provided does not match a defined resource type."
+  const { data: resp } = await asc.client.get(`/inAppPurchasePricePoints/${pricePointId}/equalizations`, {
     params: {
       include: "territory",
       "fields[inAppPurchasePricePoints]": "customerPrice,proceeds,territory",

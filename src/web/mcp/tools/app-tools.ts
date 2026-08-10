@@ -324,6 +324,102 @@ export function registerAppTools(server: McpServer, userId: string) {
 
   // @ts-ignore
   server.registerTool(
+    "bulk_remove_keywords",
+    {
+      description:
+        "Remove multiple tracked keywords for an app at once, e.g. to clean up irrelevant or low-value terms. " +
+        "This deletes the keyword globally (all apps tracking it lose its ranking history), same as removing a keyword in the Keywords UI. " +
+        "Use get_keywords first to see which terms are tracked for this app.",
+      inputSchema: {
+        bundleId: z
+          .string()
+          .optional()
+          .describe(
+            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
+          ),
+        terms: z
+          .array(z.string())
+          .min(1)
+          .max(500)
+          .describe(
+            "Keyword terms to remove, as returned by get_keywords (e.g. ['fitness tracker', 'workout planner']).",
+          ),
+        country: z
+          .string()
+          .optional()
+          .describe(
+            "Restrict removal to keywords tracked under this country code (e.g. 'US'). Matches any country if omitted.",
+          ),
+      },
+    },
+    async ({ bundleId, terms, country }) => {
+      const { resolvedBundleId } = await getSettingsWithBundleId(
+        userId,
+        bundleId,
+      );
+      if (!resolvedBundleId) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: mcpToolMessages.noBundleIdProvidedWithDefault,
+            },
+          ],
+        };
+      }
+
+      const app = await verifyMcpAppAccess(userId, resolvedBundleId);
+      if (!app) {
+        return {
+          content: [
+            { type: "text", text: appNotFoundWithListApps(resolvedBundleId) },
+          ],
+        };
+      }
+
+      const keywords = await prisma.keyword.findMany({
+        where: {
+          term: { in: terms },
+          ...(country ? { country } : {}),
+          rankings: { some: { appId: app.id } },
+        },
+        select: { id: true, term: true, country: true },
+      });
+
+      if (keywords.length > 0) {
+        await prisma.keyword.deleteMany({
+          where: { id: { in: keywords.map((k) => k.id) } },
+        });
+      }
+
+      const removedTerms = new Set(keywords.map((k) => k.term));
+      const notFound = terms.filter((t) => !removedTerms.has(t));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                ok: true,
+                removed: keywords.map((k) => ({
+                  term: k.term,
+                  country: k.country,
+                })),
+                removedCount: keywords.length,
+                notFound,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // @ts-ignore
+  server.registerTool(
     "get_competitors",
     {
       description:
