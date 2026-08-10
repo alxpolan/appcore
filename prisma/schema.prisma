@@ -428,6 +428,7 @@ model AppStoreAnalytics {
   proceeds    Float    @default(0)
   impressions Int      @default(0)
   pageViews   Int      @default(0)
+  taps        Int      @default(0)
   sessions    Int      @default(0)
   createdAt   DateTime @default(now())
 

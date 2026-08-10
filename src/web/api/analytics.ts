@@ -61,6 +61,7 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
           proceeds: true,
           impressions: true,
           pageViews: true,
+          taps: true,
           sessions: true,
         },
       }),
@@ -84,6 +85,7 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
       totalProceeds: metricAgg._sum.proceeds ?? 0,
       totalImpressions: impressions,
       totalPageViews: pageViews,
+      totalTaps: metricAgg._sum.taps ?? 0,
       totalSessions: metricAgg._sum.sessions ?? 0,
       conversionRate: impressions > 0 ? (downloads / impressions) * 100 : null,
       avgRating: reviewAgg._avg.rating ?? null,
@@ -124,6 +126,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       proceeds: number;
       impressions: number;
       pageViews: number;
+      taps: number;
       sessions: number;
     };
 
@@ -131,6 +134,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       downloads: number;
       impressions: number;
       pageViews: number;
+      taps: number;
     };
 
     const byDayMap: Record<string, DayEntry> = {};
@@ -145,6 +149,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         proceeds: 0,
         impressions: 0,
         pageViews: 0,
+        taps: 0,
         sessions: 0,
       });
 
@@ -153,17 +158,20 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       day.proceeds += r.proceeds;
       day.impressions += r.impressions;
       day.pageViews += r.pageViews;
+      day.taps += r.taps;
       day.sessions += r.sessions;
 
       const c = (byCountryMap[r.country] ??= {
         downloads: 0,
         impressions: 0,
         pageViews: 0,
+        taps: 0,
       });
 
       c.downloads += r.downloads;
       c.impressions += r.impressions;
       c.pageViews += r.pageViews;
+      c.taps += r.taps;
     }
 
     const byCountry = Object.entries(byCountryMap)

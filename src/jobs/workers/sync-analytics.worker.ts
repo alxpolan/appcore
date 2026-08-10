@@ -1,6 +1,6 @@
 import type { Job } from "pg-boss";
 import { logger, getEffectiveSettingsForTeam } from "../../config";
-import { syncAllAnalytics } from "../../services/asc-analytics.js";
+import { AscAnalyticsService } from "../../services/asc-analytics.js";
 
 export const QUEUE_NAME = "sync-analytics";
 
@@ -21,6 +21,7 @@ export async function handler([job]: Job<SyncAnalyticsData>[]): Promise<void> {
     return;
   }
 
-  await syncAllAnalytics(settings, bundleId, ascAppId);
+  const analyticsService = new AscAnalyticsService(settings);
+  await analyticsService.syncAllAnalytics(bundleId, ascAppId);
   logger.info(`[BOSS] "${QUEUE_NAME}" job ${id} completed`);
 }

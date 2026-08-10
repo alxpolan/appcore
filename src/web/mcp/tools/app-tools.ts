@@ -487,7 +487,7 @@ export function registerAppTools(server: McpServer, userId: string) {
     "get_analytics",
     {
       description:
-        "Get downloads, updates, revenue, impressions, page views, and sessions summary for an app over a configurable date range. " +
+        "Get downloads, updates, revenue, impressions, page views, taps, and sessions summary for an app over a configurable date range. " +
         "Use list_apps to find available bundle IDs.",
       inputSchema: {
         bundleId: z
@@ -535,6 +535,7 @@ export function registerAppTools(server: McpServer, userId: string) {
             updates: true,
             impressions: true,
             pageViews: true,
+            taps: true,
             sessions: true,
           },
         }),
@@ -559,6 +560,7 @@ export function registerAppTools(server: McpServer, userId: string) {
                 totalProceedsUsd: downloadAgg._sum.proceeds ?? 0,
                 totalImpressions: downloadAgg._sum.impressions ?? 0,
                 totalPageViews: downloadAgg._sum.pageViews ?? 0,
+                totalTaps: downloadAgg._sum.taps ?? 0,
                 totalSessions: downloadAgg._sum.sessions ?? 0,
                 avgRating: reviewAgg._avg.rating ?? null,
                 totalReviews: reviewAgg._count.id,
