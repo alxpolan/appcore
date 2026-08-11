@@ -436,6 +436,21 @@ model AppStoreAnalytics {
   @@index([bundleId, reportDate])
 }
 
+model AppStoreAnalyticsPlatform {
+  id              String   @id @default(cuid())
+  bundleId        String
+  reportDate      DateTime
+  platformVersion String
+  impressions     Int      @default(0)
+  pageViews       Int      @default(0)
+  taps            Int      @default(0)
+  sessions        Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@unique([bundleId, reportDate, platformVersion])
+  @@index([bundleId, reportDate])
+}
+
 model AppReview {
   id               String   @id @default(cuid())
   ascReviewId      String   @unique

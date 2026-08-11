@@ -576,6 +576,101 @@ export function registerAppTools(server: McpServer, userId: string) {
 
   // @ts-ignore
   server.registerTool(
+    "get_analytics_by_platform",
+    {
+      description:
+        "Get impressions, page views, taps, and sessions broken down by major iOS version for an app over a configurable date range. " +
+        "Useful for spotting whether an old iOS version (e.g. app dropped support) is losing impressions without converting to taps/downloads. " +
+        "Note: Apple does not report actual downloads broken down by iOS version, only engagement/usage metrics. " +
+        "Use list_apps to find available bundle IDs.",
+      inputSchema: {
+        bundleId: z
+          .string()
+          .optional()
+          .describe(
+            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
+          ),
+        days: z
+          .number()
+          .int()
+          .min(1)
+          .max(365)
+          .default(30)
+          .describe("Number of days to look back (default 30, max 365)"),
+      },
+    },
+    async ({ bundleId, days }) => {
+      const { resolvedBundleId } = await getSettingsWithBundleId(
+        userId,
+        bundleId,
+      );
+      if (!resolvedBundleId) {
+        return {
+          content: [
+            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
+          ],
+        };
+      }
+      if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
+        return {
+          content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
+        };
+      }
+
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+
+      const rows = await prisma.appStoreAnalyticsPlatform.findMany({
+        where: { bundleId: resolvedBundleId, reportDate: { gte: since } },
+      });
+
+      const byVersionMap: Record<
+        string,
+        { iosVersion: string; impressions: number; pageViews: number; taps: number; sessions: number }
+      > = {};
+
+      for (const r of rows) {
+        const major = r.platformVersion.match(/^iOS (\d+)/)?.[1];
+        const iosVersion = major ? `iOS ${major}` : r.platformVersion || "Unknown";
+        const v = (byVersionMap[iosVersion] ??= {
+          iosVersion,
+          impressions: 0,
+          pageViews: 0,
+          taps: 0,
+          sessions: 0,
+        });
+        v.impressions += r.impressions;
+        v.pageViews += r.pageViews;
+        v.taps += r.taps;
+        v.sessions += r.sessions;
+      }
+
+      const byVersion = Object.values(byVersionMap)
+        .map((v) => ({ ...v, tapRatePct: v.impressions > 0 ? (v.taps / v.impressions) * 100 : null }))
+        .sort((a, b) => b.impressions + b.sessions - (a.impressions + a.sessions));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                bundleId: resolvedBundleId,
+                periodDays: days,
+                since: since.toISOString().split("T")[0],
+                byVersion,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // @ts-ignore
+  server.registerTool(
     "get_reviews",
     {
       description:

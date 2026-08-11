@@ -38,6 +38,11 @@ function resolveUntil(query: Record<string, any>): Date | null {
   return null;
 }
 
+function majorIosVersion(platformVersion: string): string {
+  const major = platformVersion.match(/^iOS (\d+)/)?.[1];
+  return major ? `iOS ${major}` : platformVersion || "Unknown";
+}
+
 // ─── GET /api/analytics/summary ──────────────────────────────────────────────
 analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res) => {
   try {
@@ -182,6 +187,60 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       byDay: Object.values(byDayMap),
       byCountry,
     });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/analytics/platforms ────────────────────────────────────────────
+analyticsRouter.get("/platforms", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const bundleId = req.bundleApp!.bundleId;
+    const anchor = await getAnchorDate(bundleId);
+    const since = resolveSince(req.query, anchor);
+    const until = resolveUntil(req.query);
+    const dateFilter: Record<string, Date> = {};
+
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+
+    const rows = await prisma.appStoreAnalyticsPlatform.findMany({
+      where: {
+        bundleId,
+        ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+      },
+    });
+
+    type VersionEntry = {
+      iosVersion: string;
+      impressions: number;
+      pageViews: number;
+      taps: number;
+      sessions: number;
+    };
+
+    const byVersionMap: Record<string, VersionEntry> = {};
+
+    for (const r of rows) {
+      const iosVersion = majorIosVersion(r.platformVersion);
+      const v = (byVersionMap[iosVersion] ??= {
+        iosVersion,
+        impressions: 0,
+        pageViews: 0,
+        taps: 0,
+        sessions: 0,
+      });
+      v.impressions += r.impressions;
+      v.pageViews += r.pageViews;
+      v.taps += r.taps;
+      v.sessions += r.sessions;
+    }
+
+    const byVersion = Object.values(byVersionMap).sort(
+      (a, b) => b.impressions + b.sessions - (a.impressions + a.sessions),
+    );
+
+    res.json({ byVersion });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

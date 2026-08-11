@@ -27,16 +27,21 @@ const TRACKED_ANALYTICS_REPORTS: Record<string, string> = {
 type AnalyticsCategory = keyof typeof TRACKED_ANALYTICS_REPORTS;
 type AnalyticsMetrics = { impressions: number; pageViews: number; taps: number; sessions: number };
 
-function parseAnalyticsSegment(rows: Record<string, string>[], category: AnalyticsCategory) {
-  const metricsByDayCountry: Record<string, AnalyticsMetrics> = {};
+function aggregateAnalyticsSegment(
+  rows: Record<string, string>[],
+  category: AnalyticsCategory,
+  dimensionColumn: string,
+  normalizeDimension: (raw: string) => string,
+): Record<string, AnalyticsMetrics> {
+  const metricsByDayDimension: Record<string, AnalyticsMetrics> = {};
 
   for (const row of rows) {
     const dateStr = (row["Date"] ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
 
-    const territory = (row["Territory"] ?? "WW").toUpperCase().trim() || "WW";
-    const key = `${dateStr}::${territory}`;
-    const metrics = (metricsByDayCountry[key] ??= { impressions: 0, pageViews: 0, taps: 0, sessions: 0 });
+    const dimension = normalizeDimension(row[dimensionColumn] ?? "");
+    const key = `${dateStr}::${dimension}`;
+    const metrics = (metricsByDayDimension[key] ??= { impressions: 0, pageViews: 0, taps: 0, sessions: 0 });
 
     if (category === "APP_USAGE") {
       metrics.sessions += parseInt(row["Sessions"] ?? "0", 10) || 0;
@@ -51,7 +56,15 @@ function parseAnalyticsSegment(rows: Record<string, string>[], category: Analyti
     if (eventType === "Tap") metrics.taps += counts;
   }
 
-  return metricsByDayCountry;
+  return metricsByDayDimension;
+}
+
+function parseAnalyticsSegment(rows: Record<string, string>[], category: AnalyticsCategory) {
+  return aggregateAnalyticsSegment(rows, category, "Territory", (raw) => raw.toUpperCase().trim() || "WW");
+}
+
+function parsePlatformSegment(rows: Record<string, string>[], category: AnalyticsCategory) {
+  return aggregateAnalyticsSegment(rows, category, "Platform Version", (raw) => raw.trim() || "Unknown");
 }
 
 async function storeAnalyticsSegment(
@@ -72,6 +85,31 @@ async function storeAnalyticsSegment(
       return prisma.appStoreAnalytics.upsert({
         where: { bundleId_reportDate_country: { bundleId, reportDate, country } },
         create: { bundleId, reportDate, country, ...metrics },
+        update,
+      });
+    }),
+  );
+  return entries.length;
+}
+
+async function storePlatformSegment(
+  bundleId: string,
+  category: AnalyticsCategory,
+  metricsByDayPlatform: Record<string, AnalyticsMetrics>,
+): Promise<number> {
+  const entries = Object.entries(metricsByDayPlatform);
+  await Promise.all(
+    entries.map(([key, metrics]) => {
+      const [dateStr, platformVersion] = key.split("::");
+      const reportDate = new Date(dateStr);
+      const update =
+        category === "APP_USAGE"
+          ? { sessions: metrics.sessions }
+          : { impressions: metrics.impressions, pageViews: metrics.pageViews, taps: metrics.taps };
+
+      return prisma.appStoreAnalyticsPlatform.upsert({
+        where: { bundleId_reportDate_platformVersion: { bundleId, reportDate, platformVersion } },
+        create: { bundleId, reportDate, platformVersion, ...metrics },
         update,
       });
     }),
@@ -331,6 +369,9 @@ export class AscAnalyticsService {
 
             const metricsByDayCountry = parseAnalyticsSegment(rows, reportItem.category);
             storedRows += await storeAnalyticsSegment(bundleId, reportItem.category, metricsByDayCountry);
+
+            const metricsByDayPlatform = parsePlatformSegment(rows, reportItem.category);
+            await storePlatformSegment(bundleId, reportItem.category, metricsByDayPlatform);
           } catch (err: any) {
             logger.warn(`Downloading/parsing engagement segment: ${err?.message ?? err}`);
           }

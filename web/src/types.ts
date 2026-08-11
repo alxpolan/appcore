@@ -22,6 +22,18 @@ export interface DownloadsData {
   byCountry: CountryData[];
 }
 
+export interface PlatformVersionData {
+  iosVersion: string;
+  impressions: number;
+  pageViews: number;
+  taps: number;
+  sessions: number;
+}
+
+export interface PlatformsData {
+  byVersion: PlatformVersionData[];
+}
+
 export interface AnalyticsSummary {
   totalDownloads: number;
   totalProceeds: number;

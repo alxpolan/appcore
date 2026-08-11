@@ -1,10 +1,21 @@
 import { useState, useMemo, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { RefreshCw, ArrowRight, Clock, Download, Eye, Monitor, Activity, DollarSign, TrendingUp } from "lucide-react";
+import {
+  RefreshCw,
+  ArrowRight,
+  Clock,
+  Download,
+  Eye,
+  Monitor,
+  Activity,
+  DollarSign,
+  TrendingUp,
+  Smartphone,
+} from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
-import type { AnalyticsSummary, DashboardData, DownloadsData, Review } from "../../types";
+import type { AnalyticsSummary, DashboardData, DownloadsData, PlatformsData, Review } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRelativeDateTime, fmtPct, countryName } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
@@ -164,6 +175,8 @@ export default function Analytics({ addToast }: Props) {
   const { data: reviews, refetch: refetchReviews } = useApi<Review[]>(
     `/analytics/reviews?bundleId=${bundleId}&limit=200`,
   );
+
+  const { data: platforms } = useApi<PlatformsData>(`/analytics/platforms?bundleId=${bundleId}${params}`);
 
   const { data: markersData } = useApi<{
     activatedAt: string | null;
@@ -533,6 +546,65 @@ export default function Analytics({ addToast }: Props) {
             </div>
           )}
         </div>
+      </div>
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Smartphone className={`w-4 h-4 ${textMuted}`} />
+              <div className={`text-[16px] font-semibold ${textPrimary}`}>Impressions &amp; Taps by iOS Version</div>
+            </div>
+            <span className={`text-[12px] ${textMuted}`}>{rangeLabel(range)}</span>
+          </div>
+          <div className={`text-[12px] ${textMuted} mt-1`}>
+            Apple doesn't break downloads down by iOS version — tap rate (taps ÷ impressions) is the closest proxy for
+            whether an old iOS version is costing you conversions.
+          </div>
+        </div>
+        {!hasEngagementData || (platforms?.byVersion ?? []).length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {hasEngagementData ? "No data yet" : "Run a 2nd sync once Apple processes the request"}
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={TH}>iOS Version</th>
+                <th className={`${TH} text-right`}>Impressions</th>
+                <th className={`${TH} text-right`}>Taps</th>
+                <th className={`${TH} text-right pr-5`}>Tap Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(platforms?.byVersion ?? []).slice(0, 8).map((v) => {
+                const tapRate = v.impressions > 0 ? (v.taps / v.impressions) * 100 : 0;
+                return (
+                  <tr key={v.iosVersion} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
+                    <td className={TD}>
+                      <span className={`font-medium ${textPrimary}`}>{v.iosVersion}</span>
+                    </td>
+                    <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(v.impressions)}</td>
+                    <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(v.taps)}</td>
+                    <td className={`${TD} text-right pr-5`}>
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-16 h-1.5 bg-[#f3f4f6] dark:bg-[#252b38] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#D94412] rounded-full"
+                            style={{ width: `${Math.min(tapRate, 100)}%` }}
+                          />
+                        </div>
+                        <span className={`text-[12px] ${textMuted} w-12 text-right`}>{fmtPct(tapRate)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
