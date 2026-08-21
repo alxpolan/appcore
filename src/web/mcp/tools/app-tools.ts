@@ -52,6 +52,7 @@ export function registerAppTools(server: McpServer, userId: string) {
       const result = apps.map((a) => ({
         bundleId: a.bundleId,
         name: a.name,
+        displayName: a.displayName,
         isOwnApp: a.isOwnApp,
         country: a.country,
         title: a.currentTitle,
@@ -137,6 +138,7 @@ export function registerAppTools(server: McpServer, userId: string) {
               {
                 bundleId: app.bundleId,
                 name: app.name,
+                displayName: app.displayName,
                 isOwnApp: app.isOwnApp,
                 country: app.country,
                 title: app.currentTitle,
@@ -412,6 +414,65 @@ export function registerAppTools(server: McpServer, userId: string) {
               null,
               2,
             ),
+          },
+        ],
+      };
+    },
+  );
+
+  // @ts-ignore
+  server.registerTool(
+    "set_display_name",
+    {
+      description:
+        "Set the clean display name shown for an app throughout Marteso's UI (sidebar, app switcher, dashboard), " +
+        "overriding its raw, often keyword-stuffed App Store title (e.g. 'CapCut: Video & Photo Editor' -> 'CapCut'). " +
+        "Use list_apps or get_app_info first to see the current raw name. Pass an empty string to clear the override " +
+        "and fall back to the raw App Store name.",
+      inputSchema: {
+        bundleId: z
+          .string()
+          .optional()
+          .describe(
+            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
+          ),
+        displayName: z
+          .string()
+          .max(60)
+          .describe("The clean display name to show instead of the raw App Store title. Pass '' to clear it."),
+      },
+    },
+    async ({ bundleId, displayName }) => {
+      const { resolvedBundleId } = await getSettingsWithBundleId(
+        userId,
+        bundleId,
+      );
+      if (!resolvedBundleId) {
+        return {
+          content: [
+            { type: "text", text: mcpToolMessages.noBundleIdProvidedWithDefault },
+          ],
+        };
+      }
+
+      const app = await verifyMcpAppAccess(userId, resolvedBundleId);
+      if (!app) {
+        return {
+          content: [{ type: "text", text: appNotFoundWithListApps(resolvedBundleId) }],
+        };
+      }
+
+      const trimmed = displayName.trim();
+      await prisma.app.update({
+        where: { id: app.id },
+        data: { displayName: trimmed || null },
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: true, bundleId: resolvedBundleId, displayName: trimmed || null }, null, 2),
           },
         ],
       };

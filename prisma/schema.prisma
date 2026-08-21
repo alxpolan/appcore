@@ -171,6 +171,7 @@ model App {
   id                         String                    @id @default(cuid())
   bundleId                   String                    @unique
   name                       String
+  displayName                String?
   teamId                     String?
   team                       Team?                     @relation(fields: [teamId], references: [id], onDelete: SetNull)
   trackId                    BigInt?                   @unique

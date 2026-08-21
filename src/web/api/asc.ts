@@ -426,6 +426,9 @@ ascRouter.post(
       },
     });
 
+    const { fillDisplayNameFromTitle } = await import("../../services/utils/app-display-name");
+    await fillDisplayNameFromTitle(app.id, name);
+
     const { AppStoreScraper } = await import("../../services/appstore-scraper");
     await new AppStoreScraper(app.country, undefined, bundleId).runFullScrapeJob();
 

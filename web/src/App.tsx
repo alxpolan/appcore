@@ -232,13 +232,13 @@ function AppSwitcher({
           className="w-full px-3 py-2.5 bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl flex items-center gap-2.5 hover:border-[#d1d5db] dark:hover:border-[#3a4050] transition-colors group"
         >
           {activeApp ? (
-            <AppAvatar url={activeApp.iconUrl} name={activeApp.name} size={9} accent />
+            <AppAvatar url={activeApp.iconUrl} name={activeApp.displayName ?? activeApp.name} size={9} accent />
           ) : (
             <div className="w-9 h-9 rounded-lg bg-gray-200 dark:bg-[#2a2f3d] shrink-0" />
           )}
           <div className="overflow-hidden flex-1 text-left">
             <div className="text-[15px] font-semibold text-[#1a1a2e] dark:text-[#e8eaf0] truncate leading-tight">
-              {activeApp?.name ?? current?.name ?? "No app"}
+              {activeApp?.displayName ?? activeApp?.name ?? current?.displayName ?? current?.name ?? "No app"}
             </div>
             <div className={`text-[11px] ${textMuted} truncate font-mono`}>
               {activeApp?.bundleId ?? current?.bundleId ?? "—"}
@@ -263,9 +263,11 @@ function AppSwitcher({
                 onClick={() => handleSelect(a)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors text-left ${a.bundleId === activeBundleResolved ? "bg-[#fef2f3] dark:bg-[#2a1f23]" : ""}`}
               >
-                <AppAvatar url={a.iconUrl} name={a.name} size={8} accent />
+                <AppAvatar url={a.iconUrl} name={a.displayName ?? a.name} size={8} accent />
                 <div className="overflow-hidden">
-                  <div className="text-[13px] font-medium text-[#1a1a2e] dark:text-[#e8eaf0] truncate">{a.name}</div>
+                  <div className="text-[13px] font-medium text-[#1a1a2e] dark:text-[#e8eaf0] truncate">
+                    {a.displayName ?? a.name}
+                  </div>
                   <div className="text-[10px] text-gray-400 dark:text-[#5c6478] font-mono truncate">{a.bundleId}</div>
                 </div>
                 {a.bundleId === activeBundleResolved && (

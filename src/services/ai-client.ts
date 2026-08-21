@@ -8,6 +8,7 @@ export interface AIQueryOptions {
   jsonMode?: boolean;
   openaiModel?: string;
   anthropicModel?: string;
+  provider?: "openai" | "anthropic";
 }
 
 export interface AIResponse {
@@ -67,7 +68,17 @@ export class AIClient {
     return !!(this.openai || this.anthropic);
   }
 
+  get hasOpenAI(): boolean {
+    return !!this.openai;
+  }
+
   async query(systemPrompt: string, userPrompt: string, options?: AIQueryOptions): Promise<AIResponse> {
+    if (options?.provider === "openai" && this.openai) {
+      return this.callOpenAI(systemPrompt, userPrompt, options);
+    }
+    if (options?.provider === "anthropic" && this.anthropic) {
+      return this.callAnthropic(systemPrompt, userPrompt, options);
+    }
     if (this.preferredProvider === "anthropic" && this.anthropic) {
       return this.callAnthropic(systemPrompt, userPrompt, options);
     }

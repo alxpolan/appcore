@@ -93,6 +93,7 @@ dashboardRouter.get("/", async (req, res) => {
       app: ownApp
         ? {
             name: ownApp.name,
+            displayName: ownApp.displayName,
             bundleId: ownApp.bundleId,
             title: ownApp.currentTitle,
             subtitle: ownApp.currentSubtitle,

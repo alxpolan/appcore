@@ -60,6 +60,7 @@ export interface AppItem {
   id: string;
   bundleId: string;
   name: string;
+  displayName: string | null;
   isOwnApp: boolean;
   rating: number | null;
   ratingsCount: number | null;
@@ -92,6 +93,7 @@ export interface StoreApp {
 
 export interface AppInfo {
   name: string;
+  displayName: string | null;
   bundleId: string;
   title: string;
   subtitle: string;

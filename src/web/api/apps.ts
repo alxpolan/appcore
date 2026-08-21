@@ -85,6 +85,7 @@ appsRouter.get("/", async (req, res) => {
         id: a.id,
         bundleId: a.bundleId,
         name: a.name,
+        displayName: a.displayName,
         trackId: a.trackId?.toString() ?? null,
         country: a.country,
         isOwnApp: a.isOwnApp,
@@ -621,6 +622,21 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
       },
     });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+appsRouter.patch("/:id", requireAuth, appAccess("params", "id"), async (req, res) => {
+  try {
+    const { displayName } = req.body as { displayName?: string | null };
+    const trimmed = typeof displayName === "string" ? displayName.trim() : displayName;
+
+    const app = await prisma.app.update({
+      where: { id: req.bundleApp!.id },
+      data: { displayName: trimmed || null },
+    });
+    res.json({ id: app.id, displayName: app.displayName });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
