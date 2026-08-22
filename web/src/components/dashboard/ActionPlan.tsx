@@ -120,12 +120,12 @@ export default function ActionPlan({ hasASC }: { hasASC: boolean }) {
                 return (
                   <div
                     key={f.key}
-                    className={`flex items-start gap-3.5 px-4 py-3 rounded-xl border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38]`}
+                    className={`flex flex-col sm:flex-row items-start gap-3.5 px-4 py-3 rounded-xl border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38]`}
                   >
                     <div className="w-9 h-9 rounded-lg bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] flex items-center justify-center text-[#C4001E] shrink-0">
                       <Icon className="w-[18px] h-[18px]" />
                     </div>
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 w-full flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[13.5px] font-semibold ${textPrimary}`}>{f.title}</span>
                         <span
@@ -147,7 +147,7 @@ export default function ActionPlan({ hasASC }: { hasASC: boolean }) {
                     </div>
                     <Link
                       to={cta.to}
-                      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all`}
+                      className={`w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all`}
                     >
                       {cta.label}
                       <ArrowRight className="w-3.5 h-3.5" />
