@@ -433,14 +433,19 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 
     const teamId = membership?.teamId ?? null;
     let plan: "pro" | "free" = "free";
+    let isFringeloTeam = false;
     if (teamId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { teamId },
-        select: { status: true },
-      });
+      const [sub, fringeloMember] = await Promise.all([
+        prisma.subscription.findUnique({ where: { teamId }, select: { status: true } }),
+        prisma.teamMember.findFirst({
+          where: { teamId, user: { email: "admin@fringelo.com" } },
+          select: { id: true },
+        }),
+      ]);
       if (sub && (PRO_STATUSES as readonly string[]).includes(sub.status)) {
         plan = "pro";
       }
+      isFringeloTeam = fringeloMember != null;
     }
 
     res.json({
@@ -449,6 +454,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
       teamId,
       teamRole: user.role === "ADMIN" ? "OWNER" : (membership?.role ?? null),
       plan,
+      isFringeloTeam,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });

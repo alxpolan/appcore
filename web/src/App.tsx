@@ -1290,15 +1290,18 @@ export default function App() {
                     </NavLink>
                   ))}
                   <AnalyticsSidebarSection navLinkClass={navLinkClass} />
-                  {sidebarLinks.slice(1).map((link) => (
-                    <NavLink key={link.to} to={link.to} className={navLinkClass}>
-                      {link.icon && <link.icon />}
-                      {link.label}
-                    </NavLink>
-                  ))}
+                  {sidebarLinks
+                    .slice(1)
+                    .filter((link) => link.to !== "/suggestions" || user.isFringeloTeam)
+                    .map((link) => (
+                      <NavLink key={link.to} to={link.to} className={navLinkClass}>
+                        {link.icon && <link.icon />}
+                        {link.label}
+                      </NavLink>
+                    ))}
                   <MonetizationSidebarSection navLinkClass={navLinkClass} />
                   <VersionsSidebarSection navLinkClass={navLinkClass} />
-                  <MoreSidebarSection navLinkClass={navLinkClass} />
+                  {user.isFringeloTeam && <MoreSidebarSection navLinkClass={navLinkClass} />}
                   <div className="mt-auto pb-3">
                     <div className="h-px bg-[#eef0f3] dark:bg-[#2a2f3d] mx-1 mb-2 mt-1" />
                     {sidebarOperations.map((link) => (

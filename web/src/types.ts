@@ -252,6 +252,7 @@ export interface AuthUser {
   teamRole: TeamRole | null;
   plan?: "pro" | "free";
   isDemo?: boolean;
+  isFringeloTeam?: boolean;
 }
 
 export type AppRole = "OWNER" | "EDITOR" | "VIEWER";
