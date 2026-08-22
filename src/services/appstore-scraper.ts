@@ -14,6 +14,7 @@ interface ITunesResult {
   userRatingCount?: number;
   price: number;
   version: string;
+  minimumOsVersion?: string;
   currentVersionReleaseDate?: string;
   releaseNotes?: string;
   screenshotUrls: string[];
@@ -402,12 +403,14 @@ export class AppStoreScraper {
         isOwnApp,
         currentTitle: itunesData.trackName,
         currentDescription: itunesData.description,
+        minimumOsVersion: itunesData.minimumOsVersion,
       },
       update: {
         name: itunesData.trackName,
         trackId: BigInt(itunesData.trackId),
         currentTitle: itunesData.trackName,
         currentDescription: itunesData.description,
+        minimumOsVersion: itunesData.minimumOsVersion,
       },
     });
 

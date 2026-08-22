@@ -52,6 +52,9 @@ export interface AnalyticsSummary {
   totalImpressions: number;
   totalPageViews: number;
   totalSessions: number;
+  totalPayingUsers: number;
+  minimumOsVersion: string | null;
+  impressionsBelowMinOs: number | null;
   conversionRate: number | null;
   avgRating: number | null;
   reviewCount: number;

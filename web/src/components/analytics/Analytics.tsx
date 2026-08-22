@@ -11,11 +11,12 @@ import {
   DollarSign,
   TrendingUp,
   Smartphone,
+  ShoppingBag,
 } from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
-import type { AnalyticsSummary, DashboardData, DownloadsData, PlatformsData, Review } from "../../types";
+import type { AnalyticsSummary, DashboardData, DownloadsData, PlatformsData, PurchaseData, Review } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRelativeDateTime, fmtPct, countryName } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
@@ -106,45 +107,43 @@ function StatCard({
   );
 }
 
-function FunnelStep({
-  label,
-  value,
-  pct,
-  color,
-  dropOff,
-  isLast,
-}: {
-  label: string;
-  value: number;
-  pct: number;
-  color: string;
-  dropOff?: number;
-  isLast?: boolean;
-}) {
+// Funnel levels span multiple orders of magnitude (impressions in the hundreds of
+// thousands down to paying users in the hundreds), so bar width is log-scaled
+// across the whole funnel rather than taken as a linear % of the top level —
+// otherwise the bottom steps would all collapse to the same sliver width.
+function funnelWidths(values: number[], minWidthPct: number, maxWidthPct: number): number[] {
+  const nonZero = values.filter((v) => v > 0);
+  if (nonZero.length === 0) return values.map(() => minWidthPct);
+  const maxV = Math.max(...values);
+  const minV = Math.min(...nonZero);
+  if (maxV <= minV) return values.map((v) => (v > 0 ? maxWidthPct : minWidthPct));
+  return values.map((v) => {
+    if (v <= 0) return minWidthPct;
+    const t = (Math.log(v) - Math.log(minV)) / (Math.log(maxV) - Math.log(minV));
+    return minWidthPct + t * (maxWidthPct - minWidthPct);
+  });
+}
+
+const FUNNEL_BAND_HEIGHT = 74;
+
+function FunnelBand({ topPct, bottomPct, color, y }: { topPct: number; bottomPct: number; color: string; y: number }) {
+  const clipPath = `polygon(${50 - topPct / 2}% 0%, ${50 + topPct / 2}% 0%, ${50 + bottomPct / 2}% 100%, ${50 - bottomPct / 2}% 100%)`;
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
-          <span className={`text-[13px] font-medium ${textPrimary}`}>{label}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className={`text-[13px] tabular-nums font-semibold ${textPrimary}`}>{fmtNumber(value)}</span>
-          <span className={`text-[12px] tabular-nums ${textMuted} w-12 text-right`}>{pct.toFixed(1)}%</span>
-        </div>
+    <div
+      className="absolute left-0 w-full transition-all duration-500"
+      style={{ top: y, height: FUNNEL_BAND_HEIGHT, background: color, clipPath }}
+    />
+  );
+}
+
+function FunnelRow({ label, value, sub }: { label: string; value: number; sub?: string }) {
+  return (
+    <div className="flex flex-col justify-center" style={{ height: FUNNEL_BAND_HEIGHT }}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={`text-[13px] font-medium ${textPrimary}`}>{label}</span>
+        <span className={`text-[16px] font-semibold tabular-nums ${textPrimary}`}>{fmtNumber(value)}</span>
       </div>
-      <div className="h-2.5 w-full bg-[#f3f4f6] dark:bg-[#252b38] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-      {!isLast && dropOff !== undefined && (
-        <div className="flex items-center gap-1.5 pl-1 pb-1">
-          <div className="w-px h-3 bg-[#e5e7eb] dark:bg-[#2a2f3d] ml-[4px]" />
-          <span className={`text-[11px] ${textMuted}`}>{dropOff.toFixed(1)}% drop-off</span>
-        </div>
-      )}
+      {sub && <div className={`text-[11px] ${textMuted} mt-1`}>{sub}</div>}
     </div>
   );
 }
@@ -177,6 +176,8 @@ export default function Analytics({ addToast }: Props) {
   );
 
   const { data: platforms } = useApi<PlatformsData>(`/analytics/platforms?bundleId=${bundleId}${params}`);
+
+  const { data: purchases } = useApi<PurchaseData[]>(`/analytics/purchases?bundleId=${bundleId}&limit=5`);
 
   const { data: markersData } = useApi<{
     activatedAt: string | null;
@@ -373,12 +374,49 @@ export default function Analytics({ addToast }: Props) {
       {hasEngagementData &&
         (() => {
           const imp = summary?.totalImpressions ?? 0;
-          const pv = summary?.totalPageViews ?? 0;
           const dl = summary?.totalDownloads ?? 0;
-          const pvPct = imp > 0 ? (pv / imp) * 100 : 0;
-          const dlPct = imp > 0 ? (dl / imp) * 100 : 0;
-          const dropImpToPv = 100 - pvPct;
-          const dropPvToDl = pvPct > 0 ? pvPct - dlPct : 0;
+          const pay = summary?.totalPayingUsers ?? 0;
+          const belowMinOs = summary?.impressionsBelowMinOs ?? null;
+          const afd = belowMinOs != null ? Math.max(0, imp - belowMinOs) : null;
+
+          const afdPct = afd != null && imp > 0 ? (afd / imp) * 100 : null;
+          const dropImpToAfd = afdPct != null ? 100 - afdPct : null;
+          const dlBase = afd ?? imp;
+          const dlPct = dlBase > 0 ? (dl / dlBase) * 100 : 0;
+          const dropToDl = 100 - dlPct;
+          const payPctOfDownloads = dl > 0 ? (pay / dl) * 100 : 0;
+          const dropDlToPay = 100 - payPctOfDownloads;
+
+          const levels: { label: string; value: number; color: string; sub?: string }[] = [
+            { label: "Impressions", value: imp, color: "#6366f1" },
+          ];
+          if (afd != null) {
+            levels.push({
+              label: "Available for Download",
+              value: afd,
+              color: "#8b5cf6",
+              sub: `${afdPct!.toFixed(1)}% of impressions · ${dropImpToAfd!.toFixed(1)}% on unsupported OS`,
+            });
+          }
+          levels.push({
+            label: "Downloads",
+            value: dl,
+            color: "#0ea5e9",
+            sub: `${dlPct.toFixed(1)}% of ${afd != null ? "available" : "impressions"} · ${dropToDl.toFixed(1)}% drop-off`,
+          });
+          levels.push({
+            label: "Paying Users",
+            value: pay,
+            color: "#D94412",
+            sub: `${payPctOfDownloads.toFixed(1)}% of downloads · ${dropDlToPay.toFixed(1)}% drop-off`,
+          });
+
+          const widths = funnelWidths(
+            levels.map((l) => l.value),
+            24,
+            100,
+          );
+
           return (
             <div
               className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
@@ -387,10 +425,23 @@ export default function Analytics({ addToast }: Props) {
                 <div className={`text-[16px] font-semibold ${textPrimary}`}>Conversion Funnel</div>
                 <span className={`text-[12px] ${textMuted}`}>{rangeLabel(range)}</span>
               </div>
-              <div className="flex flex-col gap-0">
-                <FunnelStep label="Impressions" value={imp} pct={100} color="#6366f1" dropOff={dropImpToPv} />
-                <FunnelStep label="Page Views" value={pv} pct={pvPct} color="#0ea5e9" dropOff={dropPvToDl} />
-                <FunnelStep label="Downloads" value={dl} pct={dlPct} color="#D94412" isLast />
+              <div className="flex items-stretch gap-6">
+                <div className="relative shrink-0" style={{ width: 180, height: FUNNEL_BAND_HEIGHT * levels.length }}>
+                  {levels.map((lvl, i) => (
+                    <FunnelBand
+                      key={lvl.label}
+                      topPct={widths[i]}
+                      bottomPct={i < widths.length - 1 ? widths[i + 1] : widths[i]}
+                      color={lvl.color}
+                      y={i * FUNNEL_BAND_HEIGHT}
+                    />
+                  ))}
+                </div>
+                <div className="flex-1 flex flex-col">
+                  {levels.map((lvl) => (
+                    <FunnelRow key={lvl.label} label={lvl.label} value={lvl.value} sub={lvl.sub} />
+                  ))}
+                </div>
               </div>
             </div>
           );
@@ -602,6 +653,66 @@ export default function Analytics({ addToast }: Props) {
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className={`w-4 h-4 ${textMuted}`} />
+            <div className={`text-[16px] font-semibold ${textPrimary}`}>Recent Transactions</div>
+          </div>
+          <Link
+            to="/analytics/financial"
+            className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+          >
+            Financial <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+        {(purchases ?? []).length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No purchases synced yet</div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={TH}>Date</th>
+                <th className={TH}>Product</th>
+                <th className={TH}>Payment Method</th>
+                <th className={TH}>Territory</th>
+                <th className={`${TH} text-right`}>Qty</th>
+                <th className={`${TH} text-right pr-5`}>Proceeds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(purchases ?? []).slice(0, 5).map((p, i) => (
+                <tr key={i} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
+                  <td className={TD}>{p.date}</td>
+                  <td className={TD}>
+                    <span className={`font-medium ${textPrimary}`}>{p.contentName}</span>
+                    <span className={`text-[11px] ${textMuted} ml-2`}>{p.purchaseType}</span>
+                  </td>
+                  <td className={`${TD} ${textMuted}`}>{p.paymentMethod}</td>
+                  <td className={TD}>
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={`/country-flags/${p.territory.toLowerCase()}.svg`}
+                        alt={p.territory}
+                        className="w-5 h-4 rounded-xs object-cover shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                      <span className={textPrimary}>{p.territory}</span>
+                    </div>
+                  </td>
+                  <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(p.purchases)}</td>
+                  <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>{fmtRevenue(p.proceedsUsd)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}

@@ -181,6 +181,7 @@ model App {
   currentSubtitle            String?
   currentKeywords            String?
   currentDescription         String?
+  minimumOsVersion           String?
   analyticsRequestId         String?
   analyticsSnapshotRequestId String?
   githubRepoOwner            String?

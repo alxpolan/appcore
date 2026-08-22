@@ -43,6 +43,11 @@ function majorIosVersion(platformVersion: string): string {
   return major ? `iOS ${major}` : platformVersion || "Unknown";
 }
 
+function majorVersionNumber(version: string): number | null {
+  const major = version.match(/(\d+)/)?.[1];
+  return major ? parseInt(major, 10) : null;
+}
+
 // ─── GET /api/analytics/summary ──────────────────────────────────────────────
 analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res) => {
   try {
@@ -55,7 +60,10 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
     if (since) dateFilter.gte = since;
     if (until) dateFilter.lte = until;
 
-    const [metricAgg, reviewAgg] = await Promise.all([
+    const minimumOsVersion = req.bundleApp!.minimumOsVersion;
+    const minOsMajor = minimumOsVersion ? majorVersionNumber(minimumOsVersion) : null;
+
+    const [metricAgg, reviewAgg, purchaseAgg, platformAgg] = await Promise.all([
       prisma.appStoreAnalytics.aggregate({
         where: {
           bundleId,
@@ -75,6 +83,23 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
         _avg: { rating: true },
         _count: { id: true },
       }),
+      prisma.appStoreCommercePurchase.aggregate({
+        where: {
+          bundleId,
+          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+        },
+        _sum: { payingUsers: true },
+      }),
+      minOsMajor != null
+        ? prisma.appStoreAnalyticsPlatform.groupBy({
+            by: ["platformVersion"],
+            where: {
+              bundleId,
+              ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+            },
+            _sum: { impressions: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const lastSyncAgg = await prisma.appStoreAnalytics.aggregate({
@@ -85,6 +110,14 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
     const impressions = metricAgg._sum.impressions ?? 0;
     const pageViews = metricAgg._sum.pageViews ?? 0;
 
+    const impressionsBelowMinOs =
+      minOsMajor != null
+        ? platformAgg.reduce((sum, row) => {
+            const major = majorVersionNumber(row.platformVersion);
+            return major != null && major < minOsMajor ? sum + (row._sum.impressions ?? 0) : sum;
+          }, 0)
+        : null;
+
     res.json({
       totalDownloads: downloads,
       totalProceeds: metricAgg._sum.proceeds ?? 0,
@@ -92,6 +125,9 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
       totalPageViews: pageViews,
       totalTaps: metricAgg._sum.taps ?? 0,
       totalSessions: metricAgg._sum.sessions ?? 0,
+      totalPayingUsers: purchaseAgg._sum.payingUsers ?? 0,
+      minimumOsVersion,
+      impressionsBelowMinOs,
       conversionRate: impressions > 0 ? (downloads / impressions) * 100 : null,
       avgRating: reviewAgg._avg.rating ?? null,
       reviewCount: reviewAgg._count.id,
