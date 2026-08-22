@@ -290,6 +290,7 @@ export interface SettingsData {
   ascAppId: string;
   ascBundleId: string;
   ascVendorNumber: string;
+  ascAccountConnectRequestedAt: string | null;
   presetCopyright: string;
   reviewerFirstName: string;
   reviewerLastName: string;

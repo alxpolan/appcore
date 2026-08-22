@@ -5,7 +5,7 @@ import { textPrimary, textSecondary } from "../styles";
 export default function AscConnectCard({
   title = "Connect App Store Connect",
   description,
-  cta = "Connect via API key",
+  cta = "Connect App Store Connect",
   className = "",
 }: {
   title?: string;

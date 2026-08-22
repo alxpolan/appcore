@@ -105,6 +105,24 @@ export async function premiumGranted({
   });
 }
 
+export async function ascAccountConnectRequested({
+  teamName,
+  requestedByEmail,
+}: {
+  teamName: string;
+  requestedByEmail: string;
+}): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    replyTo: requestedByEmail,
+    subject: `ASC account connect requested — ${teamName}`,
+    text: `${requestedByEmail} (team "${teamName}") says they've invited asc@marteso.com to their App Store Connect team.
+
+Go generate the API key under that account and enter it into the team's settings (Team Settings → App Store Connect).`,
+  });
+}
+
 export function keywordRankChange(
   keywordTerm: string,
   oldRank: number | null,

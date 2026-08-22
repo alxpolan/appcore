@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings } from "../auth";
 import { encrypt } from "../../config/encryption";
+import { ascAccountConnectRequested } from "../../services/notifications/templates";
 
 export const settingsRouter = Router();
 settingsRouter.use(requireAuth);
@@ -17,6 +18,7 @@ settingsRouter.get("/", loadTeamSettings, async (req, res) => {
       ascPrivateKey: s?.ascPrivateKey ? "••••••••" : "",
       ascPrivateKeySet: !!s?.ascPrivateKey,
       ascVendorNumber: isDemo ? (s?.ascVendorNumber ? "••••••••" : "") : (s?.ascVendorNumber ?? ""),
+      ascAccountConnectRequestedAt: s?.ascAccountConnectRequestedAt?.toISOString() ?? null,
       presetCopyright: s?.presetCopyright ?? "",
       reviewerFirstName: s?.reviewerFirstName ?? "",
       reviewerLastName: s?.reviewerLastName ?? "",
@@ -73,6 +75,35 @@ settingsRouter.put("/", async (req, res) => {
     });
 
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── POST /api/settings/asc-account-connect ──────────────────────────────────
+// User confirms they've invited asc@marteso.com to their App Store Connect team.
+// We record the request and notify ops to go generate the API key under that
+// invited account and finish wiring up the team's credentials.
+settingsRouter.post("/asc-account-connect", async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const teamId = req.user!.teamId!;
+
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { name: true } });
+    const requestedAt = new Date();
+
+    await prisma.teamSettings.upsert({
+      where: { teamId },
+      create: { teamId, ascAccountConnectRequestedAt: requestedAt },
+      update: { ascAccountConnectRequestedAt: requestedAt },
+    });
+
+    ascAccountConnectRequested({
+      teamName: team?.name ?? teamId,
+      requestedByEmail: req.user!.email,
+    }).catch(() => {});
+
+    res.json({ ok: true, ascAccountConnectRequestedAt: requestedAt.toISOString() });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

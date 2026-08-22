@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useApi, apiPut } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import { usePostHog } from "@posthog/react";
+import AscAccountConnectSection from "./AscAccountConnectSection";
 import AscCredentialsSection from "./AscCredentialsSection";
 import GitHubSection from "./GitHubSection";
 import PresetMetadataSection from "./PresetMetadataSection";
@@ -62,6 +63,7 @@ export default function Settings({ addToast }: Props) {
 
       <fieldset disabled={!canManageTeam} className="contents">
         <form onSubmit={handleSave} className="flex flex-col gap-0">
+          <AscAccountConnectSection data={data ?? null} refetch={refetch} addToast={addToast} />
           <AscCredentialsSection
             form={form}
             data={data ?? null}
