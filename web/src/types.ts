@@ -34,6 +34,18 @@ export interface PlatformsData {
   byVersion: PlatformVersionData[];
 }
 
+export interface PurchaseData {
+  date: string;
+  purchaseType: string;
+  contentName: string;
+  paymentMethod: string;
+  territory: string;
+  purchases: number;
+  proceedsUsd: number;
+  salesUsd: number;
+  payingUsers: number;
+}
+
 export interface AnalyticsSummary {
   totalDownloads: number;
   totalProceeds: number;

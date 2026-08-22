@@ -732,6 +732,93 @@ export function registerAppTools(server: McpServer, userId: string) {
 
   // @ts-ignore
   server.registerTool(
+    "get_purchases",
+    {
+      description:
+        "Get recent in-app purchase / subscription transactions for an app, sourced from App Store Connect's COMMERCE report. " +
+        "Returns product name, payment method, territory, quantity, and proceeds per transaction — more granular than get_analytics' aggregate revenue. " +
+        "Use list_apps to find available bundle IDs.",
+      inputSchema: {
+        bundleId: z
+          .string()
+          .optional()
+          .describe(
+            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .default(50)
+          .describe("Max number of transactions to return (default 50, max 200), most recent first."),
+      },
+    },
+    async ({ bundleId, limit }) => {
+      const { resolvedBundleId } = await getSettingsWithBundleId(
+        userId,
+        bundleId,
+      );
+      if (!resolvedBundleId) {
+        return {
+          content: [
+            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
+          ],
+        };
+      }
+      if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
+        return {
+          content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
+        };
+      }
+
+      const rows = await prisma.appStoreCommercePurchase.findMany({
+        where: { bundleId: resolvedBundleId },
+        orderBy: { reportDate: "desc" },
+        take: limit,
+        select: {
+          reportDate: true,
+          purchaseType: true,
+          contentName: true,
+          paymentMethod: true,
+          territory: true,
+          purchases: true,
+          proceedsUsd: true,
+          salesUsd: true,
+          payingUsers: true,
+        },
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                bundleId: resolvedBundleId,
+                transactions: rows.map((r) => ({
+                  date: r.reportDate.toISOString().slice(0, 10),
+                  purchaseType: r.purchaseType,
+                  contentName: r.contentName,
+                  paymentMethod: r.paymentMethod,
+                  territory: r.territory,
+                  purchases: r.purchases,
+                  proceedsUsd: r.proceedsUsd,
+                  salesUsd: r.salesUsd,
+                  payingUsers: r.payingUsers,
+                })),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // @ts-ignore
+  server.registerTool(
     "get_reviews",
     {
       description:

@@ -246,6 +246,47 @@ analyticsRouter.get("/platforms", ...requireBundleAccess("query"), async (req, r
   }
 });
 
+// ─── GET /api/analytics/purchases ────────────────────────────────────────────
+analyticsRouter.get("/purchases", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const bundleId = req.bundleApp!.bundleId;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+
+    const rows = await prisma.appStoreCommercePurchase.findMany({
+      where: { bundleId },
+      orderBy: { reportDate: "desc" },
+      take: limit,
+      select: {
+        reportDate: true,
+        purchaseType: true,
+        contentName: true,
+        paymentMethod: true,
+        territory: true,
+        purchases: true,
+        proceedsUsd: true,
+        salesUsd: true,
+        payingUsers: true,
+      },
+    });
+
+    res.json(
+      rows.map((r) => ({
+        date: r.reportDate.toISOString().slice(0, 10),
+        purchaseType: r.purchaseType,
+        contentName: r.contentName,
+        paymentMethod: r.paymentMethod,
+        territory: r.territory,
+        purchases: r.purchases,
+        proceedsUsd: r.proceedsUsd,
+        salesUsd: r.salesUsd,
+        payingUsers: r.payingUsers,
+      })),
+    );
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // ─── GET /api/analytics/reviews ──────────────────────────────────────────────
 analyticsRouter.get("/reviews", ...requireBundleAccess("query"), async (req, res) => {
   try {

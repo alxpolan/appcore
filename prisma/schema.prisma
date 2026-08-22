@@ -452,6 +452,50 @@ model AppStoreAnalyticsPlatform {
   @@index([bundleId, reportDate])
 }
 
+model AppStoreCommerceDownload {
+  id              String   @id @default(cuid())
+  bundleId        String
+  reportDate      DateTime
+  downloadType    String
+  appVersion      String
+  device          String
+  platformVersion String
+  sourceType      String
+  pageType        String
+  preOrder        String
+  territory       String
+  counts          Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@unique([bundleId, reportDate, downloadType, appVersion, device, platformVersion, sourceType, pageType, preOrder, territory], name: "downloadDimensions")
+  @@index([bundleId, reportDate])
+}
+
+model AppStoreCommercePurchase {
+  id              String   @id @default(cuid())
+  bundleId        String
+  reportDate      DateTime
+  purchaseType    String
+  contentName     String
+  contentAppleId  String
+  paymentMethod   String
+  device          String
+  platformVersion String
+  sourceType      String
+  pageType        String
+  appDownloadDate String
+  preOrder        String
+  territory       String
+  purchases       Int      @default(0)
+  proceedsUsd     Float    @default(0)
+  salesUsd        Float    @default(0)
+  payingUsers     Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@unique([bundleId, reportDate, purchaseType, contentName, contentAppleId, paymentMethod, device, platformVersion, sourceType, pageType, appDownloadDate, preOrder, territory], name: "purchaseDimensions")
+  @@index([bundleId, reportDate])
+}
+
 model AppReview {
   id               String   @id @default(cuid())
   ascReviewId      String   @unique

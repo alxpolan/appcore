@@ -19,17 +19,20 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-const TRACKED_ANALYTICS_REPORTS: Record<string, string> = {
-  APP_STORE_ENGAGEMENT: "App Store Discovery and Engagement Standard",
-  APP_USAGE: "App Sessions Standard",
-};
+type ReportKind = "engagement" | "usage" | "downloads" | "purchases";
 
-type AnalyticsCategory = keyof typeof TRACKED_ANALYTICS_REPORTS;
+const TRACKED_ANALYTICS_REPORTS: { category: string; name: string; kind: ReportKind }[] = [
+  { category: "APP_STORE_ENGAGEMENT", name: "App Store Discovery and Engagement Standard", kind: "engagement" },
+  { category: "APP_USAGE", name: "App Sessions Standard", kind: "usage" },
+  { category: "COMMERCE", name: "App Downloads Standard", kind: "downloads" },
+  { category: "COMMERCE", name: "App Store Purchases Standard", kind: "purchases" },
+];
+
 type AnalyticsMetrics = { impressions: number; pageViews: number; taps: number; sessions: number };
 
 function aggregateAnalyticsSegment(
   rows: Record<string, string>[],
-  category: AnalyticsCategory,
+  kind: "engagement" | "usage",
   dimensionColumn: string,
   normalizeDimension: (raw: string) => string,
 ): Record<string, AnalyticsMetrics> {
@@ -43,7 +46,7 @@ function aggregateAnalyticsSegment(
     const key = `${dateStr}::${dimension}`;
     const metrics = (metricsByDayDimension[key] ??= { impressions: 0, pageViews: 0, taps: 0, sessions: 0 });
 
-    if (category === "APP_USAGE") {
+    if (kind === "usage") {
       metrics.sessions += parseInt(row["Sessions"] ?? "0", 10) || 0;
       continue;
     }
@@ -59,17 +62,17 @@ function aggregateAnalyticsSegment(
   return metricsByDayDimension;
 }
 
-function parseAnalyticsSegment(rows: Record<string, string>[], category: AnalyticsCategory) {
-  return aggregateAnalyticsSegment(rows, category, "Territory", (raw) => raw.toUpperCase().trim() || "WW");
+function parseAnalyticsSegment(rows: Record<string, string>[], kind: "engagement" | "usage") {
+  return aggregateAnalyticsSegment(rows, kind, "Territory", (raw) => raw.toUpperCase().trim() || "WW");
 }
 
-function parsePlatformSegment(rows: Record<string, string>[], category: AnalyticsCategory) {
-  return aggregateAnalyticsSegment(rows, category, "Platform Version", (raw) => raw.trim() || "Unknown");
+function parsePlatformSegment(rows: Record<string, string>[], kind: "engagement" | "usage") {
+  return aggregateAnalyticsSegment(rows, kind, "Platform Version", (raw) => raw.trim() || "Unknown");
 }
 
 async function storeAnalyticsSegment(
   bundleId: string,
-  category: AnalyticsCategory,
+  kind: "engagement" | "usage",
   metricsByDayCountry: Record<string, AnalyticsMetrics>,
 ): Promise<number> {
   const entries = Object.entries(metricsByDayCountry);
@@ -78,7 +81,7 @@ async function storeAnalyticsSegment(
       const [dateStr, country] = key.split("::");
       const reportDate = new Date(dateStr);
       const update =
-        category === "APP_USAGE"
+        kind === "usage"
           ? { sessions: metrics.sessions }
           : { impressions: metrics.impressions, pageViews: metrics.pageViews, taps: metrics.taps };
 
@@ -94,7 +97,7 @@ async function storeAnalyticsSegment(
 
 async function storePlatformSegment(
   bundleId: string,
-  category: AnalyticsCategory,
+  kind: "engagement" | "usage",
   metricsByDayPlatform: Record<string, AnalyticsMetrics>,
 ): Promise<number> {
   const entries = Object.entries(metricsByDayPlatform);
@@ -103,7 +106,7 @@ async function storePlatformSegment(
       const [dateStr, platformVersion] = key.split("::");
       const reportDate = new Date(dateStr);
       const update =
-        category === "APP_USAGE"
+        kind === "usage"
           ? { sessions: metrics.sessions }
           : { impressions: metrics.impressions, pageViews: metrics.pageViews, taps: metrics.taps };
 
@@ -115,6 +118,171 @@ async function storePlatformSegment(
     }),
   );
   return entries.length;
+}
+
+interface DownloadRow {
+  dateStr: string;
+  downloadType: string;
+  appVersion: string;
+  device: string;
+  platformVersion: string;
+  sourceType: string;
+  pageType: string;
+  preOrder: string;
+  territory: string;
+  counts: number;
+}
+
+function parseDownloadsSegment(rows: Record<string, string>[]): DownloadRow[] {
+  const byKey = new Map<string, DownloadRow>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+    const dims = {
+      dateStr,
+      downloadType: (row["Download Type"] ?? "").trim() || "Unknown",
+      appVersion: (row["App Version"] ?? "").trim() || "Unknown",
+      device: (row["Device"] ?? "").trim() || "Unknown",
+      platformVersion: (row["Platform Version"] ?? "").trim() || "Unknown",
+      sourceType: (row["Source Type"] ?? "").trim() || "Unknown",
+      pageType: (row["Page Type"] ?? "").trim() || "Unknown",
+      preOrder: (row["Pre-Order"] ?? "").trim(),
+      territory: (row["Territory"] ?? "").toUpperCase().trim() || "WW",
+    };
+    const key = Object.values(dims).join("");
+    const counts = parseInt(row["Counts"] ?? "0", 10) || 0;
+
+    const existing = byKey.get(key);
+    if (existing) existing.counts += counts;
+    else byKey.set(key, { ...dims, counts });
+  }
+
+  return [...byKey.values()];
+}
+
+async function storeDownloadsSegment(bundleId: string, rows: DownloadRow[]): Promise<number> {
+  await Promise.all(
+    rows.map((r) => {
+      const reportDate = new Date(r.dateStr);
+      const dims = {
+        bundleId,
+        reportDate,
+        downloadType: r.downloadType,
+        appVersion: r.appVersion,
+        device: r.device,
+        platformVersion: r.platformVersion,
+        sourceType: r.sourceType,
+        pageType: r.pageType,
+        preOrder: r.preOrder,
+        territory: r.territory,
+      };
+
+      return prisma.appStoreCommerceDownload.upsert({
+        where: { downloadDimensions: dims },
+        create: { ...dims, counts: r.counts },
+        update: { counts: r.counts },
+      });
+    }),
+  );
+  return rows.length;
+}
+
+interface PurchaseRow {
+  dateStr: string;
+  purchaseType: string;
+  contentName: string;
+  contentAppleId: string;
+  paymentMethod: string;
+  device: string;
+  platformVersion: string;
+  sourceType: string;
+  pageType: string;
+  appDownloadDate: string;
+  preOrder: string;
+  territory: string;
+  purchases: number;
+  proceedsUsd: number;
+  salesUsd: number;
+  payingUsers: number;
+}
+
+function parsePurchasesSegment(rows: Record<string, string>[]): PurchaseRow[] {
+  const byKey = new Map<string, PurchaseRow>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+    const dims = {
+      dateStr,
+      purchaseType: (row["Purchase Type"] ?? "").trim() || "Unknown",
+      contentName: (row["Content Name"] ?? "").trim() || "Unknown",
+      contentAppleId: (row["Content Apple Identifier"] ?? "").trim(),
+      paymentMethod: (row["Payment Method"] ?? "").trim() || "Unknown",
+      device: (row["Device"] ?? "").trim() || "Unknown",
+      platformVersion: (row["Platform Version"] ?? "").trim() || "Unknown",
+      sourceType: (row["Source Type"] ?? "").trim() || "Unknown",
+      pageType: (row["Page Type"] ?? "").trim() || "Unknown",
+      appDownloadDate: (row["App Download Date"] ?? "").trim(),
+      preOrder: (row["Pre-Order"] ?? "").trim(),
+      territory: (row["Territory"] ?? "").toUpperCase().trim() || "WW",
+    };
+    const key = Object.values(dims).join("");
+    const purchases = parseInt(row["Purchases"] ?? "0", 10) || 0;
+    const proceedsUsd = parseFloat(row["Proceeds in USD"] ?? "0") || 0;
+    const salesUsd = parseFloat(row["Sales in USD"] ?? "0") || 0;
+    const payingUsers = parseInt(row["Paying Users"] ?? "0", 10) || 0;
+
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.purchases += purchases;
+      existing.proceedsUsd += proceedsUsd;
+      existing.salesUsd += salesUsd;
+      existing.payingUsers += payingUsers;
+    } else {
+      byKey.set(key, { ...dims, purchases, proceedsUsd, salesUsd, payingUsers });
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+async function storePurchasesSegment(bundleId: string, rows: PurchaseRow[]): Promise<number> {
+  await Promise.all(
+    rows.map((r) => {
+      const reportDate = new Date(r.dateStr);
+      const dims = {
+        bundleId,
+        reportDate,
+        purchaseType: r.purchaseType,
+        contentName: r.contentName,
+        contentAppleId: r.contentAppleId,
+        paymentMethod: r.paymentMethod,
+        device: r.device,
+        platformVersion: r.platformVersion,
+        sourceType: r.sourceType,
+        pageType: r.pageType,
+        appDownloadDate: r.appDownloadDate,
+        preOrder: r.preOrder,
+        territory: r.territory,
+      };
+      const metrics = {
+        purchases: r.purchases,
+        proceedsUsd: r.proceedsUsd,
+        salesUsd: r.salesUsd,
+        payingUsers: r.payingUsers,
+      };
+
+      return prisma.appStoreCommercePurchase.upsert({
+        where: { purchaseDimensions: dims },
+        create: { ...dims, ...metrics },
+        update: metrics,
+      });
+    }),
+  );
+  return rows.length;
 }
 
 export interface AnalyticsSyncResult {
@@ -280,7 +448,7 @@ export class AscAnalyticsService {
     const sinceCutoff = new Date();
     sinceCutoff.setDate(sinceCutoff.getDate() - daysBack);
 
-    let reportItems: Array<{ id: string; category: AnalyticsCategory }> = [];
+    let reportItems: Array<{ id: string; kind: ReportKind }> = [];
     try {
       const reportsResp = await axios.get(`${this.BASE}/analyticsReportRequests/${requestId}/reports`, { headers });
       this.logRateLimit(reportsResp.headers);
@@ -291,16 +459,14 @@ export class AscAnalyticsService {
         `Analytics request ${requestId}: ${reports.length} report(s) – categories: ${reports.map((r) => r.attributes?.category).join(", ")}`,
       );
 
-      const relevant = reports.filter(
-        (r: any) => TRACKED_ANALYTICS_REPORTS[r.attributes?.category] === r.attributes?.name,
-      );
-
-      reportItems = relevant
-        .map((r: any) => ({
-          id: r.id as string,
-          category: r.attributes?.category as AnalyticsCategory,
-        }))
-        .filter((r) => r.id);
+      reportItems = reports
+        .map((r: any) => {
+          const match = TRACKED_ANALYTICS_REPORTS.find(
+            (t) => t.category === r.attributes?.category && t.name === r.attributes?.name,
+          );
+          return match && r.id ? { id: r.id as string, kind: match.kind } : null;
+        })
+        .filter((r): r is { id: string; kind: ReportKind } => r !== null);
 
       if (reportItems.length === 0) {
         logger.info(`No standard engagement or session reports available yet for request ${requestId} (${bundleId}).`);
@@ -365,15 +531,23 @@ export class AscAnalyticsService {
             const rows = parseTsv(raw);
 
             if (rows.length === 0) continue;
-            logger.debug(`${reportItem.category} segment columns: ${Object.keys(rows[0]).join(" | ")}`);
+            logger.debug(`${reportItem.kind} segment columns: ${Object.keys(rows[0]).join(" | ")}`);
 
-            const metricsByDayCountry = parseAnalyticsSegment(rows, reportItem.category);
-            storedRows += await storeAnalyticsSegment(bundleId, reportItem.category, metricsByDayCountry);
+            if (reportItem.kind === "engagement" || reportItem.kind === "usage") {
+              const metricsByDayCountry = parseAnalyticsSegment(rows, reportItem.kind);
+              storedRows += await storeAnalyticsSegment(bundleId, reportItem.kind, metricsByDayCountry);
 
-            const metricsByDayPlatform = parsePlatformSegment(rows, reportItem.category);
-            await storePlatformSegment(bundleId, reportItem.category, metricsByDayPlatform);
+              const metricsByDayPlatform = parsePlatformSegment(rows, reportItem.kind);
+              await storePlatformSegment(bundleId, reportItem.kind, metricsByDayPlatform);
+            } else if (reportItem.kind === "downloads") {
+              const downloadRows = parseDownloadsSegment(rows);
+              storedRows += await storeDownloadsSegment(bundleId, downloadRows);
+            } else if (reportItem.kind === "purchases") {
+              const purchaseRows = parsePurchasesSegment(rows);
+              storedRows += await storePurchasesSegment(bundleId, purchaseRows);
+            }
           } catch (err: any) {
-            logger.warn(`Downloading/parsing engagement segment: ${err?.message ?? err}`);
+            logger.warn(`Downloading/parsing ${reportItem.kind} segment: ${err?.message ?? err}`);
           }
         }
       }
