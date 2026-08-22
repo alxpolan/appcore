@@ -32,6 +32,7 @@ import AnalyticsDownloads from "./components/analytics/AnalyticsDownloads";
 import AnalyticsCountries from "./components/analytics/AnalyticsCountries";
 import AnalyticsCountryDetail from "./components/analytics/AnalyticsCountryDetail";
 import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
+import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
 import Versions from "./components/Versions";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
 import MonetizationProducts from "./components/monetization/Products";
@@ -554,6 +555,7 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
     { to: "/analytics/downloads", label: "Downloads" },
     { to: "/analytics/countries", label: "Countries" },
     { to: "/analytics/reviews", label: "Reviews" },
+    { to: "/analytics/financial", label: "Financial" },
   ];
 
   const handleHeaderClick = () => {
@@ -1332,6 +1334,7 @@ export default function App() {
               <Route path="/analytics/countries" element={<AnalyticsCountries />} />
               <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail />} />
               <Route path="/analytics/reviews" element={<AnalyticsReviews />} />
+              <Route path="/analytics/financial" element={<AnalyticsFinancial />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />

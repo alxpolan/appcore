@@ -88,7 +88,7 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
           bundleId,
           ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
         },
-        _sum: { payingUsers: true },
+        _sum: { payingUsers: true, proceedsUsd: true },
       }),
       minOsMajor != null
         ? prisma.appStoreAnalyticsPlatform.groupBy({
@@ -120,7 +120,7 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
 
     res.json({
       totalDownloads: downloads,
-      totalProceeds: metricAgg._sum.proceeds ?? 0,
+      totalProceeds: (metricAgg._sum.proceeds ?? 0) + (purchaseAgg._sum.proceedsUsd ?? 0),
       totalImpressions: impressions,
       totalPageViews: pageViews,
       totalTaps: metricAgg._sum.taps ?? 0,
@@ -151,14 +151,28 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     if (until) dateFilter.lte = until;
 
     const countryFilter = req.query.country as string | undefined;
-    const rows = await prisma.appStoreAnalytics.findMany({
-      where: {
-        bundleId,
-        ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
-        ...(countryFilter ? { country: countryFilter.toUpperCase() } : {}),
-      },
-      orderBy: { reportDate: "asc" },
-    });
+    const [rows, purchaseRows] = await Promise.all([
+      prisma.appStoreAnalytics.findMany({
+        where: {
+          bundleId,
+          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+          ...(countryFilter ? { country: countryFilter.toUpperCase() } : {}),
+        },
+        orderBy: { reportDate: "asc" },
+      }),
+      // Commerce report revenue (IAP/subscriptions) isn't attributable to this
+      // route's 2-letter country filter (territory codes use a different format),
+      // so it's only folded in for the all-countries view.
+      countryFilter
+        ? Promise.resolve([])
+        : prisma.appStoreCommercePurchase.findMany({
+            where: {
+              bundleId,
+              ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+            },
+            select: { reportDate: true, proceedsUsd: true },
+          }),
+    ]);
 
     type DayEntry = {
       date: string;
@@ -215,12 +229,27 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       c.taps += r.taps;
     }
 
+    for (const p of purchaseRows) {
+      const key = p.reportDate.toISOString().slice(0, 10);
+      const day = (byDayMap[key] ??= {
+        date: key,
+        downloads: 0,
+        updates: 0,
+        proceeds: 0,
+        impressions: 0,
+        pageViews: 0,
+        taps: 0,
+        sessions: 0,
+      });
+      day.proceeds += p.proceedsUsd;
+    }
+
     const byCountry = Object.entries(byCountryMap)
       .map(([country, v]) => ({ country, ...v }))
       .sort((a, b) => b.downloads - a.downloads);
 
     res.json({
-      byDay: Object.values(byDayMap),
+      byDay: Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date)),
       byCountry,
     });
   } catch (err) {
@@ -318,6 +347,75 @@ analyticsRouter.get("/purchases", ...requireBundleAccess("query"), async (req, r
         payingUsers: r.payingUsers,
       })),
     );
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/analytics/ltv ──────────────────────────────────────────────────
+// Apple's commerce reports are dimensional aggregates (no per-customer identity),
+// so "LTV" here is a cohort proxy: cumulative proceeds ÷ cumulative installs to date.
+//
+// Revenue is summed from two separate Apple reports: appStoreAnalytics.proceeds
+// only reflects paid-app purchase-price revenue (0 for free/freemium apps), while
+// in-app purchase and subscription revenue lives exclusively in the Commerce
+// report (appStoreCommercePurchase.proceedsUsd). Using only the former made LTV
+// read as 0 for any app monetizing through IAP/subscriptions instead of a paid
+// listing price.
+analyticsRouter.get("/ltv", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const bundleId = req.bundleApp!.bundleId;
+    const anchor = await getAnchorDate(bundleId);
+    const since = resolveSince(req.query, anchor);
+    const until = resolveUntil(req.query);
+
+    const [rows, purchaseRows] = await Promise.all([
+      prisma.appStoreAnalytics.findMany({
+        where: { bundleId },
+        orderBy: { reportDate: "asc" },
+        select: { reportDate: true, downloads: true, proceeds: true },
+      }),
+      prisma.appStoreCommercePurchase.findMany({
+        where: { bundleId },
+        select: { reportDate: true, proceedsUsd: true },
+      }),
+    ]);
+
+    const byDayMap: Record<string, { downloads: number; proceeds: number }> = {};
+    for (const r of rows) {
+      const key = r.reportDate.toISOString().slice(0, 10);
+      const d = (byDayMap[key] ??= { downloads: 0, proceeds: 0 });
+      d.downloads += r.downloads;
+      d.proceeds += r.proceeds;
+    }
+    for (const p of purchaseRows) {
+      const key = p.reportDate.toISOString().slice(0, 10);
+      const d = (byDayMap[key] ??= { downloads: 0, proceeds: 0 });
+      d.proceeds += p.proceedsUsd;
+    }
+
+    const dates = Object.keys(byDayMap).sort();
+    let cumulativeDownloads = 0;
+    let cumulativeRevenue = 0;
+    const series = dates.map((date) => {
+      cumulativeDownloads += byDayMap[date].downloads;
+      cumulativeRevenue += byDayMap[date].proceeds;
+      return {
+        date,
+        cumulativeDownloads,
+        cumulativeRevenue,
+        ltv: cumulativeDownloads > 0 ? cumulativeRevenue / cumulativeDownloads : 0,
+      };
+    });
+
+    const sinceKey = since ? since.toISOString().slice(0, 10) : null;
+    const untilKey = until ? until.toISOString().slice(0, 10) : null;
+    const byDay = series.filter((s) => (!sinceKey || s.date >= sinceKey) && (!untilKey || s.date <= untilKey));
+
+    res.json({
+      byDay,
+      currentLtv: series.length ? series[series.length - 1].ltv : 0,
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

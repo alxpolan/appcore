@@ -46,6 +46,18 @@ export interface PurchaseData {
   payingUsers: number;
 }
 
+export interface LtvPoint {
+  date: string;
+  cumulativeDownloads: number;
+  cumulativeRevenue: number;
+  ltv: number;
+}
+
+export interface LtvData {
+  byDay: LtvPoint[];
+  currentLtv: number;
+}
+
 export interface AnalyticsSummary {
   totalDownloads: number;
   totalProceeds: number;
