@@ -34,6 +34,7 @@ import {
   QUEUE_NAME as TRANSLATE_LOCALIZATION_QUEUE,
   handler as translateLocalizationHandler,
 } from "./workers/translate-localization.worker";
+import { QUEUE_NAME as ASC_MAILBOX_QUEUE, handler as ascMailboxHandler } from "./workers/asc-mailbox.worker";
 
 async function loadTeamApps() {
   return prisma.team.findMany({
@@ -78,6 +79,7 @@ export class BossScheduler {
       SYNC_METADATA_QUEUE,
       COMPETITOR_INTEL_QUEUE,
       TRANSLATE_LOCALIZATION_QUEUE,
+      ASC_MAILBOX_QUEUE,
     ];
     for (const q of allQueues) {
       await this.boss.createQueue(q);
@@ -246,8 +248,16 @@ export class BossScheduler {
     // ── translate-localization (manual only) ─────────────────────────────────
     await this.boss.work(TRANSLATE_LOCALIZATION_QUEUE, translateLocalizationHandler);
 
+    // ── asc-mailbox (auto-accept App Store Connect team invites) ─────────────
+    await this.boss.work(ASC_MAILBOX_QUEUE, ascMailboxHandler);
+    if (env.ASC_MAILBOX_IMAP_HOST) {
+      await this.boss.schedule(ASC_MAILBOX_QUEUE, "*/10 * * * *", {}, { tz: "Europe/Berlin" });
+    } else {
+      logger.info(`[BOSS] ${ASC_MAILBOX_QUEUE} not scheduled — ASC_MAILBOX_IMAP_HOST not configured`);
+    }
+
     logger.info(
-      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}`,
+      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}, ${ASC_MAILBOX_QUEUE}`,
     );
     this._running = true;
   }

@@ -123,6 +123,43 @@ Go generate the API key under that account and enter it into the team's settings
   });
 }
 
+export async function ascInviteAccepted({ subject, from }: { subject: string; from: string }): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    subject: `ASC invite auto-accepted — ${subject}`,
+    text: `Auto-accepted an App Store Connect team invite from ${from}:
+
+"${subject}"
+
+Go generate the API key under asc@marteso.com's access to that team and enter it into the customer's Team Settings.`,
+  });
+}
+
+export async function ascInviteAcceptFailed({
+  subject,
+  from,
+  reason,
+  inviteUrl,
+}: {
+  subject: string;
+  from: string;
+  reason: string;
+  inviteUrl: string | null;
+}): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    subject: `ASC invite needs manual accept — ${subject}`,
+    text: `Found what looks like an App Store Connect team invite from ${from}, but couldn't auto-accept it:
+
+"${subject}"
+
+Reason: ${reason}
+${inviteUrl ? `Link: ${inviteUrl}` : "No invite link could be extracted from the email — accept it manually from the asc@marteso.com inbox."}`,
+  });
+}
+
 export function keywordRankChange(
   keywordTerm: string,
   oldRank: number | null,

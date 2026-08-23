@@ -81,6 +81,13 @@ const envSchema = z.object({
 
   // Logging
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
+
+  // asc@marteso.com mailbox — auto-accepting App Store Connect team invites
+  ASC_MAILBOX_IMAP_HOST: z.string().optional(),
+  ASC_MAILBOX_IMAP_PORT: z.coerce.number().default(993),
+  ASC_MAILBOX_IMAP_USER: z.string().optional(),
+  ASC_MAILBOX_IMAP_PASSWORD: z.string().optional(),
+  ASC_MAILBOX_SESSION_PATH: z.string().default("./keys/asc-mailbox-session.json"),
 });
 
 function loadEnv() {
