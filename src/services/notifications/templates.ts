@@ -136,6 +136,32 @@ Go generate the API key under asc@marteso.com's access to that team and enter it
   });
 }
 
+// Apple forces a fresh interactive Apple ID sign-in (password + 2FA/passkey)
+// on the "join this team" action regardless of session — verified live,
+// screenshots and all. Auto-accept is attempted as a harmless best-effort, but
+// this is the expected everyday outcome, not a bug to chase — so the email
+// leads with the link to click, not a stack trace.
+export async function ascInviteNeedsManualAccept({
+  subject,
+  from,
+  inviteUrl,
+}: {
+  subject: string;
+  from: string;
+  inviteUrl: string;
+}): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    subject: `ASC invite ready to accept — ${subject}`,
+    text: `Found a new App Store Connect team invite from ${from}. Click to accept (you'll need to sign in as asc@marteso.com, incl. 2FA — Apple requires this fresh every time, it's not automatable):
+
+${inviteUrl}
+
+Then go generate the API key under that access and enter it into the customer's Team Settings.`,
+  });
+}
+
 export async function ascInviteAcceptFailed({
   subject,
   from,
