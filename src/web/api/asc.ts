@@ -17,7 +17,7 @@ import { evaluateLocalizationQuality, isFirstVersionLocalizationSet } from "../l
 export const ascRouter = Router();
 ascRouter.use(requireAuth);
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 0; // TEMP: versions cache disabled for debugging — revert to 5 * 60 * 1000
 
 const EDITABLE_STATES = new Set([
   "PREPARE_FOR_SUBMISSION",

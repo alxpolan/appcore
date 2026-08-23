@@ -11,3 +11,6 @@ web/.claude
 
 * Production database references
 seed-demo.ts
+# Demo recordings
+tmp/
+scripts/
