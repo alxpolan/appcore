@@ -87,7 +87,10 @@ const envSchema = z.object({
   ASC_MAILBOX_IMAP_PORT: z.coerce.number().default(993),
   ASC_MAILBOX_IMAP_USER: z.string().optional(),
   ASC_MAILBOX_IMAP_PASSWORD: z.string().optional(),
-  ASC_MAILBOX_SESSION_PATH: z.string().default("./keys/asc-mailbox-session.json"),
+  // Persistent Chrome profile dir (not just a cookie snapshot) — Apple's invite
+  // "accept" flow demands a fresh interactive sign-in from a throwaway session
+  // no matter how recent, but generally trusts a continuously-used real profile.
+  ASC_MAILBOX_PROFILE_DIR: z.string().default("./keys/asc-mailbox-profile"),
 });
 
 function loadEnv() {

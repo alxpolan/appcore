@@ -1,9 +1,15 @@
-// One-time, manual setup: opens a real (headed) browser so a human can sign in
-// to appstoreconnect.apple.com as asc@marteso.com — including 2FA — then saves
-// the authenticated session so the asc-mailbox worker can reuse it headlessly.
+// One-time, manual setup: opens a real (headed) browser with a persistent
+// Chrome profile so a human can sign in to appstoreconnect.apple.com as
+// asc@marteso.com — including 2FA — then keeps that profile around so the
+// asc-mailbox worker can reuse it headlessly.
 //
-// Run again whenever the automated invite-accept flow reports the session has
-// expired (Apple periodically invalidates long-lived sessions).
+// A persistent profile (not just a captured cookie snapshot) matters: Apple's
+// invite-accept flow forces a fresh interactive sign-in from a throwaway
+// session no matter how recent, but generally trusts a continuously-used real
+// browser profile more than cookies replayed into a fresh context.
+//
+// Run again (into the same profile dir) whenever the automated invite-accept
+// flow reports it's back to hitting a sign-in wall.
 //
 // Usage: npm run asc-mailbox:login
 import readline from "readline";
@@ -13,12 +19,14 @@ import { chromium } from "playwright";
 import { env } from "../src/config/env";
 
 async function main() {
-  const sessionPath = env.ASC_MAILBOX_SESSION_PATH;
-  fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+  const profileDir = env.ASC_MAILBOX_PROFILE_DIR;
+  fs.mkdirSync(profileDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const context = await chromium.launchPersistentContext(profileDir, {
+    headless: false,
+    channel: "chrome",
+  });
+  const page = context.pages()[0] ?? (await context.newPage());
 
   await page.goto("https://appstoreconnect.apple.com/");
 
@@ -34,10 +42,9 @@ async function main() {
     });
   });
 
-  await context.storageState({ path: sessionPath });
-  await browser.close();
+  await context.close();
 
-  console.log(`\nSaved session to ${sessionPath}. The asc-mailbox worker can now use it.`);
+  console.log(`\nSaved persistent profile to ${profileDir}. The asc-mailbox worker can now use it.`);
 }
 
 main().catch((err) => {

@@ -13,22 +13,11 @@ export interface AscInviteEmail {
   rawTextExcerpt: string;
 }
 
-// Verified against a real invite (2026-08-23): from noreply@email.apple.com,
-// subject "You've been invited to App Store Connect.", link
-// https://appstoreconnect.apple.com/activation_ds?key=<hex>. Kept loose rather
-// than pinned to that exact shape — better to pick up a false positive
-// (harmless, the acceptor will fail closed and alert) than to miss a real invite
-// if Apple tweaks subject wording or the link path.
 const SENDER_HINT = /apple\.com/i;
 const SUBJECT_HINT = /invit/i;
 const ACTIVATION_LINK = /https:\/\/appstoreconnect\.apple\.com\/activation_ds\?[^\s"'<>]+/i;
 const ASSET_LINK = /\.(png|gif|jpe?g|svg)(\?|$)/i;
 
-// The email body is a marketing-style HTML table full of appstoreconnect.apple.com
-// asset links (logo, spacer images) alongside the one real accept link — a plain
-// "any appstoreconnect.apple.com URL" regex matches the logo before the link we
-// actually want. Prefer the anchor whose visible text says "accept"; fall back to
-// the known activation_ds path shape; last resort, any non-image ASC link.
 export function extractInviteLink(html: string, text: string): string | null {
   if (html) {
     const $ = cheerio.load(html);
@@ -39,7 +28,12 @@ export function extractInviteLink(html: string, text: string): string | null {
     if (href && href.startsWith("http")) return href;
   }
 
-  return ACTIVATION_LINK.exec(html)?.[0] ?? ACTIVATION_LINK.exec(text)?.[0] ?? findNonAssetLink(html) ?? findNonAssetLink(text);
+  return (
+    ACTIVATION_LINK.exec(html)?.[0] ??
+    ACTIVATION_LINK.exec(text)?.[0] ??
+    findNonAssetLink(html) ??
+    findNonAssetLink(text)
+  );
 }
 
 function findNonAssetLink(source: string): string | null {
@@ -47,10 +41,6 @@ function findNonAssetLink(source: string): string | null {
   return matches.find((url) => !ASSET_LINK.test(url)) ?? null;
 }
 
-// Mail providers auto-file Apple's invite into all sorts of places (Zoho put a
-// real one straight into a "Notification" folder, not INBOX) — so every folder
-// is scanned except these, where an invite would never land and where it'd be
-// destructive to move mail out of (Trash/Drafts/Sent), plus our own archive.
 const PROCESSED_FOLDER = "Archive";
 const SKIP_FOLDERS = new Set([
   "Papierkorb",
@@ -80,13 +70,6 @@ function newClient(): ImapFlow {
   });
 }
 
-// Scans every folder (except the skip list) for apparently-Apple-invite
-// messages and moves each match into the Archive folder as it's found — that
-// both keeps this idempotent (Archive is never rescanned) and doubles as a
-// human-readable audit trail of everything this pipeline has ever picked up.
-// Deliberately does NOT rely on the \Seen flag: opening a message in webmail
-// (e.g. to copy its contents) flips it to read and would otherwise make it
-// invisible to an unseen-only search.
 export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
   if (!isConfigured()) {
     logger.warn("[asc-mailbox] Not configured (ASC_MAILBOX_IMAP_* missing) — skipping");
@@ -131,7 +114,11 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
           });
 
           await client.messageMove(uid, PROCESSED_FOLDER, { uid: true }).catch((err) => {
-            logger.error(`[asc-mailbox] Failed to move message to ${PROCESSED_FOLDER}`, { err, folder: folder.path, uid });
+            logger.error(`[asc-mailbox] Failed to move message to ${PROCESSED_FOLDER}`, {
+              err,
+              folder: folder.path,
+              uid,
+            });
           });
         }
       } finally {
