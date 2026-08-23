@@ -11,10 +11,12 @@ export interface AscInviteEmail {
   rawTextExcerpt: string;
 }
 
-// Apple's invite emails come from an "@apple.com"/"@email.apple.com" address with
-// a subject mentioning an invitation. We don't have a captured sample to match
-// exactly, so this is intentionally loose — better to pick up a false positive
-// (harmless, the acceptor will fail closed and alert) than to miss a real invite.
+// Verified against a real invite (2026-08-23): from noreply@email.apple.com,
+// subject "You've been invited to App Store Connect.", link
+// https://appstoreconnect.apple.com/activation_ds?key=<hex>. Kept loose rather
+// than pinned to that exact shape — better to pick up a false positive
+// (harmless, the acceptor will fail closed and alert) than to miss a real invite
+// if Apple tweaks subject wording or the link path.
 const SENDER_HINT = /apple\.com/i;
 const SUBJECT_HINT = /invit/i;
 const INVITE_LINK = /https:\/\/appstoreconnect\.apple\.com\/[^\s"'<>]+/i;
