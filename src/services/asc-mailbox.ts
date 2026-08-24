@@ -42,16 +42,8 @@ function findNonAssetLink(source: string): string | null {
 }
 
 const PROCESSED_FOLDER = "Archive";
-const SKIP_FOLDERS = new Set([
-  "Papierkorb",
-  "Trash",
-  "Gesendet",
-  "Sent",
-  "Sent Items",
-  "Entwürfe",
-  "Drafts",
-  PROCESSED_FOLDER,
-]);
+const PROCESSED_KEYWORD = "MartesoProcessed";
+const SKIP_FOLDERS = new Set(["Papierkorb", "Trash", "Gesendet", "Sent", "Sent Items", "Entwürfe", "Drafts"]);
 
 export function isConfigured(): boolean {
   return !!(env.ASC_MAILBOX_IMAP_HOST && env.ASC_MAILBOX_IMAP_USER && env.ASC_MAILBOX_IMAP_PASSWORD);
@@ -78,6 +70,7 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
 
   const client = newClient();
   const found: AscInviteEmail[] = [];
+  const scanned: string[] = [];
 
   await client.connect();
   try {
@@ -86,14 +79,22 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
     for (const folder of folders) {
       if (SKIP_FOLDERS.has(folder.path)) continue;
 
-      const lock = await client.getMailboxLock(folder.path);
+      let lock;
       try {
-        const uids = await client.search({ all: true }, { uid: true });
-        if (!uids || uids.length === 0) continue;
+        lock = await client.getMailboxLock(folder.path);
+      } catch (err) {
+        logger.error(`[asc-mailbox] Could not open folder "${folder.path}" — skipping it`, { err });
+        continue;
+      }
+      try {
+        const uids = (await client.search({ all: true }, { uid: true })) || [];
+        scanned.push(`${folder.path}: ${uids.length}`);
+        if (uids.length === 0) continue;
 
         for (const uid of uids) {
-          const msg = await client.fetchOne(uid, { source: true, envelope: true }, { uid: true });
+          const msg = await client.fetchOne(uid, { source: true, envelope: true, flags: true }, { uid: true });
           if (!msg || !msg.source) continue;
+          if (msg.flags?.has(PROCESSED_KEYWORD)) continue;
 
           const from = msg.envelope?.from?.[0]?.address ?? "";
           const subject = msg.envelope?.subject ?? "";
@@ -113,13 +114,22 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
             rawTextExcerpt: (text || html.replace(/<[^>]+>/g, " ")).slice(0, 500),
           });
 
-          await client.messageMove(uid, PROCESSED_FOLDER, { uid: true }).catch((err) => {
-            logger.error(`[asc-mailbox] Failed to move message to ${PROCESSED_FOLDER}`, {
+          await client.messageFlagsAdd(uid, [PROCESSED_KEYWORD], { uid: true }).catch((err) => {
+            logger.error(`[asc-mailbox] Failed to set ${PROCESSED_KEYWORD} flag`, {
               err,
               folder: folder.path,
               uid,
             });
           });
+          if (folder.path !== PROCESSED_FOLDER) {
+            await client.messageMove(uid, PROCESSED_FOLDER, { uid: true }).catch((err) => {
+              logger.error(`[asc-mailbox] Failed to move message to ${PROCESSED_FOLDER}`, {
+                err,
+                folder: folder.path,
+                uid,
+              });
+            });
+          }
         }
       } finally {
         lock.release();
@@ -129,5 +139,8 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
     await client.logout().catch(() => {});
   }
 
+  logger.info(
+    `[asc-mailbox] Scanned ${scanned.length} folder(s) (${scanned.join(", ")}) — ${found.length} invite candidate(s)`,
+  );
   return found;
 }

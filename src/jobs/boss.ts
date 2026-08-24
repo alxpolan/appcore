@@ -251,7 +251,7 @@ export class BossScheduler {
     // ── asc-mailbox (auto-accept App Store Connect team invites) ─────────────
     await this.boss.work(ASC_MAILBOX_QUEUE, ascMailboxHandler);
     if (env.ASC_MAILBOX_IMAP_HOST) {
-      await this.boss.schedule(ASC_MAILBOX_QUEUE, "*/10 * * * *", {}, { tz: "Europe/Berlin" });
+      await this.boss.schedule(ASC_MAILBOX_QUEUE, "*/2 * * * *", {}, { tz: "Europe/Berlin" });
     } else {
       logger.info(`[BOSS] ${ASC_MAILBOX_QUEUE} not scheduled — ASC_MAILBOX_IMAP_HOST not configured`);
     }
