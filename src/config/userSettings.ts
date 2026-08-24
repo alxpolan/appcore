@@ -1,5 +1,6 @@
 import { prisma } from "./database";
 import { decryptNullable } from "./encryption";
+import { INDIVIDUAL_KEY_ISSUER } from "../services/utils/asc-token";
 
 export interface EffectiveSettings {
   teamId: string;
@@ -23,6 +24,17 @@ export async function getTeamSettings(teamId: string) {
 
 export async function getEffectiveSettingsForTeam(teamId: string): Promise<EffectiveSettings> {
   const s = await getTeamSettings(teamId);
+
+  const hasManualKey = !!(s?.ascIssuerId && s?.ascKeyId && s?.ascPrivateKey);
+  if (!hasManualKey && s?.ascAutoKeyId && s?.ascAutoPrivateKey) {
+    return {
+      teamId,
+      ascIssuerId: INDIVIDUAL_KEY_ISSUER,
+      ascKeyId: s.ascAutoKeyId,
+      ascPrivateKey: decryptNullable(s.ascAutoPrivateKey) ?? "",
+      ascVendorNumber: s.ascVendorNumber ?? "",
+    };
+  }
 
   return {
     teamId,

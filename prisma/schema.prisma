@@ -152,6 +152,9 @@ model TeamSettings {
   ascPrivateKey               String?
   ascVendorNumber             String?
   ascAccountConnectRequestedAt DateTime?
+  ascAutoKeyId                String?
+  ascAutoPrivateKey           String?
+  ascAutoConnectedAt          DateTime?
   mcpEnabled                  Boolean   @default(false)
   githubAccessToken           String?
   githubUsername              String?

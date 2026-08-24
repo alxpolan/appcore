@@ -37,6 +37,7 @@ export default function AscAccountConnectSection({ data, refetch, addToast }: Pr
   };
 
   const requestedAt = data?.ascAccountConnectRequestedAt ?? null;
+  const connectedAt = data?.ascAutoConnectedAt ?? null;
 
   return (
     <div
@@ -53,7 +54,19 @@ export default function AscAccountConnectSection({ data, refetch, addToast }: Pr
         App Store Connect team and we'll take care of the rest.
       </p>
 
-      {requestedAt ? (
+      {connectedAt ? (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div>
+            <div className="text-[13px] font-medium text-emerald-800 dark:text-emerald-400">
+              Connected {fmtRelativeDateTime(connectedAt)}
+            </div>
+            <div className={`text-[12px] ${textMuted} mt-0.5`}>
+              Marteso is connected to your App Store Connect team. Nothing else to do.
+            </div>
+          </div>
+        </div>
+      ) : requestedAt ? (
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
           <div>

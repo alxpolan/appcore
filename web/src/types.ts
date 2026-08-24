@@ -291,6 +291,7 @@ export interface SettingsData {
   ascBundleId: string;
   ascVendorNumber: string;
   ascAccountConnectRequestedAt: string | null;
+  ascAutoConnectedAt: string | null;
   presetCopyright: string;
   reviewerFirstName: string;
   reviewerLastName: string;

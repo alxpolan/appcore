@@ -20,6 +20,7 @@ settingsRouter.get("/", loadTeamSettings, async (req, res) => {
       ascPrivateKeySet: !!s?.ascPrivateKey,
       ascVendorNumber: isDemo ? (s?.ascVendorNumber ? "••••••••" : "") : (s?.ascVendorNumber ?? ""),
       ascAccountConnectRequestedAt: s?.ascAccountConnectRequestedAt?.toISOString() ?? null,
+      ascAutoConnectedAt: s?.ascAutoConnectedAt?.toISOString() ?? null,
       presetCopyright: s?.presetCopyright ?? "",
       reviewerFirstName: s?.reviewerFirstName ?? "",
       reviewerLastName: s?.reviewerLastName ?? "",
@@ -90,7 +91,12 @@ settingsRouter.post("/asc-account-connect", async (req, res) => {
     await prisma.teamSettings.upsert({
       where: { teamId },
       create: { teamId, ascAccountConnectRequestedAt: requestedAt },
-      update: { ascAccountConnectRequestedAt: requestedAt, ascIssuerId: null, ascKeyId: null, ascPrivateKey: null },
+      update: {
+        ascAccountConnectRequestedAt: requestedAt,
+        ascAutoKeyId: null,
+        ascAutoPrivateKey: null,
+        ascAutoConnectedAt: null,
+      },
     });
 
     if (env.ASC_MAILBOX_IMAP_HOST) {

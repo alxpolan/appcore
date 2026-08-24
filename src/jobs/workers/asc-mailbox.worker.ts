@@ -39,7 +39,7 @@ async function provisionApiKey(invite: AscInviteEmail): Promise<void> {
   }
 
   const pending = await prisma.teamSettings.findMany({
-    where: { ascAccountConnectRequestedAt: { not: null }, ascKeyId: null },
+    where: { ascAccountConnectRequestedAt: { not: null }, ascAutoKeyId: null },
     include: { team: true },
     orderBy: { ascAccountConnectRequestedAt: "asc" },
   });
@@ -47,7 +47,7 @@ async function provisionApiKey(invite: AscInviteEmail): Promise<void> {
   if (pending.length === 1) {
     await prisma.teamSettings.update({
       where: { id: pending[0].id },
-      data: { ascIssuerId: INDIVIDUAL_KEY_ISSUER, ascKeyId: keyId, ascPrivateKey: encrypt(privateKey) },
+      data: { ascAutoKeyId: keyId, ascAutoPrivateKey: encrypt(privateKey), ascAutoConnectedAt: new Date() },
     });
     logger.info(`[asc-mailbox] Linked individual API key ${keyId} to team "${pending[0].team.name}"`);
     await ascConnectCompleted({ subject: invite.subject, teamName: pending[0].team.name, keyId });
