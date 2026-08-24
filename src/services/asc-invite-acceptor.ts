@@ -41,6 +41,7 @@ export async function launchMailboxContext(headless: boolean): Promise<BrowserCo
   return chromium.launchPersistentContext(env.ASC_MAILBOX_PROFILE_DIR, {
     headless,
     channel: "chrome",
+    acceptDownloads: true,
     args: ["--disable-blink-features=AutomationControlled"],
     ...(headless ? { userAgent: await getRealChromeUserAgent() } : {}),
   });
@@ -71,20 +72,12 @@ export async function acceptInvite(inviteUrl: string): Promise<AcceptResult> {
       await page.waitForLoadState("networkidle").catch(() => {});
     }
 
-    if (/idmsa\.apple\.com/i.test(page.url())) {
-      await context.close();
-      return {
-        accepted: false,
-        reason:
-          "Redirected to Apple ID sign-in even from the persistent profile — session expired, re-run npm run asc-mailbox:login",
-      };
-    }
+    const deadline = Date.now() + 60_000;
+    let clickedAccept = false;
+    while (Date.now() < deadline) {
+      const url = page.url();
 
-    const acceptButton = page.getByRole("button", { name: /accept/i }).first();
-    try {
-      await acceptButton.waitFor({ state: "visible", timeout: 15_000 });
-    } catch (err) {
-      if (/idmsa\.apple\.com/i.test(page.url())) {
+      if (/idmsa\.apple\.com/i.test(url)) {
         await context.close();
         return {
           accepted: false,
@@ -93,20 +86,27 @@ export async function acceptInvite(inviteUrl: string): Promise<AcceptResult> {
         };
       }
 
-      if (/developer\.apple\.com\/account|appstoreconnect\.apple\.com\/(?:apps|$)/i.test(page.url())) {
+      if (/developer\.apple\.com\/account|appstoreconnect\.apple\.com\/(?:apps|$)/i.test(url)) {
         await persistSessionCookies(context);
         await context.close();
         return { accepted: true };
       }
-      throw err;
+
+      const acceptButton = page.getByRole("button", { name: /accept/i }).first();
+      if (!clickedAccept && (await acceptButton.isVisible().catch(() => false))) {
+        await acceptButton.click().catch(() => {});
+        clickedAccept = true;
+      }
+
+      await page.waitForTimeout(1500);
     }
-    await acceptButton.click();
 
-    await page.waitForTimeout(2000);
-
-    await persistSessionCookies(context);
-    await context.close();
-    return { accepted: true };
+    if (clickedAccept) {
+      await persistSessionCookies(context);
+      await context.close();
+      return { accepted: true };
+    }
+    throw new Error(`Timed out after 60s waiting for the accept flow to complete (stuck on ${page.url()})`);
   } catch (err) {
     const screenshotPath = path.join(env.ASC_MAILBOX_PROFILE_DIR, `..`, `asc-invite-failure-${Date.now()}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
