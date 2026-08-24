@@ -283,7 +283,11 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     }
     const presentSourceTypes = [...DOWNLOAD_SOURCE_TYPES, "Other"].filter((t) => (sourceTotals[t] ?? 0) > 0);
     const bySourceDay = Object.entries(bySourceDayMap)
-      .map(([date, values]) => ({ date, ...values }))
+      .map(([date, values]) => {
+        const filled: Record<string, number> = {};
+        for (const t of presentSourceTypes) filled[t] = values[t] ?? 0;
+        return { date, ...filled };
+      })
       .sort((a, b) => a.date.localeCompare(b.date));
 
     res.json({
