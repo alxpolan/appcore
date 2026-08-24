@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtShortDate, fmtLargeNum } from "../../utils/formatters";
 import type { DownloadsData } from "../../types";
@@ -44,7 +44,7 @@ function useDarkMode() {
 function SourceTooltip({ active, payload, label, dark }: any) {
   if (!active || !payload?.length) return null;
   const rows = payload
-    .filter((p: any) => typeof p.value === "number" && p.value > 0)
+    .filter((p: any) => p.dataKey !== "__total" && typeof p.value === "number" && p.value > 0)
     .sort((a: any, b: any) => b.value - a.value);
   if (!rows.length) return null;
   const total = rows.reduce((sum: number, r: any) => sum + r.value, 0);
@@ -114,6 +114,15 @@ export default function DownloadSourcesChart({ data }: Props) {
   const stackOrder = [...orderedTypes].sort((a, b) => (totals[a] ?? 0) - (totals[b] ?? 0));
   const grandTotal = orderedTypes.reduce((sum, k) => sum + (totals[k] ?? 0), 0);
 
+  const chartData = useMemo(
+    () =>
+      byDay.map((day) => ({
+        ...day,
+        __total: orderedTypes.reduce((sum, k) => sum + (typeof day[k] === "number" ? (day[k] as number) : 0), 0),
+      })),
+    [byDay, orderedTypes],
+  );
+
   if (orderedTypes.length === 0) return null;
 
   return (
@@ -121,7 +130,6 @@ export default function DownloadSourcesChart({ data }: Props) {
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
     >
       <div className={`text-[15px] font-semibold ${textPrimary}`}>Downloads by source</div>
-      <div className={`text-[12px] ${textMuted} mb-4`}>Where first-time installs are discovered</div>
 
       {byDay.length === 0 ? (
         <div className={`flex items-center justify-center h-48 text-[13px] ${textMuted}`}>
@@ -130,8 +138,13 @@ export default function DownloadSourcesChart({ data }: Props) {
       ) : (
         <>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={byDay} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="0" stroke={dark ? "#2a2f3d" : "#f0f1f3"} vertical={false} strokeWidth={1} />
+            <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid
+                strokeDasharray="0"
+                stroke={dark ? "#2a2f3d" : "#f0f1f3"}
+                vertical={false}
+                strokeWidth={1}
+              />
               <XAxis
                 dataKey="date"
                 axisLine={false}
@@ -167,7 +180,18 @@ export default function DownloadSourcesChart({ data }: Props) {
                   />
                 );
               })}
-            </AreaChart>
+              <Line
+                type="monotone"
+                dataKey="__total"
+                stroke="#D94412"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: dark ? "#1c2028" : "#fff", fill: "#D94412" }}
+                isAnimationActive={false}
+                legendType="none"
+                tooltipType="none"
+              />
+            </ComposedChart>
           </ResponsiveContainer>
 
           <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 pt-4 border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
