@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Smartphone,
   ShoppingBag,
+  Info,
 } from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
@@ -136,11 +137,48 @@ function FunnelBand({ topPct, bottomPct, color, y }: { topPct: number; bottomPct
   );
 }
 
-function FunnelRow({ label, value, sub }: { label: string; value: number; sub?: string }) {
+function FunnelRow({
+  label,
+  value,
+  sub,
+  tooltip,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  tooltip?: string;
+}) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
   return (
     <div className="flex flex-col justify-center" style={{ height: FUNNEL_BAND_HEIGHT }}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className={`text-[13px] font-medium ${textPrimary}`}>{label}</span>
+        <span className={`flex items-center gap-1.5 text-[13px] font-medium ${textPrimary}`}>
+          {label}
+          {tooltip && (
+            <span
+              className="relative inline-flex"
+              onMouseEnter={() => setTooltipOpen(true)}
+              onMouseLeave={() => setTooltipOpen(false)}
+            >
+              <button
+                type="button"
+                aria-label={tooltip}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setTooltipOpen((v) => !v);
+                }}
+                className="text-gray-400 dark:text-[#5c6478] hover:text-gray-600 dark:hover:text-[#8b93a5] transition-colors"
+              >
+                <Info className="w-3.5 h-3.5" />
+              </button>
+              {tooltipOpen && (
+                <span className="absolute left-0 top-[calc(100%+6px)] z-20 w-64 px-3 py-2 rounded-lg bg-[#1a1a2e] dark:bg-[#252b38] text-white text-[11px] leading-relaxed shadow-lg pointer-events-none">
+                  {tooltip}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
         <span className={`text-[16px] font-semibold tabular-nums ${textPrimary}`}>{fmtNumber(value)}</span>
       </div>
       {sub && <div className={`text-[11px] ${textMuted} mt-1`}>{sub}</div>}
@@ -387,7 +425,7 @@ export default function Analytics({ addToast }: Props) {
           const payPctOfDownloads = dl > 0 ? (pay / dl) * 100 : 0;
           const dropDlToPay = 100 - payPctOfDownloads;
 
-          const levels: { label: string; value: number; color: string; sub?: string }[] = [
+          const levels: { label: string; value: number; color: string; sub?: string; tooltip?: string }[] = [
             { label: "Impressions", value: imp, color: "#6366f1" },
           ];
           if (afd != null) {
@@ -396,6 +434,8 @@ export default function Analytics({ addToast }: Props) {
               value: afd,
               color: "#8b5cf6",
               sub: `${afdPct!.toFixed(1)}% of impressions · ${dropImpToAfd!.toFixed(1)}% on unsupported OS`,
+              tooltip:
+                "Impressions from devices that can actually install your app, i.e. running an OS version at or above your app's minimum requirement. Impressions from devices on an older, unsupported OS are excluded.",
             });
           }
           levels.push({
@@ -439,7 +479,7 @@ export default function Analytics({ addToast }: Props) {
                 </div>
                 <div className="flex-1 flex flex-col">
                   {levels.map((lvl) => (
-                    <FunnelRow key={lvl.label} label={lvl.label} value={lvl.value} sub={lvl.sub} />
+                    <FunnelRow key={lvl.label} label={lvl.label} value={lvl.value} sub={lvl.sub} tooltip={lvl.tooltip} />
                   ))}
                 </div>
               </div>
