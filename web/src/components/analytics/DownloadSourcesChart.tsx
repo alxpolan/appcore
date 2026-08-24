@@ -160,10 +160,9 @@ export default function DownloadSourcesChart({ data }: Props) {
                     dataKey={key}
                     name={key}
                     stackId="src"
-                    stroke={color}
-                    strokeWidth={1.5}
+                    stroke="none"
                     fill={color}
-                    fillOpacity={0.16}
+                    fillOpacity={0.45}
                     isAnimationActive={false}
                   />
                 );
