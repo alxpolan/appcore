@@ -43,7 +43,7 @@ function majorIosVersion(platformVersion: string): string {
   return major ? `iOS ${major}` : platformVersion || "Unknown";
 }
 
-function majorVersionNumber(version: string): number | null {
+export function majorVersionNumber(version: string): number | null {
   const major = version.match(/(\d+)/)?.[1];
   return major ? parseInt(major, 10) : null;
 }

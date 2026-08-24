@@ -1,6 +1,7 @@
 import { type Request, type Response } from "express";
 import { prisma } from "../../config";
 import { evaluateAppMetadata, type AiFieldKey } from "./quick-scan-ai";
+import { majorVersionNumber } from "./analytics";
 
 type Impact = "high" | "med" | "low";
 
@@ -45,7 +46,9 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
   }
 
   const appId = app.id;
-  const [distinctKeywords, competitorCount] = await Promise.all([
+  const minOsMajor = app.minimumOsVersion ? majorVersionNumber(app.minimumOsVersion) : null;
+
+  const [distinctKeywords, competitorCount, platformImpressions] = await Promise.all([
     prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(DISTINCT "keywordId")::int AS count
         FROM "KeywordRanking"
@@ -54,6 +57,13 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     prisma.competitorRelation.count({
       where: { OR: [{ appId }, { competitorId: appId }] },
     }),
+    minOsMajor != null
+      ? prisma.appStoreAnalyticsPlatform.groupBy({
+          by: ["platformVersion"],
+          where: { bundleId },
+          _sum: { impressions: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const title = (app.currentTitle ?? snapshot.title ?? "").trim();
@@ -126,6 +136,26 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
       metric: [String(screenshots), "/ 10"],
       gap: ((10 - screenshots) / 10) * 0.4,
     });
+  }
+
+  if (minOsMajor != null) {
+    const totalImpressions = platformImpressions.reduce((sum, row) => sum + (row._sum.impressions ?? 0), 0);
+    const belowMinOs = platformImpressions.reduce((sum, row) => {
+      const major = majorVersionNumber(row.platformVersion);
+      return major != null && major < minOsMajor ? sum + (row._sum.impressions ?? 0) : sum;
+    }, 0);
+    const belowMinOsPct = totalImpressions > 0 ? (belowMinOs / totalImpressions) * 100 : 0;
+
+    if (totalImpressions >= 50 && belowMinOsPct >= 8) {
+      pool.push({
+        key: "minOsVersion",
+        title: "Support older iPhones",
+        desc: `${belowMinOsPct.toFixed(1)}% of impressions come from devices below your minimum OS requirement (iOS ${minOsMajor}) and can't install your app. Lowering your deployment target recovers those installs.`,
+        impact: belowMinOsPct >= 20 ? "high" : "med",
+        metric: [`${belowMinOsPct.toFixed(1)}%`, "unreachable"],
+        gap: Math.min(1, belowMinOsPct / 30),
+      });
+    }
   }
 
   if (distinctKeywords < 25) {

@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Globe,
   Sparkles,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
@@ -56,6 +57,7 @@ const CTA_BY_KEY: Record<string, CtaMeta> = {
   keyword: { to: "/keywords", label: "Open Keywords", icon: Search },
   competitor: { to: "/competitors", label: "Find competitors", icon: Users },
   localization: { to: "/versions", label: "Add languages", icon: Globe },
+  minOsVersion: { to: "/analytics", label: "View breakdown", icon: Smartphone },
 };
 
 const FALLBACK_CTA: CtaMeta = { to: "/keywords", label: "Open Keywords", icon: Search };
