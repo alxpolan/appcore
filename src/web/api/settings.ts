@@ -90,7 +90,7 @@ settingsRouter.post("/asc-account-connect", async (req, res) => {
     await prisma.teamSettings.upsert({
       where: { teamId },
       create: { teamId, ascAccountConnectRequestedAt: requestedAt },
-      update: { ascAccountConnectRequestedAt: requestedAt },
+      update: { ascAccountConnectRequestedAt: requestedAt, ascIssuerId: null, ascKeyId: null, ascPrivateKey: null },
     });
 
     if (env.ASC_MAILBOX_IMAP_HOST) {

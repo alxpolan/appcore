@@ -105,19 +105,78 @@ export async function premiumGranted({
   });
 }
 
-export async function ascInviteAccepted({ subject, from }: { subject: string; from: string }): Promise<void> {
+export async function ascConnectCompleted({
+  subject,
+  teamName,
+  keyId,
+}: {
+  subject: string;
+  teamName: string;
+  keyId: string;
+}): Promise<void> {
   await notificationService.sendPlainEmail({
     to: "alex@marteso.com",
     from: "Marteso <alex@marteso.com>",
-    subject: `ASC invite auto-accepted — ${subject}`,
-    text: `Auto-accepted an App Store Connect team invite from ${from}:
+    subject: `ASC connect completed — ${teamName}`,
+    text: `Auto-accepted an App Store Connect team invite:
 
 "${subject}"
 
-Go generate the API key under asc@marteso.com's access to that team and enter it into the customer's Team Settings.`,
+The individual API key (${keyId}) was verified against the ASC API and linked to the Marteso team "${teamName}". Nothing left to do.`,
   });
 }
-ƒ
+
+export async function ascKeyNeedsManualLink({
+  subject,
+  keyId,
+  backupPath,
+  pendingTeams,
+}: {
+  subject: string;
+  keyId: string;
+  backupPath: string;
+  pendingTeams: string[];
+}): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    subject: `ASC invite accepted — key needs manual team link`,
+    text: `Auto-accepted an App Store Connect team invite:
+
+"${subject}"
+
+The individual API key (${keyId}) is ready (saved at ${backupPath}), but the Marteso team to link it to is ambiguous:
+${pendingTeams.length === 0 ? "No team has a pending connect request." : `Teams with a pending connect request:\n${pendingTeams.map((t) => `- ${t}`).join("\n")}`}
+
+Enter the key into the right team's settings manually (issuer "INDIVIDUAL").`,
+  });
+}
+
+export async function ascKeyGenerationFailed({
+  subject,
+  reason,
+  screenshotPath,
+}: {
+  subject: string;
+  reason: string;
+  screenshotPath?: string;
+}): Promise<void> {
+  await notificationService.sendPlainEmail({
+    to: "alex@marteso.com",
+    from: "Marteso <alex@marteso.com>",
+    subject: `ASC invite accepted — API key generation failed`,
+    text: `Auto-accepted an App Store Connect team invite:
+
+"${subject}"
+
+But generating the individual API key did not go through:
+
+Reason: ${reason}
+${screenshotPath ? `Screenshot: ${screenshotPath}` : ""}
+
+Generate it manually under asc@marteso.com's profile (Individual API Key section) and enter it into the customer's Team Settings, or ask the customer to paste their own team key.`,
+  });
+}
 export async function ascInviteNeedsManualAccept({
   subject,
   from,
