@@ -20,6 +20,8 @@ export interface CountryData {
 export interface DownloadsData {
   byDay: DayData[];
   byCountry: CountryData[];
+  sourceTypes: string[];
+  bySourceDay: ({ date: string } & Record<string, number | string>)[];
 }
 
 export interface PlatformVersionData {

@@ -48,6 +48,19 @@ export function majorVersionNumber(version: string): number | null {
   return major ? parseInt(major, 10) : null;
 }
 
+const DOWNLOAD_SOURCE_TYPES = [
+  "App Store search",
+  "App Store browse",
+  "App referrer",
+  "Web referrer",
+  "Unavailable",
+  "Institutional purchase",
+] as const;
+
+function downloadSourceLabel(sourceType: string): string {
+  return (DOWNLOAD_SOURCE_TYPES as readonly string[]).includes(sourceType) ? sourceType : "Other";
+}
+
 // ─── GET /api/analytics/summary ──────────────────────────────────────────────
 analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res) => {
   try {
@@ -151,7 +164,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     if (until) dateFilter.lte = until;
 
     const countryFilter = req.query.country as string | undefined;
-    const [rows, purchaseRows] = await Promise.all([
+    const [rows, purchaseRows, sourceRows] = await Promise.all([
       prisma.appStoreAnalytics.findMany({
         where: {
           bundleId,
@@ -160,9 +173,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         },
         orderBy: { reportDate: "asc" },
       }),
-      // Commerce report revenue (IAP/subscriptions) isn't attributable to this
-      // route's 2-letter country filter (territory codes use a different format),
-      // so it's only folded in for the all-countries view.
+
       countryFilter
         ? Promise.resolve([])
         : prisma.appStoreCommercePurchase.findMany({
@@ -171,6 +182,18 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
               ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
             },
             select: { reportDate: true, proceedsUsd: true },
+          }),
+
+      countryFilter
+        ? Promise.resolve([])
+        : prisma.appStoreCommerceDownload.groupBy({
+            by: ["reportDate", "sourceType"],
+            where: {
+              bundleId,
+              downloadType: "First-time download",
+              ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+            },
+            _sum: { counts: true },
           }),
     ]);
 
@@ -248,9 +271,26 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       .map(([country, v]) => ({ country, ...v }))
       .sort((a, b) => b.downloads - a.downloads);
 
+    const bySourceDayMap: Record<string, Record<string, number>> = {};
+    const sourceTotals: Record<string, number> = {};
+    for (const r of sourceRows) {
+      const key = r.reportDate.toISOString().slice(0, 10);
+      const label = downloadSourceLabel(r.sourceType);
+      const count = r._sum.counts ?? 0;
+      const day = (bySourceDayMap[key] ??= {});
+      day[label] = (day[label] ?? 0) + count;
+      sourceTotals[label] = (sourceTotals[label] ?? 0) + count;
+    }
+    const presentSourceTypes = [...DOWNLOAD_SOURCE_TYPES, "Other"].filter((t) => (sourceTotals[t] ?? 0) > 0);
+    const bySourceDay = Object.entries(bySourceDayMap)
+      .map(([date, values]) => ({ date, ...values }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     res.json({
       byDay: Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date)),
       byCountry,
+      sourceTypes: presentSourceTypes,
+      bySourceDay,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });

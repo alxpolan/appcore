@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
+import DownloadSourcesChart from "./DownloadSourcesChart";
 import type { DownloadsData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
@@ -153,6 +154,8 @@ export default function AnalyticsDownloads() {
       <div className="mb-5">
         <MetricsChart data={chartData} markers={markers} />
       </div>
+
+      {downloads && <DownloadSourcesChart data={downloads} />}
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
