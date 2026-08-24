@@ -1,31 +1,13 @@
-// One-time, manual setup: opens a real (headed) browser with a persistent
-// Chrome profile so a human can sign in to appstoreconnect.apple.com as
-// asc@marteso.com — including 2FA — then keeps that profile around so the
-// asc-mailbox worker can reuse it headlessly.
-//
-// A persistent profile (not just a captured cookie snapshot) matters: Apple's
-// invite-accept flow forces a fresh interactive sign-in from a throwaway
-// session no matter how recent, but generally trusts a continuously-used real
-// browser profile more than cookies replayed into a fresh context.
-//
-// Run again (into the same profile dir) whenever the automated invite-accept
-// flow reports it's back to hitting a sign-in wall.
-//
-// Usage: npm run asc-mailbox:login
 import readline from "readline";
-import path from "path";
 import fs from "fs";
-import { chromium } from "playwright";
 import { env } from "../src/config/env";
+import { launchMailboxContext, persistSessionCookies } from "../src/services/asc-invite-acceptor";
 
 async function main() {
   const profileDir = env.ASC_MAILBOX_PROFILE_DIR;
   fs.mkdirSync(profileDir, { recursive: true });
 
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: false,
-    channel: "chrome",
-  });
+  const context = await launchMailboxContext(false);
   const page = context.pages()[0] ?? (await context.newPage());
 
   await page.goto("https://appstoreconnect.apple.com/");
@@ -42,6 +24,7 @@ async function main() {
     });
   });
 
+  await persistSessionCookies(context);
   await context.close();
 
   console.log(`\nSaved persistent profile to ${profileDir}. The asc-mailbox worker can now use it.`);

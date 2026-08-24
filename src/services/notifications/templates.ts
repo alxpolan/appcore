@@ -105,24 +105,6 @@ export async function premiumGranted({
   });
 }
 
-export async function ascAccountConnectRequested({
-  teamName,
-  requestedByEmail,
-}: {
-  teamName: string;
-  requestedByEmail: string;
-}): Promise<void> {
-  await notificationService.sendPlainEmail({
-    to: "alex@marteso.com",
-    from: "Marteso <alex@marteso.com>",
-    replyTo: requestedByEmail,
-    subject: `ASC account connect requested — ${teamName}`,
-    text: `${requestedByEmail} (team "${teamName}") says they've invited asc@marteso.com to their App Store Connect team.
-
-Go generate the API key under that account and enter it into the team's settings (Team Settings → App Store Connect).`,
-  });
-}
-
 export async function ascInviteAccepted({ subject, from }: { subject: string; from: string }): Promise<void> {
   await notificationService.sendPlainEmail({
     to: "alex@marteso.com",
@@ -135,12 +117,7 @@ export async function ascInviteAccepted({ subject, from }: { subject: string; fr
 Go generate the API key under asc@marteso.com's access to that team and enter it into the customer's Team Settings.`,
   });
 }
-
-// Apple forces a fresh interactive Apple ID sign-in (password + 2FA/passkey)
-// on the "join this team" action regardless of session — verified live,
-// screenshots and all. Auto-accept is attempted as a harmless best-effort, but
-// this is the expected everyday outcome, not a bug to chase — so the email
-// leads with the link to click, not a stack trace.
+ƒ
 export async function ascInviteNeedsManualAccept({
   subject,
   from,

@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { prisma } from "../../config";
+import { prisma, env, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings } from "../auth";
 import { encrypt } from "../../config/encryption";
-import { ascAccountConnectRequested } from "../../services/notifications/templates";
+import { bossScheduler } from "../../jobs/boss";
+import { QUEUE_NAME as ASC_MAILBOX_QUEUE } from "../../jobs/workers/asc-mailbox.worker";
 
 export const settingsRouter = Router();
 settingsRouter.use(requireAuth);
@@ -80,16 +81,10 @@ settingsRouter.put("/", async (req, res) => {
   }
 });
 
-// ─── POST /api/settings/asc-account-connect ──────────────────────────────────
-// User confirms they've invited asc@marteso.com to their App Store Connect team.
-// We record the request and notify ops to go generate the API key under that
-// invited account and finish wiring up the team's credentials.
 settingsRouter.post("/asc-account-connect", async (req, res) => {
   try {
     if (!(await requireTeamAdmin(req, res))) return;
     const teamId = req.user!.teamId!;
-
-    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { name: true } });
     const requestedAt = new Date();
 
     await prisma.teamSettings.upsert({
@@ -98,10 +93,11 @@ settingsRouter.post("/asc-account-connect", async (req, res) => {
       update: { ascAccountConnectRequestedAt: requestedAt },
     });
 
-    ascAccountConnectRequested({
-      teamName: team?.name ?? teamId,
-      requestedByEmail: req.user!.email,
-    }).catch(() => {});
+    if (env.ASC_MAILBOX_IMAP_HOST) {
+      bossScheduler
+        .sendJob(ASC_MAILBOX_QUEUE, {})
+        .catch((err) => logger.error("[settings] Failed to enqueue immediate asc-mailbox check", { err }));
+    }
 
     res.json({ ok: true, ascAccountConnectRequestedAt: requestedAt.toISOString() });
   } catch (err) {

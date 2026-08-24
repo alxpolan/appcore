@@ -39,10 +39,6 @@ export async function handler([job]: Job<Record<string, never>>[]): Promise<void
         logger.error("[asc-mailbox] Failed to send confirmation email", { err }),
       );
     } else {
-      // Expected day-to-day outcome (Apple forces interactive sign-in on this
-      // action, see asc-invite-acceptor.ts) — log the technical reason for our
-      // own debugging, but don't put a stack trace in front of a human who
-      // just needs to click a link.
       logger.info(`[asc-mailbox] Auto-accept did not go through (expected): "${invite.subject}" — ${result.reason}`);
       await ascInviteNeedsManualAccept({
         subject: invite.subject,
