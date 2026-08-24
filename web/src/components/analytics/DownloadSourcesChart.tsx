@@ -162,7 +162,7 @@ export default function DownloadSourcesChart({ data }: Props) {
                     stackId="src"
                     stroke="none"
                     fill={color}
-                    fillOpacity={0.45}
+                    fillOpacity={0.16}
                     isAnimationActive={false}
                   />
                 );
