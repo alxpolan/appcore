@@ -372,6 +372,12 @@ export interface AppRepoLink {
   repoName: string | null;
   iosDir: string | null;
   framework: Framework | null;
+  branch: string | null;
+}
+
+export interface RepoBranch {
+  name: string;
+  isDefault: boolean;
 }
 
 export interface BuildJob {

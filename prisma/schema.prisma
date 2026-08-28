@@ -195,6 +195,7 @@ model App {
   githubWebhookSecret        String?
   githubIosDir               String?
   githubFramework            String?
+  githubBranch               String?
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?

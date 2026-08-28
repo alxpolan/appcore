@@ -12,7 +12,7 @@ import {
   textPrimary,
   textSecondary,
 } from "../styles";
-import type { GitHubRepo, AppRepoLink, ScreenshotJob, BuildJob, AppItem, Framework } from "../types";
+import type { GitHubRepo, AppRepoLink, RepoBranch, ScreenshotJob, BuildJob, AppItem, Framework } from "../types";
 
 const FRAMEWORK_LABELS: Record<Framework, string> = {
   capacitor: "Capacitor",
@@ -207,6 +207,10 @@ export function RepoLinker({
   const [framework, setFramework] = useState<Framework>("native");
   const [detectingFramework, setDetectingFramework] = useState(false);
   const [savingFramework, setSavingFramework] = useState(false);
+  const [branches, setBranches] = useState<RepoBranch[] | null>(null);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [savingBranch, setSavingBranch] = useState(false);
   const [step, setStep] = useState<"repo" | "dir">("repo");
   const [linking, setLinking] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -242,6 +246,27 @@ export function RepoLinker({
     }
   };
 
+  const loadBranches = async (repoFullName: string, preselect?: string | null) => {
+    const [owner, repo] = repoFullName.split("/");
+    setLoadingBranches(true);
+    setBranches(null);
+    try {
+      const res = await fetch(`/api/github/repo-branches/${owner}/${repo}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as RepoBranch[];
+      setBranches(data);
+      // Keep an already-linked branch if it still exists, otherwise fall back to the
+      // repo default, which the API sorts to the front.
+      const keep = preselect && data.some((b) => b.name === preselect) ? preselect : null;
+      setSelectedBranch(keep ?? data.find((b) => b.isDefault)?.name ?? data[0]?.name ?? "");
+    } catch (err: any) {
+      addToast(`Failed to load branches: ${err.message}`, "error");
+      setBranches([]);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
   const detectFramework = async (repoFullName: string) => {
     const [owner, repo] = repoFullName.split("/");
     setDetectingFramework(true);
@@ -262,6 +287,7 @@ export function RepoLinker({
     setStep("dir");
     setSelectedDir("");
     loadDirs(selectedRepo);
+    loadBranches(selectedRepo, selectedRepo === link?.repoFullName ? link?.branch : null);
     detectFramework(selectedRepo);
   };
 
@@ -274,6 +300,7 @@ export function RepoLinker({
         repoFullName: selectedRepo,
         iosDir: selectedDir || null,
         framework,
+        branch: selectedBranch || null,
       });
       addToast(`Linked ${selectedRepo} → ${appName}`, "success");
       setShowPicker(false);
@@ -301,6 +328,19 @@ export function RepoLinker({
     }
   };
 
+  const handleBranchChange = async (next: string) => {
+    setSavingBranch(true);
+    try {
+      await apiPut(`/github/branch/${appId}`, { branch: next });
+      addToast(`Branch set to ${next}`, "success");
+      refetch();
+    } catch (err: any) {
+      addToast(err.message, "error");
+    } finally {
+      setSavingBranch(false);
+    }
+  };
+
   const handleUnlink = async () => {
     if (!confirm("Remove the repo link? The webhook will be deleted.")) return;
     try {
@@ -311,6 +351,14 @@ export function RepoLinker({
       addToast(err.message, "error");
     }
   };
+
+  // Populates the branch dropdown on the linked card. Keyed on primitives so a refetch
+  // after saving does not retrigger the load.
+  useEffect(() => {
+    if (link?.linked && link.repoFullName) {
+      loadBranches(link.repoFullName, link.branch);
+    }
+  }, [link?.linked, link?.repoFullName]);
 
   const openPicker = () => {
     setShowPicker(true);
@@ -376,6 +424,40 @@ export function RepoLinker({
             >
               <option value="capacitor">{FRAMEWORK_LABELS.capacitor}</option>
               <option value="native">{FRAMEWORK_LABELS.native}</option>
+            </select>
+          </div>
+          <div
+            className={`flex items-center justify-between gap-3 bg-[#f8f9fb] dark:bg-[#252b38] border ${borderDefault} rounded-xl px-4 py-2.5 w-full`}
+          >
+            <div className="flex items-center gap-3">
+              <GitBranch className={`w-5 h-5 ${textPrimary}`} />
+              <div>
+                <div className={`text-sm font-medium ${textPrimary}`}>Branch</div>
+                <div className={`text-[11px] ${textSecondary}`}>
+                  {link.branch
+                    ? "Only pushes to this branch trigger screenshots and builds."
+                    : "No branch set - every push to any branch triggers a run."}
+                </div>
+              </div>
+            </div>
+            <select
+              className={`px-3 py-1.5 rounded-lg border ${borderDefault} bg-white dark:bg-[#1c2028] text-sm ${textPrimary} disabled:opacity-50`}
+              value={link.branch ?? ""}
+              disabled={savingBranch || loadingBranches}
+              onChange={(e) => handleBranchChange(e.target.value)}
+            >
+              {loadingBranches && <option value="">Loading…</option>}
+              {!loadingBranches && !link.branch && <option value="">— Any branch —</option>}
+              {/* Keeps a deleted or renamed branch visible instead of silently showing another one. */}
+              {link.branch && !branches?.some((b) => b.name === link.branch) && (
+                <option value={link.branch}>{link.branch}</option>
+              )}
+              {branches?.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                  {b.isDefault ? " (default)" : ""}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -449,6 +531,26 @@ export function RepoLinker({
                     {dirs?.map((d) => (
                       <option key={d} value={d}>
                         {d}/
+                      </option>
+                    ))}
+                  </select>
+
+                  <h3 className={`text-sm font-medium ${textPrimary} mb-0.5`}>Branch</h3>
+                  <p className={`text-xs ${textSecondary} mb-3`}>
+                    {loadingBranches
+                      ? "Loading branches…"
+                      : "Only pushes to this branch trigger screenshots and builds."}
+                  </p>
+                  <select
+                    className={`w-full px-3 py-2 rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] text-sm ${textPrimary} mb-3 disabled:opacity-50`}
+                    value={selectedBranch}
+                    disabled={loadingBranches}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                  >
+                    {branches?.map((b) => (
+                      <option key={b.name} value={b.name}>
+                        {b.name}
+                        {b.isDefault ? " (default)" : ""}
                       </option>
                     ))}
                   </select>

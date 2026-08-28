@@ -15,6 +15,7 @@ import {
   getGitHubUser,
   listUserRepos,
   listRepoDirs,
+  listRepoBranches,
   detectFramework,
   linkRepoToApp,
   unlinkRepoFromApp,
@@ -191,6 +192,21 @@ githubRouter.get("/repo-dirs/:owner/:repo", requireAuth, loadTeamSettings, async
   }
 });
 
+githubRouter.get("/repo-branches/:owner/:repo", requireAuth, loadTeamSettings, async (req: Request, res: Response) => {
+  try {
+    const settings = req.teamSettings;
+    if (!settings?.githubAccessToken) {
+      res.status(400).json({ error: "GitHub not connected" });
+      return;
+    }
+    const repoFullName = `${req.params.owner}/${req.params.repo}`;
+    const branches = await listRepoBranches(decryptNullable(settings.githubAccessToken)!, repoFullName);
+    res.json(branches);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 githubRouter.get("/detect-framework/:owner/:repo", requireAuth, loadTeamSettings, async (req: Request, res: Response) => {
   try {
     const settings = req.teamSettings;
@@ -208,7 +224,7 @@ githubRouter.get("/detect-framework/:owner/:repo", requireAuth, loadTeamSettings
 
 githubRouter.post("/link", writeAuth, async (req: Request, res: Response) => {
   try {
-    const { appId, repoFullName, iosDir, framework } = req.body;
+    const { appId, repoFullName, iosDir, framework, branch } = req.body;
     if (!appId || !repoFullName) {
       res.status(400).json({ error: "appId and repoFullName required" });
       return;
@@ -216,7 +232,7 @@ githubRouter.post("/link", writeAuth, async (req: Request, res: Response) => {
     const app = await verifyAppOwnership(req, res, appId);
     if (!app) return;
 
-    await linkRepoToApp(req.user!.userId, appId, repoFullName, iosDir ?? null, framework ?? null);
+    await linkRepoToApp(req.user!.userId, appId, repoFullName, iosDir ?? null, framework ?? null, branch ?? null);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -236,6 +252,27 @@ githubRouter.put("/framework/:appId", writeAuth, async (req: Request, res: Respo
     await prisma.app.update({
       where: { id: req.params.appId as string },
       data: { githubFramework: framework },
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+githubRouter.put("/branch/:appId", writeAuth, async (req: Request, res: Response) => {
+  try {
+    const owned = await verifyAppOwnership(req, res, req.params.appId as string);
+    if (!owned) return;
+
+    const { branch } = req.body as { branch?: string | null };
+    const trimmed = typeof branch === "string" ? branch.trim() : null;
+    if (trimmed !== null && trimmed.length === 0) {
+      res.status(400).json({ error: "branch must be a non-empty string or null" });
+      return;
+    }
+    await prisma.app.update({
+      where: { id: req.params.appId as string },
+      data: { githubBranch: trimmed },
     });
     res.json({ ok: true });
   } catch (err: any) {
@@ -273,6 +310,7 @@ githubRouter.get("/app-repo/:appId", requireAuth, async (req: Request, res: Resp
         githubRepoFullName: true,
         githubIosDir: true,
         githubFramework: true,
+        githubBranch: true,
       },
     });
     res.json({
@@ -282,6 +320,7 @@ githubRouter.get("/app-repo/:appId", requireAuth, async (req: Request, res: Resp
       repoName: app?.githubRepoName ?? null,
       iosDir: app?.githubIosDir ?? null,
       framework: app?.githubFramework ?? null,
+      branch: app?.githubBranch ?? null,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -556,16 +595,27 @@ async function getAppAndToken(appId: string, res: Response) {
   return { app, token };
 }
 
-async function fetchLatestCommit(repoFullName: string, token: string) {
-  const data = await fetch(`https://api.github.com/repos/${repoFullName}/git/refs/heads`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-    },
-  }).then((r) => {
+async function fetchLatestCommit(repoFullName: string, token: string, branch?: string | null) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+  };
+  const get = async (url: string) => {
+    const r = await fetch(url, { headers });
     if (!r.ok) throw new Error(`GitHub API Error: ${r.status}`);
     return r.json();
-  });
+  };
+
+  if (branch) {
+    const ref = await get(
+      `https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`,
+    );
+    return { commitSha: (ref?.object?.sha ?? "unknown") as string, branch };
+  }
+
+  // No branch configured: fall back to whatever the API lists first. This is arbitrary
+  // rather than the default branch, which is exactly why the setting exists.
+  const data = await get(`https://api.github.com/repos/${repoFullName}/git/refs/heads`);
   const ref = Array.isArray(data) ? data[0] : null;
   return {
     commitSha: (ref?.object?.sha ?? "unknown") as string,
@@ -580,7 +630,7 @@ githubRouter.post("/screenshots/trigger/:appId", writeAuth, async (req: Request,
 
     const ctx = await getAppAndToken(req.params.appId as string, res);
     if (!ctx) return;
-    const { commitSha, branch } = await fetchLatestCommit(ctx.app.githubRepoFullName!, ctx.token);
+    const { commitSha, branch } = await fetchLatestCommit(ctx.app.githubRepoFullName!, ctx.token, ctx.app.githubBranch);
     const job = await prisma.screenshotJob.create({
       data: {
         appId: ctx.app.id,
@@ -605,7 +655,7 @@ githubRouter.post("/builds/trigger/:appId", writeAuth, async (req: Request, res:
 
     const ctx = await getAppAndToken(req.params.appId as string, res);
     if (!ctx) return;
-    const { commitSha, branch } = await fetchLatestCommit(ctx.app.githubRepoFullName!, ctx.token);
+    const { commitSha, branch } = await fetchLatestCommit(ctx.app.githubRepoFullName!, ctx.token, ctx.app.githubBranch);
     runBuildJob(ctx.app.id, {
       repoUrl: `https://github.com/${ctx.app.githubRepoFullName}.git`,
       accessToken: ctx.token,
@@ -660,6 +710,14 @@ githubRouter.post("/webhook", async (req: Request, res: Response) => {
     const pusher = payload.pusher.name;
 
     logger.info(`GitHub push: ${repoFullName}@${branch} (${commitSha.slice(0, 7)}) by ${pusher}`);
+
+    // Apps that pin a branch only build that one. Without a pin every push to every
+    // branch would keep triggering a full screenshot run plus a binary build.
+    if (app.githubBranch && app.githubBranch !== branch) {
+      logger.info(`Ignoring push to ${branch}: app is pinned to ${app.githubBranch}`);
+      res.json({ ok: true, ignored: true, reason: "branch-mismatch" });
+      return;
+    }
 
     const job = await prisma.screenshotJob.create({
       data: {

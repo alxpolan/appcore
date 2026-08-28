@@ -87,6 +87,34 @@ export async function listUserRepos(accessToken: string): Promise<GitHubRepo[]> 
 const IGNORED_DIRS = new Set(["node_modules", "Pods", "Carthage", "fastlane", "build", "DerivedData", "vendor"]);
 const MAX_DIR_DEPTH = 3;
 
+export interface RepoBranch {
+  name: string;
+  isDefault: boolean;
+}
+
+export async function listRepoBranches(accessToken: string, repoFullName: string): Promise<RepoBranch[]> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  const { data: repo } = await axios.get<{ default_branch: string }>(`${GITHUB_API}/repos/${repoFullName}`, {
+    headers,
+  });
+
+  const names: string[] = [];
+  // Repos with many branches paginate; without this only the first 100 would be offered.
+  for (let page = 1; page <= 5; page++) {
+    const { data } = await axios.get<{ name: string }[]>(
+      `${GITHUB_API}/repos/${repoFullName}/branches?per_page=100&page=${page}`,
+      { headers },
+    );
+    names.push(...data.map((b) => b.name));
+    if (data.length < 100) break;
+  }
+
+  return names
+    .map((name) => ({ name, isDefault: name === repo.default_branch }))
+    .sort((a, b) => (a.isDefault ? -1 : b.isDefault ? 1 : a.name.localeCompare(b.name)));
+}
+
 export async function listRepoDirs(accessToken: string, repoFullName: string): Promise<string[]> {
   const results: string[] = [];
 
@@ -199,6 +227,7 @@ export async function linkRepoToApp(
   repoFullName: string,
   iosDir?: string | null,
   framework?: string | null,
+  branch?: string | null,
 ): Promise<void> {
   const membership = await prisma.teamMember.findFirst({
     where: { userId },
@@ -235,6 +264,7 @@ export async function linkRepoToApp(
       githubWebhookSecret: secret,
       githubIosDir: iosDir ?? null,
       githubFramework: framework ?? null,
+      githubBranch: branch ?? null,
     },
   });
 
