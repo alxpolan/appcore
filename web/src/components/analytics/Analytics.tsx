@@ -17,6 +17,7 @@ import {
 import { useApi, apiPost, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
+import RetentionCard from "./RetentionCard";
 import type { AnalyticsSummary, DashboardData, DownloadsData, PlatformsData, PurchaseData, Review } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRelativeDateTime, fmtPct, countryName } from "../../utils/formatters";
@@ -498,6 +499,8 @@ export default function Analytics({ addToast }: Props) {
         </div>
         <MetricsChart data={chartData} markers={markers} />
       </div>
+
+      <RetentionCard bundleId={bundleId} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <div

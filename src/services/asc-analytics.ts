@@ -19,11 +19,18 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-type ReportKind = "engagement" | "usage" | "downloads" | "purchases";
+type ReportKind = "engagement" | "usage" | "downloads" | "purchases" | "installDeletion";
 
-const TRACKED_ANALYTICS_REPORTS: { category: string; name: string; kind: ReportKind }[] = [
+const TRACKED_ANALYTICS_REPORTS: { category: string; name: string; kind: ReportKind; namePattern?: RegExp }[] = [
   { category: "APP_STORE_ENGAGEMENT", name: "App Store Discovery and Engagement Standard", kind: "engagement" },
   { category: "APP_USAGE", name: "App Sessions Standard", kind: "usage" },
+  {
+    category: "APP_USAGE",
+    name: "App Store Installation and Deletion Standard",
+    kind: "installDeletion",
+    // Tolerate singular/plural variants of Apple's report name.
+    namePattern: /^app store installations? and deletions? standard$/i,
+  },
   { category: "COMMERCE", name: "App Downloads Standard", kind: "downloads" },
   { category: "COMMERCE", name: "App Store Purchases Standard", kind: "purchases" },
 ];
@@ -285,6 +292,116 @@ async function storePurchasesSegment(bundleId: string, rows: PurchaseRow[]): Pro
   return rows.length;
 }
 
+interface SessionCohortRow {
+  dateStr: string;
+  downloadDate: string;
+  sessions: number;
+  totalDuration: number;
+  uniqueDevices: number;
+}
+
+// Groups session rows by report day and install-cohort day ("App Download Date").
+// This is the basis for retention: which install cohort is still active n days later.
+function parseSessionCohortSegment(rows: Record<string, string>[]): SessionCohortRow[] {
+  const byKey = new Map<string, SessionCohortRow>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+    const rawDownloadDate = (row["App Download Date"] ?? "").slice(0, 10);
+    const downloadDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDownloadDate) ? rawDownloadDate : "";
+    const key = `${dateStr}::${downloadDate}`;
+    const sessions = parseInt(row["Sessions"] ?? "0", 10) || 0;
+    const totalDuration = parseFloat(row["Total Session Duration"] ?? "0") || 0;
+    const uniqueDevices = parseInt(row["Unique Devices"] ?? "0", 10) || 0;
+
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.sessions += sessions;
+      existing.totalDuration += totalDuration;
+      existing.uniqueDevices += uniqueDevices;
+    } else {
+      byKey.set(key, { dateStr, downloadDate, sessions, totalDuration, uniqueDevices });
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+async function storeSessionCohortSegment(bundleId: string, rows: SessionCohortRow[]): Promise<number> {
+  await Promise.all(
+    rows.map((r) => {
+      const reportDate = new Date(r.dateStr);
+      const metrics = { sessions: r.sessions, totalDuration: r.totalDuration, uniqueDevices: r.uniqueDevices };
+      return prisma.appStoreSessionCohort.upsert({
+        where: {
+          bundleId_reportDate_downloadDate: { bundleId, reportDate, downloadDate: r.downloadDate },
+        },
+        create: { bundleId, reportDate, downloadDate: r.downloadDate, ...metrics },
+        update: metrics,
+      });
+    }),
+  );
+  return rows.length;
+}
+
+interface InstallDeletionRow {
+  dateStr: string;
+  event: string;
+  territory: string;
+  counts: number;
+  uniqueDevices: number;
+}
+
+function parseInstallDeletionSegment(rows: Record<string, string>[]): InstallDeletionRow[] {
+  const byKey = new Map<string, InstallDeletionRow>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+    const event = (row["Event"] ?? "").trim() || "Unknown";
+    const territory = (row["Territory"] ?? "").toUpperCase().trim() || "WW";
+    const key = `${dateStr}::${event}::${territory}`;
+    const counts = parseInt(row["Counts"] ?? "0", 10) || 0;
+    const uniqueDevices = parseInt(row["Unique Devices"] ?? "0", 10) || 0;
+
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.counts += counts;
+      existing.uniqueDevices += uniqueDevices;
+    } else {
+      byKey.set(key, { dateStr, event, territory, counts, uniqueDevices });
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+async function storeInstallDeletionSegment(bundleId: string, rows: InstallDeletionRow[]): Promise<number> {
+  await Promise.all(
+    rows.map((r) => {
+      const reportDate = new Date(r.dateStr);
+      return prisma.appStoreInstallDeletion.upsert({
+        where: {
+          bundleId_reportDate_event_territory: { bundleId, reportDate, event: r.event, territory: r.territory },
+        },
+        create: {
+          bundleId,
+          reportDate,
+          event: r.event,
+          territory: r.territory,
+          counts: r.counts,
+          uniqueDevices: r.uniqueDevices,
+        },
+        update: { counts: r.counts, uniqueDevices: r.uniqueDevices },
+      });
+    }),
+  );
+  return rows.length;
+}
+
 export interface AnalyticsSyncResult {
   downloadDays: number;
   reviewsFetched: number;
@@ -443,10 +560,13 @@ export class AscAnalyticsService {
     return storedDays;
   }
 
-  private async processAnalyticsRequest(bundleId: string, requestId: string, daysBack: number): Promise<number> {
+  private async processAnalyticsRequest(
+    bundleId: string,
+    requestId: string,
+    daysBack: number,
+    daysBackByKind?: Partial<Record<ReportKind, number>>,
+  ): Promise<number> {
     const headers = this.authHeaders();
-    const sinceCutoff = new Date();
-    sinceCutoff.setDate(sinceCutoff.getDate() - daysBack);
 
     let reportItems: Array<{ id: string; kind: ReportKind }> = [];
     try {
@@ -462,7 +582,9 @@ export class AscAnalyticsService {
       reportItems = reports
         .map((r: any) => {
           const match = TRACKED_ANALYTICS_REPORTS.find(
-            (t) => t.category === r.attributes?.category && t.name === r.attributes?.name,
+            (t) =>
+              t.category === r.attributes?.category &&
+              (t.name === r.attributes?.name || t.namePattern?.test(r.attributes?.name ?? "")),
           );
           return match && r.id ? { id: r.id as string, kind: match.kind } : null;
         })
@@ -483,6 +605,9 @@ export class AscAnalyticsService {
 
     for (const reportItem of reportItems) {
       const reportId = reportItem.id;
+      const kindDaysBack = daysBackByKind?.[reportItem.kind] ?? daysBack;
+      const sinceCutoff = new Date();
+      sinceCutoff.setDate(sinceCutoff.getDate() - kindDaysBack);
       let instances: any[] = [];
 
       try {
@@ -500,7 +625,7 @@ export class AscAnalyticsService {
         });
 
         logger.debug(
-          `Report ${reportId}: ${all.length} total instances, ${instances.length} within daysBack=${daysBack}`,
+          `Report ${reportId}: ${all.length} total instances, ${instances.length} within daysBack=${kindDaysBack}`,
         );
       } catch (err: any) {
         logger.warn(
@@ -539,6 +664,14 @@ export class AscAnalyticsService {
 
               const metricsByDayPlatform = parsePlatformSegment(rows, reportItem.kind);
               await storePlatformSegment(bundleId, reportItem.kind, metricsByDayPlatform);
+
+              if (reportItem.kind === "usage") {
+                const cohortRows = parseSessionCohortSegment(rows);
+                await storeSessionCohortSegment(bundleId, cohortRows);
+              }
+            } else if (reportItem.kind === "installDeletion") {
+              const installDeletionRows = parseInstallDeletionSegment(rows);
+              storedRows += await storeInstallDeletionSegment(bundleId, installDeletionRows);
             } else if (reportItem.kind === "downloads") {
               const downloadRows = parseDownloadsSegment(rows);
               storedRows += await storeDownloadsSegment(bundleId, downloadRows);
@@ -562,6 +695,7 @@ export class AscAnalyticsService {
     requestId: string | null,
     snapshotRequestId: string | null,
     daysBack = 60,
+    daysBackByKind?: Partial<Record<ReportKind, number>>,
   ): Promise<{
     rows: number;
     requestId: string | null;
@@ -649,7 +783,7 @@ export class AscAnalyticsService {
             `Created ONE_TIME_SNAPSHOT request ${resolvedSnapshotId} for ${bundleId} – processing historical data now.`,
           );
 
-          snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack);
+          snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
           logger.info(`ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows stored for ${bundleId}.`);
         }
       } catch (err: any) {
@@ -669,7 +803,7 @@ export class AscAnalyticsService {
 
             if (existingSnap?.id) {
               resolvedSnapshotId = existingSnap.id as string;
-              snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack);
+              snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
               logger.info(`Existing ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows for ${bundleId}.`);
             }
           } catch (snapListErr: any) {
@@ -689,10 +823,10 @@ export class AscAnalyticsService {
       };
     }
 
-    let storedRows = await this.processAnalyticsRequest(bundleId, requestId, daysBack);
+    let storedRows = await this.processAnalyticsRequest(bundleId, requestId, daysBack, daysBackByKind);
 
     if (snapshotRequestId) {
-      const snapRows = await this.processAnalyticsRequest(bundleId, snapshotRequestId, daysBack);
+      const snapRows = await this.processAnalyticsRequest(bundleId, snapshotRequestId, daysBack, daysBackByKind);
       storedRows += snapRows;
       if (snapRows > 0) {
         logger.info(`ONE_TIME_SNAPSHOT catch-up: ${snapRows} rows for ${bundleId} (snapshot: ${snapshotRequestId})`);
@@ -801,12 +935,24 @@ export class AscAnalyticsService {
           const currentRequestId = appRecord?.analyticsRequestId ?? null;
           const currentSnapshotId = appRecord?.analyticsSnapshotRequestId ?? null;
 
+          // Newly tracked reports need a one-off backfill even on incremental
+          // syncs, where daysBack would only cover the last few days.
+          const [installDeletionCount, sessionCohortCount] = await Promise.all([
+            prisma.appStoreInstallDeletion.count({ where: { bundleId } }),
+            prisma.appStoreSessionCohort.count({ where: { bundleId } }),
+          ]);
+          const overrides: Partial<Record<"installDeletion" | "usage", number>> = {};
+          if (installDeletionCount === 0) overrides.installDeletion = 365;
+          if (sessionCohortCount === 0) overrides.usage = 365;
+          const daysBackByKind = Object.keys(overrides).length > 0 ? overrides : undefined;
+
           const result = await this.fetchEngagementReport(
             ascAppId,
             bundleId,
             currentRequestId,
             currentSnapshotId,
             engagementDaysBack,
+            daysBackByKind,
           );
           engagementRows = result.rows;
 

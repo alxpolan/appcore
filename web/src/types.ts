@@ -6,6 +6,8 @@ export interface DayData {
   impressions: number;
   pageViews: number;
   sessions: number;
+  installs: number;
+  deletions: number;
 }
 
 export type DownloadsDayData = Pick<DayData, "date" | "downloads" | "updates" | "proceeds">;
@@ -20,6 +22,8 @@ export interface CountryData {
 export interface DownloadsData {
   byDay: DayData[];
   byCountry: CountryData[];
+  countrySeries: string[];
+  byCountryDay: ({ date: string } & Record<string, number | string>)[];
   sourceTypes: string[];
   bySourceDay: ({ date: string } & Record<string, number | string>)[];
 }
@@ -34,6 +38,15 @@ export interface PlatformVersionData {
 
 export interface PlatformsData {
   byVersion: PlatformVersionData[];
+}
+
+export interface RetentionData {
+  curve: { day: number; retention: number; activeDevices: number; cohortDevices: number }[];
+  d1: number | null;
+  d7: number | null;
+  d30: number | null;
+  avgSessionSeconds: number | null;
+  totalSessions: number;
 }
 
 export interface PurchaseData {
@@ -83,6 +96,11 @@ export interface Review {
   reviewerNickname: string | null;
   territory: string | null;
   reviewedAt: string;
+}
+
+export interface RatingsData {
+  byDay: { date: string; rating: number; ratingsCount: number | null }[];
+  current: { rating: number | null; ratingsCount: number | null };
 }
 
 export interface AppItem {

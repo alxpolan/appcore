@@ -164,7 +164,7 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     if (until) dateFilter.lte = until;
 
     const countryFilter = req.query.country as string | undefined;
-    const [rows, purchaseRows, sourceRows] = await Promise.all([
+    const [rows, purchaseRows, sourceRows, installDeletionRows] = await Promise.all([
       prisma.appStoreAnalytics.findMany({
         where: {
           bundleId,
@@ -195,6 +195,15 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
             },
             _sum: { counts: true },
           }),
+
+      prisma.appStoreInstallDeletion.findMany({
+        where: {
+          bundleId,
+          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
+          ...(countryFilter ? { territory: countryFilter.toUpperCase() } : {}),
+        },
+        select: { reportDate: true, event: true, counts: true },
+      }),
     ]);
 
     type DayEntry = {
@@ -206,6 +215,8 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
       pageViews: number;
       taps: number;
       sessions: number;
+      installs: number;
+      deletions: number;
     };
 
     type CountryEntry = {
@@ -229,6 +240,8 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         pageViews: 0,
         taps: 0,
         sessions: 0,
+        installs: 0,
+        deletions: 0,
       });
 
       day.downloads += r.downloads;
@@ -263,13 +276,54 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         pageViews: 0,
         taps: 0,
         sessions: 0,
+        installs: 0,
+        deletions: 0,
       });
       day.proceeds += p.proceedsUsd;
+    }
+
+    for (const r of installDeletionRows) {
+      const key = r.reportDate.toISOString().slice(0, 10);
+      const day = (byDayMap[key] ??= {
+        date: key,
+        downloads: 0,
+        updates: 0,
+        proceeds: 0,
+        impressions: 0,
+        pageViews: 0,
+        taps: 0,
+        sessions: 0,
+        installs: 0,
+        deletions: 0,
+      });
+      const event = r.event.toLowerCase();
+      if (event.startsWith("delet")) day.deletions += r.counts;
+      else if (event.startsWith("install")) day.installs += r.counts;
     }
 
     const byCountry = Object.entries(byCountryMap)
       .map(([country, v]) => ({ country, ...v }))
       .sort((a, b) => b.downloads - a.downloads);
+
+    // Daily download series for the top countries, remainder folded into "Other".
+    const topCountryCodes = byCountry.slice(0, 5).map((c) => c.country);
+    const byCountryDayMap: Record<string, Record<string, number>> = {};
+    let otherCountryTotal = 0;
+    for (const r of rows) {
+      const key = r.reportDate.toISOString().slice(0, 10);
+      const label = topCountryCodes.includes(r.country) ? r.country : "Other";
+      if (label === "Other") otherCountryTotal += r.downloads;
+      const day = (byCountryDayMap[key] ??= {});
+      day[label] = (day[label] ?? 0) + r.downloads;
+    }
+    const countrySeries = otherCountryTotal > 0 ? [...topCountryCodes, "Other"] : topCountryCodes;
+    const byCountryDay = Object.entries(byCountryDayMap)
+      .map(([date, values]) => {
+        const filled: Record<string, number> = {};
+        for (const c of countrySeries) filled[c] = values[c] ?? 0;
+        return { date, ...filled };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     const bySourceDayMap: Record<string, Record<string, number>> = {};
     const sourceTotals: Record<string, number> = {};
@@ -293,6 +347,8 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     res.json({
       byDay: Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date)),
       byCountry,
+      countrySeries,
+      byCountryDay,
       sourceTypes: presentSourceTypes,
       bySourceDay,
     });
@@ -350,6 +406,76 @@ analyticsRouter.get("/platforms", ...requireBundleAccess("query"), async (req, r
     );
 
     res.json({ byVersion });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/analytics/retention ────────────────────────────────────────────
+// Device-based retention from Apple's App Sessions report: each session row
+// carries the install-cohort date ("App Download Date"). Day-0 active devices
+// of a cohort are the denominator; devices active n days later the numerator.
+analyticsRouter.get("/retention", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const bundleId = req.bundleApp!.bundleId;
+    const maxDay = 30;
+
+    const rows = await prisma.appStoreSessionCohort.findMany({
+      where: { bundleId },
+      select: { reportDate: true, downloadDate: true, sessions: true, totalDuration: true, uniqueDevices: true },
+    });
+
+    let totalSessions = 0;
+    let totalDuration = 0;
+    // cohort downloadDate -> day offset -> active unique devices
+    const activeAt: Record<string, Record<number, number>> = {};
+    let latestDay = "";
+
+    for (const r of rows) {
+      totalSessions += r.sessions;
+      totalDuration += r.totalDuration;
+      if (!r.downloadDate) continue;
+      const day = r.reportDate.toISOString().slice(0, 10);
+      if (day > latestDay) latestDay = day;
+      const offset = Math.round((Date.parse(day) - Date.parse(r.downloadDate)) / 86400000);
+      if (offset < 0 || offset > maxDay) continue;
+      const cohort = (activeAt[r.downloadDate] ??= {});
+      cohort[offset] = (cohort[offset] ?? 0) + r.uniqueDevices;
+    }
+
+    const latestMs = latestDay ? Date.parse(latestDay) : 0;
+    const curve: { day: number; retention: number; activeDevices: number; cohortDevices: number }[] = [];
+
+    for (let day = 0; day <= maxDay; day++) {
+      let active = 0;
+      let cohortSize = 0;
+      for (const [downloadDate, offsets] of Object.entries(activeAt)) {
+        const day0 = offsets[0] ?? 0;
+        if (day0 === 0) continue;
+        // Only cohorts old enough that day n has already happened.
+        if (Date.parse(downloadDate) + day * 86400000 > latestMs) continue;
+        cohortSize += day0;
+        active += offsets[day] ?? 0;
+      }
+      curve.push({
+        day,
+        retention: cohortSize > 0 ? (active / cohortSize) * 100 : 0,
+        activeDevices: active,
+        cohortDevices: cohortSize,
+      });
+    }
+
+    const at = (day: number) => curve.find((c) => c.day === day);
+    const hasData = (curve[0]?.cohortDevices ?? 0) > 0;
+
+    res.json({
+      curve: hasData ? curve : [],
+      d1: at(1)?.retention ?? null,
+      d7: at(7)?.retention ?? null,
+      d30: at(30)?.retention ?? null,
+      avgSessionSeconds: totalSessions > 0 ? totalDuration / totalSessions : null,
+      totalSessions,
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -487,6 +613,59 @@ analyticsRouter.get("/reviews", ...requireBundleAccess("query"), async (req, res
     });
 
     res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/analytics/ratings ──────────────────────────────────────────────
+// AppReview only covers *written* reviews (Apple's customerReviews API has no
+// endpoint for star-only ratings), so the true aggregate rating/count — as
+// shown on the App Store listing — is sourced from the periodic iTunes-lookup
+// snapshots (AppSnapshot) instead, taken every 12h regardless of whether
+// anything changed.
+analyticsRouter.get("/ratings", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const appId = req.bundleApp!.id;
+    const anchorSnapshot = await prisma.appSnapshot.findFirst({
+      where: { appId },
+      orderBy: { scrapedAt: "desc" },
+      select: { scrapedAt: true, rating: true, ratingsCount: true },
+    });
+    const anchor = anchorSnapshot?.scrapedAt ?? new Date();
+    const since = resolveSince(req.query, anchor);
+    const until = resolveUntil(req.query);
+    const dateFilter: Record<string, Date> = {};
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+
+    const snapshots = await prisma.appSnapshot.findMany({
+      where: {
+        appId,
+        rating: { not: null },
+        ...(Object.keys(dateFilter).length ? { scrapedAt: dateFilter } : {}),
+      },
+      orderBy: { scrapedAt: "asc" },
+      select: { scrapedAt: true, rating: true, ratingsCount: true },
+    });
+
+    const byDayMap: Record<string, { rating: number; ratingsCount: number | null }> = {};
+    for (const s of snapshots) {
+      const key = s.scrapedAt.toISOString().slice(0, 10);
+      byDayMap[key] = { rating: s.rating!, ratingsCount: s.ratingsCount };
+    }
+
+    const byDay = Object.entries(byDayMap)
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({
+      byDay,
+      current: {
+        rating: anchorSnapshot?.rating ?? null,
+        ratingsCount: anchorSnapshot?.ratingsCount ?? null,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

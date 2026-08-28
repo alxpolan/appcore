@@ -3,6 +3,7 @@ import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
 import DownloadSourcesChart from "./DownloadSourcesChart";
+import DeletionsChart from "./DeletionsChart";
 import type { DownloadsData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
@@ -48,6 +49,8 @@ export default function AnalyticsDownloads() {
       impressions: 0,
       pageViews: 0,
       sessions: 0,
+      installs: 0,
+      deletions: 0,
     }));
     return [...byDay, ...injected].sort((a, b) => a.date.localeCompare(b.date));
   }, [downloads?.byDay, markers]);
@@ -56,6 +59,7 @@ export default function AnalyticsDownloads() {
     date: "date",
     downloads: "downloads",
     updates: "updates",
+    deletions: "deletions",
     proceeds: "proceeds",
     impressions: "impressions",
     pageViews: "pageViews",
@@ -63,6 +67,7 @@ export default function AnalyticsDownloads() {
   } as const;
 
   const hasEngagementData = (downloads?.byDay ?? []).some((d) => d.impressions > 0 || d.pageViews > 0);
+  const hasDeletionData = (downloads?.byDay ?? []).some((d) => (d.deletions ?? 0) > 0);
 
   const sortedDays = useMemo(() => {
     const rows = [...(downloads?.byDay ?? [])];
@@ -156,6 +161,7 @@ export default function AnalyticsDownloads() {
       </div>
 
       {downloads && <DownloadSourcesChart data={downloads} />}
+      {downloads && <DeletionsChart data={downloads} />}
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
@@ -178,6 +184,11 @@ export default function AnalyticsDownloads() {
                 <SortTh col="updates" right>
                   Updates
                 </SortTh>
+                {hasDeletionData && (
+                  <SortTh col="deletions" right>
+                    Deletions
+                  </SortTh>
+                )}
                 <SortTh col="proceeds" right>
                   Revenue
                 </SortTh>
@@ -206,6 +217,11 @@ export default function AnalyticsDownloads() {
                   <td className={`${TD} text-right tabular-nums ${textMuted}`}>
                     {d.updates > 0 ? fmtNumber(d.updates) : "—"}
                   </td>
+                  {hasDeletionData && (
+                    <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+                      {(d.deletions ?? 0) > 0 ? fmtNumber(d.deletions) : "—"}
+                    </td>
+                  )}
                   <td className={`${TD} text-right tabular-nums ${textMuted}`}>
                     {d.proceeds > 0 ? fmtRevenue(d.proceeds) : "—"}
                   </td>

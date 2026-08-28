@@ -13,13 +13,22 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   CartesianGrid,
 } from "recharts";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel, prevPeriodParams } from "../../utils/analyticsRange";
 
 type CountrySortKey = "country" | "downloads" | "impressions" | "pageViews" | "conv" | "share";
+
+// Validated categorical palette (slots 1-5) for the top-country lines; "Other" is gray.
+const COUNTRY_LINE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
+const OTHER_LINE_COLOR = "#9ca3af";
+
+function countrySeriesColor(series: string[], code: string): string {
+  if (code === "Other") return OTHER_LINE_COLOR;
+  return COUNTRY_LINE_COLORS[series.indexOf(code)] ?? OTHER_LINE_COLOR;
+}
 
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return (
@@ -201,24 +210,32 @@ export default function AnalyticsCountries() {
       </div>
 
       {!loading &&
-        (downloads?.byDay ?? []).length > 1 &&
+        (downloads?.byCountryDay ?? []).length > 1 &&
+        (downloads?.countrySeries ?? []).length > 0 &&
         (() => {
-          const byDay = downloads!.byDay;
+          const series = downloads!.countrySeries;
+          const byCountryDay = downloads!.byCountryDay;
+          const seriesLabel = (code: string) => (code === "Other" ? "Other" : countryName(code));
+          const totals: Record<string, number> = {};
+          for (const c of downloads!.byCountry) {
+            const label = series.includes(c.country) ? c.country : "Other";
+            totals[label] = (totals[label] ?? 0) + c.downloads;
+          }
           return (
             <div
               className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
             >
-              <div className={`text-[14px] font-semibold ${textPrimary} mb-1`}>Downloads over time</div>
+              <div className={`text-[14px] font-semibold ${textPrimary} mb-1`}>Downloads by country</div>
               <div className={`text-[12px] ${textMuted} mb-4`}>{rangeLabel(range)}</div>
-              <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={byDay} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="countryDlGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D94412" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#D94412" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="0" stroke="#f0f1f3" vertical={false} strokeWidth={1} />
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={byCountryDay} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid
+                    strokeDasharray="0"
+                    stroke="#f0f1f3"
+                    className="dark:[&_line]:stroke-[#2a2f3d]"
+                    vertical={false}
+                    strokeWidth={1}
+                  />
                   <XAxis
                     dataKey="date"
                     axisLine={false}
@@ -229,6 +246,7 @@ export default function AnalyticsCountries() {
                       return `${d.getMonth() + 1}/${d.getDate()}`;
                     }}
                     interval="preserveStartEnd"
+                    minTickGap={32}
                   />
                   <YAxis
                     axisLine={false}
@@ -238,11 +256,7 @@ export default function AnalyticsCountries() {
                     width={36}
                   />
                   <Tooltip
-                    cursor={{
-                      stroke: "#D94412",
-                      strokeWidth: 1.5,
-                      strokeDasharray: "3 3",
-                    }}
+                    cursor={{ stroke: "#c3c9d4", strokeWidth: 1 }}
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.length) return null;
                       const d = new Date(String(label));
@@ -250,34 +264,72 @@ export default function AnalyticsCountries() {
                         month: "short",
                         day: "numeric",
                       });
+                      const rows = payload
+                        .filter((p) => typeof p.value === "number" && (p.value as number) > 0)
+                        .sort((a, b) => (b.value as number) - (a.value as number));
+                      const total = rows.reduce((sum, r) => sum + (r.value as number), 0);
                       return (
                         <div
-                          className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl px-3.5 py-2.5 text-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.1)]`}
+                          className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl px-3.5 py-2.5 text-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] min-w-[170px]`}
                         >
                           <div className={`${textMuted} mb-1 text-[11px]`}>{dateStr}</div>
-                          <div className={`font-semibold ${textPrimary} tabular-nums`}>
-                            {fmtNumber(payload[0].value as number)} downloads
-                          </div>
+                          {rows.map((r) => (
+                            <div key={String(r.dataKey)} className="flex items-center justify-between gap-3 py-px">
+                              <span className={`flex items-center gap-1.5 ${textMuted}`}>
+                                <span
+                                  className="inline-block w-2 h-2 rounded-[2px]"
+                                  style={{ background: countrySeriesColor(series, String(r.dataKey)) }}
+                                />
+                                {seriesLabel(String(r.dataKey))}
+                              </span>
+                              <span className={`font-semibold tabular-nums ${textPrimary}`}>
+                                {fmtNumber(r.value as number)}
+                              </span>
+                            </div>
+                          ))}
+                          {rows.length > 1 && (
+                            <div
+                              className={`flex items-center justify-between gap-3 mt-1 pt-1 border-t border-[#eef0f3] dark:border-[#2a2f3d] font-semibold ${textPrimary}`}
+                            >
+                              <span>Total</span>
+                              <span className="tabular-nums">{fmtNumber(total)}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     }}
                   />
-                  <Area
-                    type="monotoneX"
-                    dataKey="downloads"
-                    stroke="#D94412"
-                    strokeWidth={2.5}
-                    fill="url(#countryDlGrad)"
-                    dot={false}
-                    activeDot={{
-                      r: 5,
-                      strokeWidth: 2,
-                      stroke: "#fff",
-                      fill: "#D94412",
-                    }}
-                  />
-                </AreaChart>
+                  {series.map((code) => {
+                    const color = countrySeriesColor(series, code);
+                    return (
+                      <Line
+                        key={code}
+                        type="monotone"
+                        dataKey={code}
+                        name={seriesLabel(code)}
+                        stroke={color}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff", fill: color }}
+                        isAnimationActive={false}
+                      />
+                    );
+                  })}
+                </LineChart>
               </ResponsiveContainer>
+
+              <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 pt-4 border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
+                {series.map((code) => (
+                  <div key={code} className="flex items-center gap-2 text-[12px]">
+                    <span
+                      className="inline-block w-2 h-2 rounded-[2px]"
+                      style={{ backgroundColor: countrySeriesColor(series, code) }}
+                    />
+                    <span className={textMuted}>{seriesLabel(code)}</span>
+                    <span className={`font-medium tabular-nums ${textPrimary}`}>{fmtNumber(totals[code] ?? 0)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           );
         })()}

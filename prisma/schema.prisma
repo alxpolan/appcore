@@ -457,6 +457,34 @@ model AppStoreAnalyticsPlatform {
   @@index([bundleId, reportDate])
 }
 
+model AppStoreSessionCohort {
+  id            String   @id @default(cuid())
+  bundleId      String
+  reportDate    DateTime
+  downloadDate  String
+  sessions      Int      @default(0)
+  totalDuration Float    @default(0)
+  uniqueDevices Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([bundleId, reportDate, downloadDate])
+  @@index([bundleId, reportDate])
+}
+
+model AppStoreInstallDeletion {
+  id            String   @id @default(cuid())
+  bundleId      String
+  reportDate    DateTime
+  event         String
+  territory     String
+  counts        Int      @default(0)
+  uniqueDevices Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([bundleId, reportDate, event, territory])
+  @@index([bundleId, reportDate])
+}
+
 model AppStoreCommerceDownload {
   id              String   @id @default(cuid())
   bundleId        String

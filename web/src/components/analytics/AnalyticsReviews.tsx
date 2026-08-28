@@ -2,12 +2,14 @@ import { useState } from "react";
 import { borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import ReviewsList from "./ReviewsList";
-import type { Review } from "../../types";
+import RatingTrendChart from "./RatingTrendChart";
+import type { Review, RatingsData } from "../../types";
 
 export default function AnalyticsReviews() {
   const bundleId = getActiveBundleId() ?? "";
   const [minRating, setMinRating] = useState<number | null>(null);
   const { data: reviews, loading } = useApi<Review[]>(`/analytics/reviews?bundleId=${bundleId}&limit=200`);
+  const { data: ratings } = useApi<RatingsData>(`/analytics/ratings?bundleId=${bundleId}&period=all`);
   const filtered = reviews ? (minRating !== null ? reviews.filter((r) => r.rating === minRating) : reviews) : [];
 
   return (
@@ -15,6 +17,8 @@ export default function AnalyticsReviews() {
       <div className="mb-6">
         <h1 className={`${pageTitle} mb-1`}>Reviews</h1>
       </div>
+
+      {ratings && <RatingTrendChart data={ratings} />}
 
       {!loading && (reviews ?? []).length > 0 && (
         <div

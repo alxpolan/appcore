@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, usePlotArea } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtShortDate, fmtLargeNum } from "../../utils/formatters";
 import type { DownloadsData } from "../../types";
@@ -28,6 +28,50 @@ const SOURCE_COLORS: Record<string, { light: string; dark: string }> = {
   Other: { light: "#9ca3af", dark: "#5c6478" },
 };
 
+// Index ranges where a series has data, extended by one day on each side so
+// the clip region covers the area's taper down to zero.
+function dataRuns(byDay: DownloadsData["bySourceDay"], key: string): [number, number][] {
+  const runs: [number, number][] = [];
+  let start: number | null = null;
+  byDay.forEach((d, i) => {
+    const v = typeof d[key] === "number" ? (d[key] as number) : 0;
+    if (v > 0 && start === null) start = Math.max(0, i - 1);
+    if (v <= 0 && start !== null) {
+      runs.push([start, i]);
+      start = null;
+    }
+  });
+  if (start !== null) runs.push([start, byDay.length - 1]);
+  return runs;
+}
+
+// Per-series clipPaths so each Area (fill + its edge stroke) only renders
+// where the series has data — a stacked Area's stroke would otherwise trace
+// the stack top across the whole chart even at zero height. Must be rendered
+// as a chart child because usePlotArea needs the chart context.
+function SourceClipDefs({ byDay, orderedTypes }: { byDay: DownloadsData["bySourceDay"]; orderedTypes: string[] }) {
+  const plot = usePlotArea();
+  if (!plot || byDay.length < 2) return null;
+  const step = plot.width / (byDay.length - 1);
+  return (
+    <defs>
+      {orderedTypes.map((key, idx) => (
+        <clipPath id={`src-run-clip-${idx}`} key={key}>
+          {dataRuns(byDay, key).map(([a, b]) => (
+            <rect
+              key={a}
+              x={plot.x + a * step}
+              y={-10000}
+              width={Math.max((b - a) * step, 0)}
+              height={20000}
+            />
+          ))}
+        </clipPath>
+      ))}
+    </defs>
+  );
+}
+
 function useDarkMode() {
   const [dark, setDark] = useState(() =>
     typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
@@ -44,7 +88,7 @@ function useDarkMode() {
 function SourceTooltip({ active, payload, label, dark }: any) {
   if (!active || !payload?.length) return null;
   const rows = payload
-    .filter((p: any) => typeof p.value === "number" && p.value > 0)
+    .filter((p: any) => typeof p.value === "number" && p.value > 0 && !String(p.dataKey).startsWith("__"))
     .sort((a: any, b: any) => b.value - a.value);
   if (!rows.length) return null;
   const total = rows.reduce((sum: number, r: any) => sum + r.value, 0);
@@ -70,7 +114,7 @@ function SourceTooltip({ active, payload, label, dark }: any) {
           style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "2px 0" }}
         >
           <span style={{ display: "flex", alignItems: "center", gap: 6, color: dark ? "#8b93a5" : "#6b7280" }}>
-            <span style={{ display: "inline-block", width: 10, height: 2, borderRadius: 1, background: r.color }} />
+            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: r.color }} />
             {r.name}
           </span>
           <span style={{ fontWeight: 600, color: dark ? "#e8eaf0" : "#111827" }}>{fmtNumber(r.value)}</span>
@@ -96,6 +140,7 @@ function SourceTooltip({ active, payload, label, dark }: any) {
 
 export default function DownloadSourcesChart({ data }: Props) {
   const dark = useDarkMode();
+  const surface = dark ? "#1c2028" : "#ffffff";
   const sourceTypes = data.sourceTypes ?? [];
   const byDay = data.bySourceDay ?? [];
 
@@ -111,17 +156,7 @@ export default function DownloadSourcesChart({ data }: Props) {
   }, [byDay, sourceTypes]);
 
   const orderedTypes = SOURCE_ORDER.filter((t) => sourceTypes.includes(t));
-  const stackOrder = [...orderedTypes].sort((a, b) => (totals[a] ?? 0) - (totals[b] ?? 0));
   const grandTotal = orderedTypes.reduce((sum, k) => sum + (totals[k] ?? 0), 0);
-
-  const chartData = useMemo(
-    () =>
-      byDay.map((day) => ({
-        ...day,
-        __total: orderedTypes.reduce((sum, k) => sum + (typeof day[k] === "number" ? (day[k] as number) : 0), 0),
-      })),
-    [byDay, orderedTypes],
-  );
 
   if (orderedTypes.length === 0) return null;
 
@@ -137,7 +172,7 @@ export default function DownloadSourcesChart({ data }: Props) {
       ) : (
         <>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <ComposedChart data={byDay} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid
                 strokeDasharray="0"
                 stroke={dark ? "#2a2f3d" : "#f0f1f3"}
@@ -151,6 +186,7 @@ export default function DownloadSourcesChart({ data }: Props) {
                 tick={{ fontSize: 11, fill: dark ? "#5c6478" : "#9ca3af" }}
                 tickFormatter={(v: string) => fmtShortDate(v)}
                 interval="preserveStartEnd"
+                minTickGap={32}
               />
               <YAxis
                 axisLine={false}
@@ -161,9 +197,10 @@ export default function DownloadSourcesChart({ data }: Props) {
               />
               <Tooltip
                 content={<SourceTooltip dark={dark} />}
-                cursor={{ stroke: dark ? "#5c6478" : "#c3c9d4", strokeWidth: 1, strokeDasharray: "3 3" }}
+                cursor={{ stroke: dark ? "#5c6478" : "#c3c9d4", strokeWidth: 1 }}
               />
-              {stackOrder.map((key) => {
+              <SourceClipDefs byDay={byDay} orderedTypes={orderedTypes} />
+              {orderedTypes.map((key, idx) => {
                 const color = SOURCE_COLORS[key]?.[dark ? "dark" : "light"] ?? (dark ? "#5c6478" : "#9ca3af");
                 return (
                   <Area
@@ -172,26 +209,17 @@ export default function DownloadSourcesChart({ data }: Props) {
                     dataKey={key}
                     name={key}
                     stackId="src"
-                    stroke="none"
+                    stroke={color}
+                    strokeWidth={1.5}
                     fill={color}
-                    fillOpacity={0.16}
+                    fillOpacity={0.12}
+                    clipPath={`url(#src-run-clip-${idx})`}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: surface, fill: color }}
                     isAnimationActive={false}
                   />
                 );
               })}
-              <Area
-                type="monotone"
-                dataKey="__total"
-                name="__total"
-                stroke="#D94412"
-                strokeWidth={2}
-                fill="none"
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 2, stroke: dark ? "#1c2028" : "#fff", fill: "#D94412" }}
-                isAnimationActive={false}
-                legendType="none"
-              />
-            </AreaChart>
+            </ComposedChart>
           </ResponsiveContainer>
 
           <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 pt-4 border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
@@ -201,7 +229,7 @@ export default function DownloadSourcesChart({ data }: Props) {
               const share = grandTotal > 0 ? (total / grandTotal) * 100 : 0;
               return (
                 <div key={key} className="flex items-center gap-2 text-[12px]">
-                  <span className="inline-block w-3 h-[2px] rounded-full" style={{ backgroundColor: color }} />
+                  <span className="inline-block w-2 h-2 rounded-[2px]" style={{ backgroundColor: color }} />
                   <span className={textSecondary}>{key}</span>
                   <span className={`font-medium tabular-nums ${textPrimary}`}>{fmtNumber(total)}</span>
                   <span className={textMuted}>({share.toFixed(0)}%)</span>
