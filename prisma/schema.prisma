@@ -199,6 +199,10 @@ model App {
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?
+  // JSON array of base64 .mobileprovision files. Apps with extensions (widgets, share
+  // sheets, app clips) need one profile per bundle ID. The singular field above is the
+  // legacy single-profile form and is still read as a fallback.
+  signingProvisioningProfiles String?
   signingTeamId              String?
   snapshotEnvVars            String?
   accentColor                String?

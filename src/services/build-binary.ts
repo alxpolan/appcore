@@ -4,6 +4,7 @@ import os from "os";
 import { logger, prisma, getEffectiveSettings } from "../config";
 import { workerClient } from "./worker-client";
 import { postCommitStatus } from "./github";
+import { parseProvisioningProfiles } from "./utils/provisioning-profiles";
 
 const BUILDS_BASE_DIR = path.join(os.homedir(), "appcore", "builds");
 
@@ -39,6 +40,7 @@ export async function runBuildJob(
       signingCertP12: true,
       signingCertPassword: true,
       signingProvisioningProfile: true,
+      signingProvisioningProfiles: true,
       signingTeamId: true,
       githubIosDir: true,
       githubFramework: true,
@@ -74,7 +76,8 @@ export async function runBuildJob(
     }
   }
 
-  const hasSigning = !!(app?.signingCertP12 && app?.signingCertPassword && app?.signingProvisioningProfile);
+  const signingProfiles = parseProvisioningProfiles(app);
+  const hasSigning = !!(app?.signingCertP12 && app?.signingCertPassword && signingProfiles.length > 0);
   if (!hasSigning) {
     logger.warn(
       `[build:${appId}] No signing credentials configured — binary build will likely fail at code-signing step`,
@@ -110,7 +113,7 @@ export async function runBuildJob(
         app && {
           signingCertP12: app.signingCertP12 as string,
           signingCertPassword: app.signingCertPassword as string,
-          signingProvisioningProfile: app.signingProvisioningProfile as string,
+          signingProvisioningProfiles: signingProfiles,
           signingTeamId: app.signingTeamId ?? undefined,
         }),
     });

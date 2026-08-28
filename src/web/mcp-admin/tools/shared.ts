@@ -23,6 +23,7 @@ const SECRET_KEYS = new Set([
   "signingCertP12",
   "signingCertPassword",
   "signingProvisioningProfile",
+  "signingProvisioningProfiles",
   "snapshotEnvVars",
   "reviewerDemoPassword",
   "clientSecret",

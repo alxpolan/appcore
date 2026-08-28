@@ -21,6 +21,8 @@ interface BuildRequest {
   signingCertP12?: string;
   signingCertPassword?: string;
   signingProvisioningProfile?: string;
+  /** One profile per bundle ID; takes precedence over the singular field above. */
+  signingProvisioningProfiles?: string[];
   signingTeamId?: string;
   versionString?: string;
 }
@@ -40,16 +42,23 @@ buildRouter.post("/build", async (req: Request, res: Response) => {
     signingCertP12,
     signingCertPassword,
     signingProvisioningProfile,
+    signingProvisioningProfiles,
     signingTeamId,
     versionString,
   } = body;
 
+  const profiles = signingProvisioningProfiles?.length
+    ? signingProvisioningProfiles
+    : signingProvisioningProfile
+      ? [signingProvisioningProfile]
+      : [];
+
   const signingCreds =
-    signingCertP12 && signingCertPassword && signingProvisioningProfile
+    signingCertP12 && signingCertPassword && profiles.length > 0
       ? {
           p12Base64: signingCertP12,
           p12Password: signingCertPassword,
-          profileBase64: signingProvisioningProfile,
+          profilesBase64: profiles,
           teamId: signingTeamId,
         }
       : undefined;

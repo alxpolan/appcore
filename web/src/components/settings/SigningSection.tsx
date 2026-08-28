@@ -7,6 +7,7 @@ import { CheckCircle, Paperclip, FileText } from "lucide-react";
 interface SigningStatus {
   hasCert: boolean;
   hasProfile: boolean;
+  profileCount: number;
   teamId: string | null;
 }
 
@@ -35,7 +36,7 @@ export default function SigningSection({ appId, addToast }: Props) {
   const [removing, setRemoving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [p12File, setP12File] = useState<File | null>(null);
-  const [profileFile, setProfileFile] = useState<File | null>(null);
+  const [profileFiles, setProfileFiles] = useState<File[]>([]);
   const [password, setPassword] = useState("");
   const [teamId, setTeamId] = useState("");
   const p12Ref = useRef<HTMLInputElement>(null);
@@ -58,29 +59,32 @@ export default function SigningSection({ appId, addToast }: Props) {
   }, [appId]);
 
   const handleSave = async () => {
-    if (!p12File || !profileFile || !password) {
-      addToast("Certificate (.p12), provisioning profile, and password are required", "error");
+    if (!p12File || profileFiles.length === 0 || !password) {
+      addToast("Certificate (.p12), at least one provisioning profile, and password are required", "error");
       return;
     }
     setSaving(true);
     try {
       const p12Base64 = await readFileAsBase64(p12File);
-      const profileBase64 = await readFileAsBase64(profileFile);
+      const profilesBase64 = await Promise.all(profileFiles.map(readFileAsBase64));
       const res = await fetch(`/api/apps/${appId}/signing`, {
         method: "PUT",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           p12Base64,
           p12Password: password,
-          profileBase64,
+          profilesBase64,
           teamId: teamId || undefined,
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed to save");
-      addToast("Signing credentials saved", "success");
+      addToast(
+        `Signing credentials saved (${profilesBase64.length} profile${profilesBase64.length === 1 ? "" : "s"})`,
+        "success",
+      );
       setShowForm(false);
       setP12File(null);
-      setProfileFile(null);
+      setProfileFiles([]);
       setPassword("");
       setTeamId("");
       fetchStatus();
@@ -127,7 +131,8 @@ export default function SigningSection({ appId, addToast }: Props) {
             <div>
               <div className={`text-sm font-medium ${textPrimary}`}>Credentials configured</div>
               <div className={`text-[11px] ${textMuted}`}>
-                {status?.teamId ? `Team ID: ${status.teamId}` : "Cert + profile stored"}
+                {`${status?.profileCount ?? 1} profile${(status?.profileCount ?? 1) === 1 ? "" : "s"}`}
+                {status?.teamId ? ` · Team ID: ${status.teamId}` : ""}
               </div>
             </div>
           </div>
@@ -189,7 +194,7 @@ export default function SigningSection({ appId, addToast }: Props) {
               {/* .mobileprovision */}
               <div>
                 <label className={`block text-xs font-medium ${textSecondary} mb-1.5`}>
-                  Provisioning Profile (.mobileprovision)
+                  Provisioning Profiles (.mobileprovision)
                 </label>
                 <div
                   className={`flex items-center gap-3 px-3.5 py-[9px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] cursor-pointer hover:border-[#D94412] transition-colors`}
@@ -197,16 +202,23 @@ export default function SigningSection({ appId, addToast }: Props) {
                 >
                   <FileText className="w-4 h-4 text-[#9ca3af] flex-shrink-0" />
                   <span className={`text-[13px] ${textMuted}`}>
-                    {profileFile ? profileFile.name : "Choose .mobileprovision file…"}
+                    {profileFiles.length === 0
+                      ? "Choose .mobileprovision file(s)…"
+                      : profileFiles.map((f) => f.name).join(", ")}
                   </span>
                   <input
                     ref={profileRef}
                     type="file"
                     accept=".mobileprovision"
+                    multiple
                     className="hidden"
-                    onChange={(e) => setProfileFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) => setProfileFiles(Array.from(e.target.files ?? []))}
                   />
                 </div>
+                <p className={`text-[11px] ${textMuted} mt-1.5`}>
+                  One profile per bundle ID. App extensions (widgets, share sheets, app clips) each need their own,
+                  since a profile is tied to a single App ID.
+                </p>
               </div>
 
               {/* Team ID */}
@@ -232,7 +244,7 @@ export default function SigningSection({ appId, addToast }: Props) {
                   onClick={() => {
                     setShowForm(false);
                     setP12File(null);
-                    setProfileFile(null);
+                    setProfileFiles([]);
                     setPassword("");
                   }}
                 >

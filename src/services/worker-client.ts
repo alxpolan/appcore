@@ -47,6 +47,8 @@ export interface WorkerBuildParams {
   signingCertP12?: string;
   signingCertPassword?: string;
   signingProvisioningProfile?: string;
+  /** One profile per bundle ID; extensions each need their own. */
+  signingProvisioningProfiles?: string[];
   signingTeamId?: string;
   versionString?: string;
 }

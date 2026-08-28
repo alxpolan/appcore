@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../../config";
 import { requireAuth, bundleAccess, appAccess } from "../auth";
 import { ensureAccentColor } from "../../services/utils/icon-accent";
+import { parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
 import { AppStoreScraper } from "../../services/appstore-scraper";
 
 export const appsRouter = Router();
@@ -587,13 +588,16 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
       select: {
         signingCertP12: true,
         signingProvisioningProfile: true,
+        signingProvisioningProfiles: true,
         signingTeamId: true,
       },
     });
 
+    const profiles = parseProvisioningProfiles(app);
     res.json({
       hasCert: !!app?.signingCertP12,
-      hasProfile: !!app?.signingProvisioningProfile,
+      hasProfile: profiles.length > 0,
+      profileCount: profiles.length,
       teamId: app?.signingTeamId ?? null,
     });
   } catch (err) {
@@ -603,11 +607,18 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
 
 appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {
-    const { p12Base64, p12Password, profileBase64, teamId } = req.body;
+    const { p12Base64, p12Password, profileBase64, profilesBase64, teamId } = req.body;
 
-    if (!p12Base64 || !p12Password || !profileBase64) {
+    // Accepts either the array (one profile per bundle ID) or the old single value.
+    const profiles: string[] = Array.isArray(profilesBase64)
+      ? profilesBase64.filter((p): p is string => typeof p === "string" && p.length > 0)
+      : profileBase64
+        ? [profileBase64]
+        : [];
+
+    if (!p12Base64 || !p12Password || profiles.length === 0) {
       res.status(400).json({
-        error: "p12Base64, p12Password, and profileBase64 are required",
+        error: "p12Base64, p12Password, and at least one provisioning profile are required",
       });
       return;
     }
@@ -617,7 +628,9 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
       data: {
         signingCertP12: p12Base64,
         signingCertPassword: p12Password,
-        signingProvisioningProfile: profileBase64,
+        signingProvisioningProfiles: JSON.stringify(profiles),
+        // Cleared so the legacy column can never shadow a freshly uploaded set.
+        signingProvisioningProfile: null,
         signingTeamId: teamId ?? null,
       },
     });
@@ -679,6 +692,7 @@ appsRouter.delete("/:id/signing", requireAuth, appAccess("params", "id"), async 
         signingCertP12: null,
         signingCertPassword: null,
         signingProvisioningProfile: null,
+        signingProvisioningProfiles: null,
         signingTeamId: null,
       },
     });
