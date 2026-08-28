@@ -8,6 +8,12 @@ export interface FrameOptions {
   bgColor1?: string;
   bgColor2?: string;
   textColor?: string;
+  /**
+   * Per-screenshot subline keyed by filename basename. Supplying this frames the whole
+   * directory in a single worker call instead of one call (and one fastlane boot) per image.
+   * Images without an entry fall back to `subtitle`.
+   */
+  titles?: Record<string, string>;
 }
 
 // undici collapses every transport-level failure into "fetch failed" and hides the real
@@ -41,16 +47,28 @@ export async function frameWithFastlane(
     throw new Error("No images found in input directory");
   }
 
-  const images = srcFiles.map((f) => ({
-    filename: path.basename(f),
-    data: fs.readFileSync(f).toString("base64"),
-  }));
+  const { titles, ...workerOptions } = options;
+
+  const images = srcFiles.map((f) => {
+    const filename = path.basename(f);
+    const title = titles?.[filename.replace(/\.[^.]+$/, "")];
+    return {
+      filename,
+      data: fs.readFileSync(f).toString("base64"),
+      ...(title ? { title } : {}),
+    };
+  });
 
   let result: Awaited<ReturnType<typeof workerClient.frameit>>;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      result = await workerClient.frameit({ images, options });
+      // Asking for an unframed directory is the signal that the second, background-less
+      // frameit pass is worth its cost. No directory, no second pass.
+      result = await workerClient.frameit({
+        images,
+        options: { ...workerOptions, includeUnframed: !!unframedOutputDir },
+      });
       lastErr = undefined;
       break;
     } catch (err) {

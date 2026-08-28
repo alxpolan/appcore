@@ -63,13 +63,15 @@ export interface WorkerBuildResult {
 }
 
 export interface WorkerFrameitParams {
-  images: Array<{ filename: string; data: string }>;
+  // Per-image `title` carries that screenshot's subline, so a whole locale fits in one call.
+  images: Array<{ filename: string; data: string; title?: string }>;
   options: {
     subtitle?: string;
     title?: string;
     bgColor1?: string;
     bgColor2?: string;
     textColor?: string;
+    includeUnframed?: boolean;
   };
 }
 

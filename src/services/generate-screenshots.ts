@@ -10,6 +10,7 @@ import { AppStoreConnectClient } from "./appstore-connect";
 import { Prisma } from "@prisma/client";
 import { createJobLogEmitter } from "./log-bus";
 import { normalizeLocale } from "./utils/country_lang";
+import { env } from "../config/env";
 
 const GITHUB_STATUS_DESC_MAX_LEN = 140;
 const FRAME_LOCALE_CONCURRENCY = 4;
@@ -532,6 +533,10 @@ async function frameScreenshots(
         textColor: frameConfig.textColor,
       };
 
+      // Passing the directory is what makes the worker run the second, background-less
+      // frameit pass. Leaving it undefined halves the ImageMagick work per locale.
+      const unframedDir = env.FRAME_INCLUDE_UNFRAMED ? path.join(outputDir, "unframed", locale) : undefined;
+
       if (!hasDescriptions) {
         outputPaths = await frameWithFastlane(
           srcDir,
@@ -540,40 +545,33 @@ async function frameScreenshots(
             subtitle: defaultSubtitle,
             ...bgOptions,
           },
-          path.join(outputDir, "unframed", locale),
+          unframedDir,
         );
       } else {
-        outputPaths = [];
         const allEntries = await fs.promises.readdir(srcDir);
         const files = allEntries.filter((f) => /\.(png)$/i.test(f));
 
+        // One call for the whole locale: each screenshot carries its own subline via
+        // `titles`, which costs one fastlane boot instead of one per image.
+        const titles: Record<string, string> = {};
         for (const filename of files) {
           const base = filename.replace(/\.[^.]+$/, "");
           const descKey = Object.keys(descriptions).find((k) => base === k || base.startsWith(k + "_"));
-          const subtitle = descKey ? (localeSublines[descKey] ?? defaultSubtitle) : defaultSubtitle;
-          const safeLocale = locale.replace(/[^a-zA-Z0-9_-]/g, "_");
-          const singleDir = path.join(srcDir, `.frametmp_${safeLocale}_${base}`);
-
-          await fs.promises.mkdir(singleDir, { recursive: true });
-          await fs.promises.copyFile(path.join(srcDir, filename), path.join(singleDir, filename));
-
-          try {
-            const paths = await frameWithFastlane(
-              singleDir,
-              path.join(outputDir, "framed", locale),
-              {
-                subtitle,
-                ...bgOptions,
-              },
-              path.join(outputDir, "unframed", locale),
-            );
-
-            log(`[framing] ${filename} → ${paths.length} path(s)`);
-            outputPaths.push(...paths);
-          } finally {
-            await fs.promises.rm(singleDir, { recursive: true, force: true });
-          }
+          titles[base] = descKey ? (localeSublines[descKey] ?? defaultSubtitle) : defaultSubtitle;
         }
+
+        outputPaths = await frameWithFastlane(
+          srcDir,
+          path.join(outputDir, "framed", locale),
+          {
+            subtitle: defaultSubtitle,
+            ...bgOptions,
+            titles,
+          },
+          unframedDir,
+        );
+
+        log(`[framing] ${locale}: ${files.length} image(s) → ${outputPaths.length} path(s)`);
       }
 
       const urls = outputPaths.map(

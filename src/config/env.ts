@@ -47,6 +47,13 @@ const envSchema = z.object({
   FASTLANE_WORKER_URL: z.string().url().optional(),
   FASTLANE_WORKER_SECRET: z.string().optional(),
 
+  // Second, background-less frameit pass. Off by default because it doubles framing cost.
+  // Note: z.coerce.boolean() would turn the string "false" into true, hence the enum.
+  FRAME_INCLUDE_UNFRAMED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+
   // Transporter Worker (+ Linux proxy server)
   TRANSPORTER_WORKER_URL: z.string().url().optional(),
   FASTLANE_PATH: z.string().default("fastlane"),

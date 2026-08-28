@@ -19,7 +19,9 @@ type FontCandidate = {
 };
 
 interface FrameitRequest {
-  images: Array<{ filename: string; data: string }>;
+  // `title` lets one request carry a whole locale: each image keeps its own subline,
+  // so framing 12 screenshots costs one fastlane boot instead of twelve.
+  images: Array<{ filename: string; data: string; title?: string }>;
   options: {
     subtitle?: string;
     title?: string;
@@ -27,6 +29,11 @@ interface FrameitRequest {
     bgColor2?: string;
     textColor?: string;
     layoutMode?: LayoutMode | "random";
+    /**
+     * Run frameit a second time without a background to also produce unframed images.
+     * Doubles the ImageMagick work, so it stays off unless the caller asks for it.
+     */
+    includeUnframed?: boolean;
   };
 }
 
@@ -37,6 +44,15 @@ interface FramefileSection {
   stack_title: boolean;
   title_below_image: boolean;
   title: { text: string; color: string; font: string; font_size: number };
+}
+
+// Per-screenshot override merged over `default` by frameit, matched via `filter`.
+interface FramefileEntry {
+  filter: string;
+  title_below_image: boolean;
+  title: { text: string; color: string; font: string; font_size: number };
+  /** Per-image so screenshots of different sizes each get a matching background. */
+  background?: string;
 }
 
 const BUNDLED_FRAMEIT_FONT = path.join(__dirname, "ArialRoundedBold.ttf");
@@ -199,10 +215,13 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     bgColor2 = "#764ba2",
     textColor = "#ffffff",
     layoutMode: layoutModeInput,
+    includeUnframed = false,
   } = options || {};
 
   const LAYOUT_MODES: LayoutMode[] = ["center", "top", "bottom"];
-  const layoutMode: LayoutMode =
+  // Resolved per screenshot rather than per request, so batching a whole locale keeps
+  // the previous behaviour of every image getting its own random layout.
+  const resolveLayout = (): LayoutMode =>
     !layoutModeInput || layoutModeInput === "random"
       ? LAYOUT_MODES[Math.floor(Math.random() * LAYOUT_MODES.length)]
       : layoutModeInput;
@@ -212,9 +231,14 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
   let tmpDirNoBg = "";
 
   try {
-    let firstW = 1290;
-    let firstH = 2796;
+    let maxW = 0;
+    let maxH = 0;
     const outputDims = new Map<string, { w: number; h: number }>();
+    const layoutByBase = new Map<string, LayoutMode>();
+    const titleByBase = new Map<string, string>();
+    // Dimensions of the file actually handed to frameit, which is what the background
+    // has to match exactly.
+    const workDimsByBase = new Map<string, { w: number; h: number }>();
 
     for (const img of images) {
       const buf = Buffer.from(img.data, "base64");
@@ -225,63 +249,130 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       const remap = SIZE_REMAP[remapKey];
 
       outputDims.set(basename, {
-        w: meta.width ?? firstW,
-        h: meta.height ?? firstH,
+        w: meta.width ?? 1290,
+        h: meta.height ?? 2796,
       });
+      layoutByBase.set(basename, resolveLayout());
+      titleByBase.set(basename, img.title ?? title ?? subtitle ?? " ");
 
       let pipeline = sharp(buf);
+      let workW = meta.width ?? 1290;
+      let workH = meta.height ?? 2796;
       if (remap) {
         pipeline = pipeline.resize(remap.w, remap.h, { fit: "fill" });
-        firstW = remap.w;
-        firstH = remap.h;
-      } else {
-        firstW = meta.width ?? firstW;
-        firstH = meta.height ?? firstH;
+        workW = remap.w;
+        workH = remap.h;
       }
+      workDimsByBase.set(basename, { w: workW, h: workH });
+      maxW = Math.max(maxW, workW);
+      maxH = Math.max(maxH, workH);
       await pipeline.png().toFile(tmpPath);
     }
 
-    const bgW = firstW * 2;
-    const bgH = firstH * 2;
-    const svg = `<svg width="${bgW}" height="${bgH}" xmlns="http://www.w3.org/2000/svg">
+    if (!maxW) maxW = 1290;
+    if (!maxH) maxH = 2796;
+
+    // One background per distinct screenshot size. A single shared background breaks
+    // mixed batches: generate_background (editor.rb) only rebuilds it when its HEIGHT
+    // differs from the screenshot, so an iPhone (1290x2796) sharing a background sized
+    // for an iPad (2048x2796) keeps the too-wide canvas, and the final cover-crop then
+    // eats the background at the edges.
+    const sizeKey = (w: number, h: number) => `${w}x${h}`;
+    const backgroundFor = (base: string) => {
+      const d = workDimsByBase.get(base) ?? { w: maxW, h: maxH };
+      return `./background-${sizeKey(d.w, d.h)}.png`;
+    };
+
+    const distinctSizes = new Map<string, { w: number; h: number }>();
+    for (const d of workDimsByBase.values()) distinctSizes.set(sizeKey(d.w, d.h), d);
+    if (distinctSizes.size === 0) distinctSizes.set(sizeKey(maxW, maxH), { w: maxW, h: maxH });
+
+    // Must be a size that is actually generated. maxW/maxH are independent maxima, so
+    // their combination can be a size no screenshot has (iPhone 1290x2796 + iPad
+    // 2048x2732 would give 2048x2796), and frameit hard-fails on a missing background.
+    const fallbackBackgroundKey = [...distinctSizes.entries()].sort((a, b) => b[1].w * b[1].h - a[1].w * a[1].h)[0][0];
+
+    for (const [key, { w, h }] of distinctSizes) {
+      const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
           <stop offset="0%" stop-color="${bgColor1}"/>
           <stop offset="100%" stop-color="${bgColor2}"/>
         </linearGradient>
       </defs>
-      <rect width="${bgW}" height="${bgH}" fill="url(#bg)"/>
+      <rect width="${w}" height="${h}" fill="url(#bg)"/>
     </svg>`;
 
-    await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toFile(path.join(tmpDir, "background.jpg"));
-    const fontSourcePath = pickFrameitFont(`${title ?? ""} ${subtitle ?? ""}`);
+      // Lossless PNG rather than JPEG: a smooth two-stop gradient is exactly the content
+      // where JPEG shows banding, and it is the full-bleed backdrop of every screenshot.
+      await sharp(Buffer.from(svg)).png().toFile(path.join(tmpDir, `background-${key}.png`));
+    }
+    // Font selection has to see every subline in the batch, not just the fallback, or a
+    // locale whose script only appears in a per-image title would render in the wrong face.
+    const fontSourcePath = pickFrameitFont([title ?? "", subtitle ?? "", ...titleByBase.values()].join(" "));
     const frameitFont = copyFrameitFont(fontSourcePath, tmpDir);
+    const fallbackLayout = layoutByBase.values().next().value ?? "center";
 
-    const defaultSection = buildTitleSection(title, subtitle, textColor, layoutMode, frameitFont, "./background.jpg");
+    // frameit substring-matches `filter` against the full screenshot path and deep-merges
+    // every hit in array order (config_parser.rb:29). The trailing dot anchors the match to
+    // the filename, and sorting by filter length makes the most specific entry merge last:
+    // for "01_home.png" both "home." and "01_home." match, and the longer one has to win.
+    const buildEntries = (font: string, withBackground: boolean): FramefileEntry[] =>
+      images
+        .map((img) => {
+          const base = img.filename.replace(/\.[^.]+$/, "");
+          return {
+            filter: `${base}.`,
+            title_below_image: layoutByBase.get(base) === "bottom",
+            title: { text: titleByBase.get(base) ?? " ", color: textColor, font, font_size: 150 },
+            ...(withBackground ? { background: backgroundFor(base) } : {}),
+          };
+        })
+        .sort((a, b) => a.filter.length - b.filter.length);
+
+    // Only a fallback: every image carries its own correctly sized background in `data`.
+    const defaultSection = buildTitleSection(
+      title,
+      subtitle,
+      textColor,
+      fallbackLayout,
+      frameitFont,
+      `./background-${fallbackBackgroundKey}.png`,
+    );
 
     fs.writeFileSync(
       path.join(tmpDir, "Framefile.json"),
-      JSON.stringify({ device_frame_version: "latest", default: defaultSection, data: [] }, null, 2),
+      JSON.stringify(
+        { device_frame_version: "latest", default: defaultSection, data: buildEntries(frameitFont, true) },
+        null,
+        2,
+      ),
     );
 
-    tmpDirNoBg = path.join(os.tmpdir(), `worker-frameit-nobg-${Date.now()}`);
-    fs.mkdirSync(tmpDirNoBg, { recursive: true });
+    if (includeUnframed) {
+      tmpDirNoBg = path.join(os.tmpdir(), `worker-frameit-nobg-${Date.now()}`);
+      fs.mkdirSync(tmpDirNoBg, { recursive: true });
 
-    for (const img of images) {
-      const basename = img.filename.replace(/\.[^.]+$/, "");
-      const src = path.join(tmpDir, basename + ".png");
-      if (fs.existsSync(src)) {
-        fs.copyFileSync(src, path.join(tmpDirNoBg, basename + ".png"));
+      for (const img of images) {
+        const basename = img.filename.replace(/\.[^.]+$/, "");
+        const src = path.join(tmpDir, basename + ".png");
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, path.join(tmpDirNoBg, basename + ".png"));
+        }
       }
+
+      const frameitFontNoBg = copyFrameitFont(fontSourcePath, tmpDirNoBg);
+      const defaultSectionNoBg = buildTitleSection(title, subtitle, textColor, fallbackLayout, frameitFontNoBg);
+
+      fs.writeFileSync(
+        path.join(tmpDirNoBg, "Framefile.json"),
+        JSON.stringify(
+          { device_frame_version: "latest", default: defaultSectionNoBg, data: buildEntries(frameitFontNoBg, false) },
+          null,
+          2,
+        ),
+      );
     }
-
-    const frameitFontNoBg = copyFrameitFont(fontSourcePath, tmpDirNoBg);
-    const defaultSectionNoBg = buildTitleSection(title, subtitle, textColor, layoutMode, frameitFontNoBg);
-
-    fs.writeFileSync(
-      path.join(tmpDirNoBg, "Framefile.json"),
-      JSON.stringify({ device_frame_version: "latest", default: defaultSectionNoBg, data: [] }, null, 2),
-    );
 
     const fastlaneBin = await findFastlane();
 
@@ -312,14 +403,20 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return output;
     };
 
-    const [combinedOutput] = await Promise.all([runFrameit(tmpDir), runFrameit(tmpDirNoBg)]);
+    const [combinedOutput] = await Promise.all([
+      runFrameit(tmpDir),
+      ...(tmpDirNoBg ? [runFrameit(tmpDirNoBg)] : []),
+    ]);
 
     const framedFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith("_framed.png"));
     if (framedFiles.length === 0) {
       throw new Error(`frameit produced no output.\n${combinedOutput}`);
     }
 
-    const gravity = layoutMode === "top" ? "north" : layoutMode === "bottom" ? "south" : "centre";
+    const gravityFor = (base: string) => {
+      const layout = layoutByBase.get(base) ?? "center";
+      return layout === "top" ? "north" : layout === "bottom" ? "south" : "centre";
+    };
 
     const processFramedFiles = async (
       dir: string,
@@ -329,17 +426,20 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       for (const f of files) {
         const raw = await fs.promises.readFile(path.join(dir, f));
         const srcBase = f.replace(/_framed\.png$/, "");
-        const dims = outputDims.get(srcBase) ?? { w: firstW, h: firstH };
-        const finalBuf = await sharp(raw).resize(dims.w, dims.h, { fit: "cover", position: gravity }).png().toBuffer();
+        const dims = outputDims.get(srcBase) ?? { w: maxW, h: maxH };
+        const finalBuf = await sharp(raw)
+          .resize(dims.w, dims.h, { fit: "cover", position: gravityFor(srcBase) })
+          .png()
+          .toBuffer();
         result.push({ filename: srcBase + ".png", data: finalBuf.toString("base64") });
       }
       return result;
     };
 
-    const noBgFiles = fs.readdirSync(tmpDirNoBg).filter((f) => f.endsWith("_framed.png"));
+    const noBgFiles = tmpDirNoBg ? fs.readdirSync(tmpDirNoBg).filter((f) => f.endsWith("_framed.png")) : [];
     const [framedImages, unframedImages] = await Promise.all([
       processFramedFiles(tmpDir, framedFiles),
-      processFramedFiles(tmpDirNoBg, noBgFiles),
+      tmpDirNoBg ? processFramedFiles(tmpDirNoBg, noBgFiles) : Promise.resolve([]),
     ]);
 
     res.json({ ok: true, framedImages, unframedImages });
