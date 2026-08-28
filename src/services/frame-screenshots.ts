@@ -10,6 +10,21 @@ export interface FrameOptions {
   textColor?: string;
 }
 
+// undici collapses every transport-level failure into "fetch failed" and hides the real
+// reason in `cause`, so both have to be inspected to decide whether a retry is worthwhile.
+function isRetryableTransportError(err: unknown): boolean {
+  const messages: string[] = [];
+  for (let e: unknown = err, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
+    messages.push(e.message, (e as { code?: string }).code ?? "");
+  }
+  const joined = messages.join(" ").toLowerCase();
+  // Deliberately excludes timeouts: the request timeout is already 15 minutes, so a
+  // timeout means the worker is genuinely stuck and retrying just burns another 30.
+  return ["terminated", "fetch failed", "econnreset", "econnrefused", "epipe", "socket"].some((needle) =>
+    joined.includes(needle),
+  );
+}
+
 export async function frameWithFastlane(
   inputDir: string,
   outputDir: string,
@@ -40,8 +55,7 @@ export async function frameWithFastlane(
       break;
     } catch (err) {
       lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg === "terminated" || msg.includes("terminated")) {
+      if (isRetryableTransportError(err)) {
         await new Promise((r) => setTimeout(r, 1_000 * (attempt + 1)));
         continue;
       }

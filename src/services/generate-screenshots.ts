@@ -592,6 +592,16 @@ async function frameScreenshots(
     const frameMsg = frameErr instanceof Error ? frameErr.message : String(frameErr);
     const stack = frameErr instanceof Error ? frameErr.stack : undefined;
     log(`[framing] Framing failed (non-fatal): ${frameMsg}`);
+
+    // undici reports every transport failure as "fetch failed" and puts the actual
+    // reason (UND_ERR_HEADERS_TIMEOUT, ECONNRESET, ...) in `cause`.
+    for (let cause = (frameErr as { cause?: unknown })?.cause, depth = 1; cause && depth <= 3; depth++) {
+      const causeErr = cause as Error & { code?: string };
+      const code = causeErr.code ? ` [${causeErr.code}]` : "";
+      log(`[framing] Cause ${depth}: ${causeErr.message ?? String(cause)}${code}`);
+      cause = (cause as { cause?: unknown })?.cause;
+    }
+
     if (stack) log(`[framing] Stack: ${stack.split("\n").slice(0, 4).join(" | ")}`);
   }
 }

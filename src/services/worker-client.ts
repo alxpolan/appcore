@@ -87,6 +87,17 @@ export interface WorkerHealthResult {
   error?: string;
 }
 
+// The worker runs two `fastlane frameit` passes in parallel, each with its own 300s
+// exec timeout, plus sharp pre/post-processing - so a single request can legitimately
+// need well over undici's 300s default headersTimeout. Without an explicit agent that
+// default rejects with a bare "fetch failed".
+const FRAMEIT_TIMEOUT_MS = 15 * 60 * 1000;
+const BUILD_TIMEOUT_MS = 25 * 60 * 1000;
+
+// Kept above the request timeout so the AbortController fires first and surfaces a
+// readable "timeout of Xms exceeded" instead of undici's opaque "fetch failed".
+const headersTimeoutFor = (timeoutMs: number) => timeoutMs + 60_000;
+
 class FastlaneWorkerClient {
   private client: AxiosInstance | null = null;
 
@@ -218,7 +229,8 @@ class FastlaneWorkerClient {
   async frameit(params: WorkerFrameitParams): Promise<WorkerFrameitResult> {
     logger.info("[WorkerClient] Sending frameit task to worker...");
     const res = await this.getClient().post("/worker/frameit", params, {
-      timeout: 5 * 60 * 1000,
+      timeout: FRAMEIT_TIMEOUT_MS,
+      headersTimeout: headersTimeoutFor(FRAMEIT_TIMEOUT_MS),
       validateStatus: () => true,
     });
     return res.data;
@@ -227,7 +239,8 @@ class FastlaneWorkerClient {
   async build(params: WorkerBuildParams): Promise<WorkerBuildResult> {
     logger.info("[WorkerClient] Sending build task to worker...");
     const res = await this.getClient().post("/worker/build", params, {
-      timeout: 25 * 60 * 1000,
+      timeout: BUILD_TIMEOUT_MS,
+      headersTimeout: headersTimeoutFor(BUILD_TIMEOUT_MS),
     });
     return res.data;
   }

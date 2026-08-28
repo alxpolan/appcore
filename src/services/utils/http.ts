@@ -136,6 +136,21 @@ function prepareBody(data: unknown, headers: Record<string, string>): FetchBody 
   return JSON.stringify(data);
 }
 
+// Agents own a connection pool, so they must be reused across requests rather than
+// created per call. Keyed by timeout pair; the promise is cached so concurrent
+// callers share one agent instead of racing to build duplicates.
+const agentCache = new Map<string, Promise<unknown>>();
+
+function getAgent(headersTimeout: number, bodyTimeout: number): Promise<unknown> {
+  const key = `${headersTimeout}:${bodyTimeout}`;
+  let agent = agentCache.get(key);
+  if (!agent) {
+    agent = import("undici").then(({ Agent }) => new Agent({ headersTimeout, bodyTimeout }));
+    agentCache.set(key, agent);
+  }
+  return agent;
+}
+
 async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(config.headers ?? {})) {
@@ -157,11 +172,7 @@ async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
 
   let fetchInit: Record<string, unknown> = { method, headers, body: body as FetchBody | undefined, signal };
   if (config.headersTimeout !== undefined) {
-    const { Agent } = await import("undici");
-    (fetchInit as any).dispatcher = new Agent({
-      headersTimeout: config.headersTimeout,
-      bodyTimeout: config.timeout ?? 0,
-    });
+    (fetchInit as any).dispatcher = await getAgent(config.headersTimeout, config.timeout ?? 0);
   }
 
   let res: Response;
