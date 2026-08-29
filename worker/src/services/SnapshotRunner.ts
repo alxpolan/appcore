@@ -29,6 +29,10 @@ export interface SnapshotParams {
   iosDir?: string;
   framework?: string;
   envVars?: Record<string, string>;
+  // Split a run across workers: this part handles every language whose index
+  // (in the sorted effective list) is ≡ splitIndex mod splitCount.
+  splitIndex?: number;
+  splitCount?: number;
 }
 
 export class SnapshotRunner {
@@ -192,6 +196,27 @@ export class SnapshotRunner {
             };
           })();
 
+    let languages = effectiveLanguages;
+    const { splitIndex, splitCount } = this.params;
+    if (splitCount && splitCount > 1 && splitIndex !== undefined) {
+      const sorted = [...effectiveLanguages].sort();
+      languages = sorted.filter((_, i) => i % splitCount === splitIndex);
+      this.push(`[split] Part ${splitIndex + 1}/${splitCount}: languages ${languages.join(", ") || "(none)"}`);
+      if (languages.length === 0) {
+        this.push("[split] Nothing to do for this part - finishing early");
+        this.finish({
+          ok: true,
+          logs: this.logs,
+          errors: this.errors,
+          screenshots: {},
+          descriptions,
+          config: frameConfig,
+          xcresultLogs: [],
+        });
+        return;
+      }
+    }
+
     const simInfo = await SnapshotRunner.getIosSimulatorInfo();
     this.push(`[capture] Detected iOS simulator version: ${simInfo?.version ?? "unknown"}`);
 
@@ -214,7 +239,7 @@ export class SnapshotRunner {
     await this.bootSimulators(snapDevices, appearance);
 
     const screenshots = await this.captureScreenshots(
-      effectiveLanguages,
+      languages,
       snapDevices,
       scheme,
       projectArg,

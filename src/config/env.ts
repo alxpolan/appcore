@@ -45,6 +45,9 @@ const envSchema = z.object({
 
   // Fastlane Worker (MacOS)
   FASTLANE_WORKER_URL: z.string().url().optional(),
+  // Comma-separated list of worker base URLs; overrides FASTLANE_WORKER_URL for
+  // job dispatch (each worker runs one job at a time, jobs queue FIFO).
+  FASTLANE_WORKER_URLS: z.string().optional(),
   FASTLANE_WORKER_SECRET: z.string().optional(),
 
   // Second, background-less frameit pass. Off by default because it doubles framing cost.

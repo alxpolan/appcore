@@ -3,7 +3,7 @@ import fs from "fs";
 import { logger, prisma, getTeamSettings } from "../config";
 import { decryptNullable } from "../config/encryption";
 import { frameWithFastlane } from "./frame-screenshots";
-import { workerClient } from "./worker-client";
+import { workerClient, type WorkerSnapshotResult } from "./worker-client";
 import { postCommitStatus } from "./github";
 import { generateScreenshotSublines, type ScreenshotSublines } from "./screenshot-subline-generator";
 import { AppStoreConnectClient } from "./appstore-connect";
@@ -133,19 +133,34 @@ async function runWorkerScreenshotGeneration(
       );
     }
 
-    const result = await workerClient.snapshot(
-      {
-        repoUrl: `https://github.com/${repoFullName}.git`,
-        accessToken: token,
-        branch: job.branch ?? undefined,
-        appName: job.app.name,
-        bundleId: job.app.bundleId,
-        iosDir: job.app.githubIosDir ?? undefined,
-        framework: job.app.githubFramework ?? undefined,
-        envVars,
-      },
-      log,
-    );
+    const snapshotParams = {
+      repoUrl: `https://github.com/${repoFullName}.git`,
+      accessToken: token,
+      branch: job.branch ?? undefined,
+      appName: job.app.name,
+      bundleId: job.app.bundleId,
+      iosDir: job.app.githubIosDir ?? undefined,
+      framework: job.app.githubFramework ?? undefined,
+      envVars,
+    };
+
+    // Split the run across idle workers: each part clones+builds itself but only
+    // captures its share of languages, so wall-clock shrinks with worker count.
+    const parts = Math.max(1, workerClient.freeSlotCount());
+    let result: WorkerSnapshotResult;
+    if (parts === 1) {
+      result = await workerClient.snapshot(snapshotParams, log);
+    } else {
+      log(`[capture] Splitting run across ${parts} workers (languages dealt round-robin)`);
+      const partials = await Promise.all(
+        Array.from({ length: parts }, (_, i) =>
+          workerClient.snapshot({ ...snapshotParams, splitIndex: i, splitCount: parts }, (line) =>
+            log(`[part ${i + 1}/${parts}] ${line}`),
+          ),
+        ),
+      );
+      result = mergeSnapshotResults(partials);
+    }
 
     if (!result.ok) {
       throw new Error(`Worker snapshot failed: ${result.errors.join("; ")}`);
@@ -353,6 +368,34 @@ function compareVersionStrings(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+// Language-split parts capture disjoint locales, so screenshots merge without
+// collisions; descriptions/config are identical per part - keep the fullest one.
+function mergeSnapshotResults(parts: WorkerSnapshotResult[]): WorkerSnapshotResult {
+  const merged: WorkerSnapshotResult = {
+    ok: parts.every((p) => p.ok),
+    logs: parts.flatMap((p) => p.logs ?? []),
+    errors: parts.flatMap((p) => p.errors ?? []),
+    screenshots: {},
+    descriptions: {},
+    config: {},
+    xcresultLogs: parts.flatMap((p) => p.xcresultLogs ?? []),
+    ipaBuilt: parts.some((p) => p.ipaBuilt),
+    ipaPath: parts.find((p) => p.ipaPath)?.ipaPath,
+  };
+  for (const p of parts) {
+    for (const [locale, imgs] of Object.entries(p.screenshots ?? {})) {
+      merged.screenshots[locale] = (merged.screenshots[locale] ?? []).concat(imgs);
+    }
+    if (Object.keys(p.descriptions ?? {}).length > Object.keys(merged.descriptions).length) {
+      merged.descriptions = p.descriptions;
+    }
+    if (Object.keys(p.config ?? {}).length > Object.keys(merged.config).length) {
+      merged.config = p.config;
+    }
+  }
+  return merged;
+}
+
 function uniqueValidLocales(locales: VersionLocale[]): VersionLocale[] {
   const seen = new Set<string>();
   const result: VersionLocale[] = [];
@@ -463,6 +506,7 @@ async function resolveLatestVersionLocales(
     return [];
   }
 }
+
 
 function pickSourceLocale(targetLocale: string, sourceLocales: string[]): string | null {
   if (sourceLocales.includes(targetLocale)) return targetLocale;
