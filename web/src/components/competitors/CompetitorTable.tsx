@@ -60,11 +60,12 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
     >
       <table className="w-full border-collapse table-fixed">
         <colgroup>
-          <col style={{ width: "34%" }} />
-          <col style={{ width: "26%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "14%" }} />
-          <col style={{ width: "8%" }} />
+          <col style={{ width: "24%" }} />
+          <col style={{ width: "16%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "25%" }} />
+          <col style={{ width: "10%" }} />
           <col style={{ width: "6%" }} />
         </colgroup>
         <thead>
@@ -73,6 +74,7 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
             <th className={TH}>Bundle ID</th>
             {col("rating", "Rating")}
             {col("ratingsCount", "Ratings")}
+            <th className={TH}>Monetization</th>
             {col("competitorCount", "Competitors")}
             <th className={TH}></th>
           </tr>
@@ -118,6 +120,33 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
               </td>
               <td className={`${TD} ${textSecondary} tabular-nums`}>
                 {c.ratingsCount != null ? c.ratingsCount.toLocaleString() : "—"}
+              </td>
+              <td className={TD}>
+                {c.inAppPurchases.length === 0 ? (
+                  <span className="text-gray-400 dark:text-[#5c6478]">—</span>
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    {c.inAppPurchases.map((p, i) => (
+                      <div key={i} className="flex items-baseline gap-1.5 min-w-0">
+                        <span
+                          className={`inline-flex items-center px-1 py-px rounded text-[9px] font-bold uppercase tracking-wide shrink-0 ${
+                            p.kind === "subscription"
+                              ? "bg-violet-50 text-violet-700 dark:bg-violet-900/25 dark:text-violet-300"
+                              : "bg-sky-50 text-sky-700 dark:bg-sky-900/25 dark:text-sky-300"
+                          }`}
+                        >
+                          {p.kind === "subscription" ? "Sub" : "IAP"}
+                        </span>
+                        <span className={`text-xs ${textPrimary} truncate`} title={p.name}>
+                          {p.name}
+                        </span>
+                        <span className={`text-xs ${textMuted} shrink-0 ml-auto tabular-nums`}>
+                          {p.price ?? "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </td>
               <td className={`${TD} ${textSecondary} tabular-nums`}>{c.competitorCount}</td>
               <td className={`${TD} text-right`}>

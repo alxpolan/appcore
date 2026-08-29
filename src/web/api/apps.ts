@@ -57,6 +57,7 @@ appsRouter.get("/", async (req, res) => {
       where: whereClause,
       include: {
         snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+        inAppPurchases: { select: { name: true, price: true, kind: true }, orderBy: { position: "asc" } },
         ...(!ownOnly && {
           _count: {
             select: {
@@ -98,6 +99,9 @@ appsRouter.get("/", async (req, res) => {
         iconUrl: a.snapshots[0]?.iconUrl ?? null,
         accentColor: a.accentColor,
         competitorCount: "_count" in a ? (a as any)._count.competitors + (a as any)._count.competitorOf : 0,
+        inAppPurchases: [...a.inAppPurchases].sort(
+          (x, y) => (x.kind === "subscription" ? 0 : 1) - (y.kind === "subscription" ? 0 : 1),
+        ),
         rankingCount: 0,
         updatedAt: a.updatedAt,
       })),

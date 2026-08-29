@@ -115,6 +115,7 @@ export interface AppItem {
   accentColor: string | null;
   subtitle: string | null;
   competitorCount: number;
+  inAppPurchases: { name: string; price: string | null; kind: string }[];
   updatedAt: string;
 }
 

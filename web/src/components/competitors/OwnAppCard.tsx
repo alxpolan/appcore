@@ -11,6 +11,7 @@ export interface AppItem {
   iconUrl: string | null;
   subtitle: string | null;
   competitorCount: number;
+  inAppPurchases: { name: string; price: string | null; kind: string }[];
   updatedAt: string;
 }
 
