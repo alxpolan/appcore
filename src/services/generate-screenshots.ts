@@ -507,7 +507,6 @@ async function resolveLatestVersionLocales(
   }
 }
 
-
 function pickSourceLocale(targetLocale: string, sourceLocales: string[]): string | null {
   if (sourceLocales.includes(targetLocale)) return targetLocale;
   if (sourceLocales.includes("en-US")) return "en-US";
@@ -552,7 +551,20 @@ async function frameScreenshots(
 
     log(`[framing] Framing locales with concurrency ${FRAME_LOCALE_CONCURRENCY}`);
 
+    // runConcurrent runs the workers under Promise.all, so an unhandled throw would
+    // abandon every locale still queued. One bad locale must not cost all the others.
+    const failedLocales: string[] = [];
+
     await runConcurrent(targetLocales, FRAME_LOCALE_CONCURRENCY, async (locale) => {
+      try {
+        await frameLocale(locale);
+      } catch (err) {
+        failedLocales.push(locale);
+        log(`[framing] ${locale}: failed - ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+
+    async function frameLocale(locale: string): Promise<void> {
       const sourceLocale = pickSourceLocale(locale, [...sourceLocaleDirs.keys()]);
       if (!sourceLocale) {
         log(`[framing] ${locale}: no raw screenshots available`);
@@ -622,7 +634,7 @@ async function frameScreenshots(
         (p) => "/screenshots/" + path.relative(path.join(process.cwd(), "screenshots"), p).replace(/\\/g, "/"),
       );
       framedByLocale[locale] = (framedByLocale[locale] ?? []).concat(urls);
-    });
+    }
 
     await prisma.screenshotJob.update({
       where: { id: jobId },
@@ -630,6 +642,9 @@ async function frameScreenshots(
     });
 
     log(`[framing] Framing complete: ${Object.values(framedByLocale).flat().length} image(s)`);
+    if (failedLocales.length > 0) {
+      log(`[framing] WARNING: ${failedLocales.length} locale(s) produced no frames: ${failedLocales.join(", ")}`);
+    }
   } catch (frameErr) {
     const frameMsg = frameErr instanceof Error ? frameErr.message : String(frameErr);
     const stack = frameErr instanceof Error ? frameErr.stack : undefined;

@@ -305,7 +305,9 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
 
       // Lossless PNG rather than JPEG: a smooth two-stop gradient is exactly the content
       // where JPEG shows banding, and it is the full-bleed backdrop of every screenshot.
-      await sharp(Buffer.from(svg)).png().toFile(path.join(tmpDir, `background-${key}.png`));
+      await sharp(Buffer.from(svg))
+        .png()
+        .toFile(path.join(tmpDir, `background-${key}.png`));
     }
     // Font selection has to see every subline in the batch, not just the fallback, or a
     // locale whose script only appears in a per-image title would render in the wrong face.
@@ -375,13 +377,14 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     }
 
     const fastlaneBin = await findFastlane();
+    const frameitTimeoutMs = Math.min(13 * 60_000, Math.max(300_000, images.length * 60_000));
 
     const runFrameit = async (dir: string) => {
       let output = "";
       try {
         const result = await execAsync(`${fastlaneBin} frameit 2>&1`, {
           cwd: dir,
-          timeout: 300_000,
+          timeout: frameitTimeoutMs,
           env: {
             ...process.env,
             FASTLANE_DISABLE_COLORS: "1",
@@ -394,23 +397,25 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         output = result.stdout ?? "";
       } catch (execErr) {
         const e = execErr as { stdout?: string; stderr?: string; code?: number };
-        output = (e.stdout ?? "") + (e.stderr ?? "");
-        const hasOutput = fs.readdirSync(dir).some((f) => f.endsWith("_framed.png"));
-        if (!hasOutput) {
-          throw new Error(`fastlane frameit failed (code ${e.code}).\n${output}`);
-        }
+        output = `${e.stdout ?? ""}${e.stderr ?? ""}\n[frameit exited with code ${e.code}]`;
       }
       return output;
     };
 
-    const [combinedOutput] = await Promise.all([
-      runFrameit(tmpDir),
-      ...(tmpDirNoBg ? [runFrameit(tmpDirNoBg)] : []),
-    ]);
+    const [combinedOutput] = await Promise.all([runFrameit(tmpDir), ...(tmpDirNoBg ? [runFrameit(tmpDirNoBg)] : [])]);
 
     const framedFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith("_framed.png"));
-    if (framedFiles.length === 0) {
-      throw new Error(`frameit produced no output.\n${combinedOutput}`);
+    const producedBases = new Set(framedFiles.map((f) => f.replace(/_framed\.png$/, "")));
+    const missing = images
+      .map((img) => img.filename.replace(/\.[^.]+$/, ""))
+      .filter((base) => !producedBases.has(base));
+
+    if (missing.length > 0) {
+      throw new Error(
+        `frameit produced ${framedFiles.length}/${images.length} images after ${Math.round(
+          frameitTimeoutMs / 1000,
+        )}s budget. Missing: ${missing.join(", ")}\n${combinedOutput}`,
+      );
     }
 
     const gravityFor = (base: string) => {
