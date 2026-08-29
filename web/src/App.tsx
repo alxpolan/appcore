@@ -76,6 +76,7 @@ import {
   CreditCard,
   Shield,
   PanelLeft,
+  Cable,
 } from "lucide-react";
 
 const sidebarLinks = [
@@ -87,7 +88,39 @@ const sidebarLinks = [
 
 const sidebarOperations = [
   { to: "/logs", label: "Logs", icon: Zap },
+  { to: "/integrations", label: "Integrations", icon: Cable },
   { to: "/app-settings", label: "App Settings", icon: SettingsIcon },
+];
+
+type SidebarLink = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  end?: boolean;
+  fringeloOnly?: boolean;
+};
+
+const settingsLinks: SidebarLink[] = [
+  { to: "/settings/profile", label: "Profile", icon: UserIcon },
+  { to: "/settings/security", label: "Security", icon: Shield },
+  { to: "/settings/team-settings", label: "Team Settings", icon: SettingsIcon },
+  { to: "/settings/team", label: "Team", icon: Users },
+  { to: "/settings/agents", label: "Agents", icon: Bot },
+  { to: "/settings/billing", label: "Billing", icon: CreditCard },
+];
+
+// Icon-only rail shown when the sidebar is collapsed. The collapsible sections cannot
+// expand in a 56px rail, so each is represented by its first sub-route — the same target
+// their header button navigates to when opened.
+const railLinks: SidebarLink[] = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/analytics", label: "Analytics", icon: BarChart2 },
+  { to: "/keywords", label: "Keywords", icon: Search },
+  { to: "/competitors", label: "Competitors", icon: Users },
+  { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
+  { to: "/monetization/subscriptions", label: "Monetization", icon: DollarSign },
+  { to: "/versions", label: "Versions", icon: FileText },
+  { to: "/game-center/leaderboards", label: "Game Center", icon: Swords, fringeloOnly: true },
 ];
 
 // Routes whose data comes from the App Store Connect API. Without a key these
@@ -992,16 +1025,60 @@ function MonetizationSidebarSection({ navLinkClass }: { navLinkClass: (p: { isAc
   );
 }
 
+function SidebarRail({
+  inSettings,
+  isFringeloTeam,
+  onExpand,
+}: {
+  inSettings: boolean;
+  isFringeloTeam: boolean;
+  onExpand: () => void;
+}) {
+  const navigate = useNavigate();
+
+  const railLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center justify-center w-10 h-10 rounded-lg transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] ${
+      isActive
+        ? "bg-white text-[#1a1a2e] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)] [&_svg]:opacity-100"
+        : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] [&_svg]:opacity-60"
+    }`;
+
+  const iconButtonClass =
+    "flex items-center justify-center w-10 h-10 rounded-lg text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all";
+
+  const links = inSettings ? settingsLinks : railLinks.filter((l) => !l.fringeloOnly || isFringeloTeam);
+
+  return (
+    // Hidden below lg: there the sidebar is an overlay and always shows its full form.
+    <nav className="hidden lg:flex flex-col items-center gap-1 px-2 pt-1 flex-1">
+      {inSettings && (
+        <button onClick={() => navigate("/dashboard")} className={iconButtonClass} title="Back" aria-label="Back">
+          <ArrowLeft className="w-[18px] h-[18px] opacity-60" />
+        </button>
+      )}
+      {links.map((link) => (
+        <NavLink key={link.to} to={link.to} end={link.end} className={railLinkClass} title={link.label}>
+          <link.icon />
+        </NavLink>
+      ))}
+      <div className="mt-auto pb-3 flex flex-col items-center gap-1">
+        <div className="h-px w-8 bg-[#eef0f3] dark:bg-[#2a2f3d] mb-1" />
+        {!inSettings &&
+          sidebarOperations.map((link) => (
+            <NavLink key={link.to} to={link.to} className={railLinkClass} title={link.label}>
+              <link.icon />
+            </NavLink>
+          ))}
+        <button onClick={onExpand} className={iconButtonClass} title="Expand sidebar" aria-label="Expand sidebar">
+          <PanelLeft className="w-[18px] h-[18px]" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 function SettingsSidebar({ navLinkClass }: { navLinkClass: (p: { isActive: boolean }) => string }) {
   const navigate = useNavigate();
-  const settingsLinks = [
-    { to: "/settings/profile", label: "Profile", icon: UserIcon },
-    { to: "/settings/security", label: "Security", icon: Shield },
-    { to: "/settings/team-settings", label: "Team Settings", icon: SettingsIcon },
-    { to: "/settings/team", label: "Team", icon: Users },
-    { to: "/settings/agents", label: "Agents", icon: Bot },
-    { to: "/settings/billing", label: "Billing", icon: CreditCard },
-  ];
 
   return (
     <nav className="px-2 pt-1 flex-1 flex flex-col">
@@ -1229,7 +1306,9 @@ export default function App() {
           </div>
         )}
         {/*demo@marteso.com*/}
-        <header className="h-[52px] bg-[var(--shell-bg)] flex items-center px-4 shrink-0 transition-colors">
+        {/* No left padding from lg up so the logo box can start at x=0 and share the
+            rail's 56px column, which puts the logo dead centre over the rail icons. */}
+        <header className="h-[52px] bg-[var(--shell-bg)] flex items-center pl-4 pr-4 lg:pl-0 shrink-0 transition-colors">
           <button
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open menu"
@@ -1237,22 +1316,10 @@ export default function App() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          {/* Only way back once the sidebar is collapsed, since the collapse button lives inside it */}
-          {sidebarCollapsed && (
-            <button
-              onClick={() => setSidebarCollapsed(false)}
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
-              className="hidden lg:flex mr-2 -ml-1 p-1.5 rounded-lg text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
-            >
-              <PanelLeft className="w-[18px] h-[18px]" />
-            </button>
-          )}
-          {/* Fixed 216px from the header's 16px inset ends at x=232, the same right edge
-              as the sidebar nav items (240px sidebar, px-2). Only pinned from lg up,
-              where the sidebar exists. */}
-          <div className="flex items-center min-w-0 lg:w-[216px] lg:shrink-0">
-            <a href="/" className="flex items-center shrink-0">
+          {/* Starts at x=0 from lg up, so 232px lands exactly on the right edge of the
+              sidebar nav items (240px sidebar, px-2). */}
+          <div className="flex items-center min-w-0 lg:w-[232px] lg:shrink-0">
+            <a href="/" className="flex items-center shrink-0 lg:w-[56px] lg:justify-center">
               <img src="/logo.svg" alt="Marteso" className="h-[24px] w-auto" />
             </a>
             <div className="ml-2.5 min-w-0 flex-1">
@@ -1282,9 +1349,12 @@ export default function App() {
             />
           )}
           <aside
-            className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto w-[240px] min-w-[240px] bg-[var(--shell-bg)] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:translate-x-0 lg:shadow-none lg:transition-colors ${
+            // overflow-x-hidden clips the 240px content while the width animates in, so
+            // it is revealed rather than spilling over the main area.
+            // The cubic-bezier overshoots slightly past the target width: the mini bounce.
+            className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto w-[240px] min-w-[240px] bg-[var(--shell-bg)] flex flex-col overflow-y-auto overflow-x-hidden transition-transform duration-300 ease-in-out lg:translate-x-0 lg:shadow-none lg:transition-[width,min-width,background-color] lg:duration-300 lg:ease-[cubic-bezier(0.34,1.36,0.64,1)] ${
               mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-            } ${sidebarCollapsed ? "lg:hidden" : ""}`}
+            } ${sidebarCollapsed ? "lg:w-[56px] lg:min-w-[56px]" : ""}`}
           >
             <div className="lg:hidden flex justify-end px-2 pt-2">
               <button
@@ -1295,10 +1365,19 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {inSettings ? (
-              <SettingsSidebar navLinkClass={navLinkClass} />
-            ) : (
-              <>
+            {sidebarCollapsed && (
+              <SidebarRail
+                inSettings={inSettings}
+                isFringeloTeam={!!user.isFringeloTeam}
+                onExpand={() => setSidebarCollapsed(false)}
+              />
+            )}
+            {/* Full sidebar. Stays rendered when collapsed so the mobile overlay, which
+                ignores the collapsed state, still has it. */}
+            <div className={`flex flex-col flex-1 min-h-0 ${sidebarCollapsed ? "lg:hidden" : ""}`}>
+              {inSettings ? (
+                <SettingsSidebar navLinkClass={navLinkClass} />
+              ) : (
                 <nav className="px-2 pt-1 flex-1 flex flex-col">
                   {sidebarLinks.slice(0, 1).map((link) => (
                     <NavLink key={link.to} to={link.to} className={navLinkClass}>
@@ -1337,8 +1416,8 @@ export default function App() {
                     </button>
                   </div>
                 </nav>
-              </>
-            )}
+              )}
+            </div>
           </aside>
 
           <main className="relative z-30 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-7 sm:py-6 bg-white dark:bg-[#0f1117] rounded-tl-2xl border-t border-l border-[rgba(16,24,40,0.06)] dark:border-[rgba(255,255,255,0.05)] shadow-[-4px_-4px_14px_-8px_rgba(16,24,40,0.05),0_-6px_16px_-8px_rgba(16,24,40,0.07)] dark:shadow-[-4px_-4px_14px_-8px_rgba(0,0,0,0.3),0_-6px_16px_-8px_rgba(0,0,0,0.35)]">
@@ -1347,7 +1426,7 @@ export default function App() {
             )}
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard addToast={addToast} />} />
               <Route path="/suggestions" element={<Suggestions addToast={addToast} />} />
               <Route path="/keywords" element={<Keywords addToast={addToast} isPro={user.plan === "pro"} />} />
               <Route path="/competitors" element={<Competitors addToast={addToast} />} />
