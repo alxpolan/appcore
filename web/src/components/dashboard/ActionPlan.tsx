@@ -62,7 +62,13 @@ const CTA_BY_KEY: Record<string, CtaMeta> = {
 
 const FALLBACK_CTA: CtaMeta = { to: "/keywords", label: "Open Keywords", icon: Search };
 
-export default function ActionPlan({ hasASC }: { hasASC: boolean }) {
+export default function ActionPlan({
+  hasASC,
+  addToast,
+}: {
+  hasASC: boolean;
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}) {
   const { data: scan } = useApi<ScanResult>("/asc/scan");
   const findings = scan?.ready ? (scan.findings ?? []) : [];
 
@@ -72,6 +78,7 @@ export default function ActionPlan({ hasASC }: { hasASC: boolean }) {
         <AscConnectCard
           className="mb-5"
           description="Add your App Store Connect API key to push metadata, sync versions, and apply AI suggestions straight to your listing. Without it, Marteso can only read your public data."
+          addToast={addToast}
         />
       )}
 
@@ -114,19 +121,19 @@ export default function ActionPlan({ hasASC }: { hasASC: boolean }) {
               All caught up. Keep tracking keywords and competitors to stay ahead.
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {findings.map((f) => {
+            <div className="flex flex-col">
+              {findings.map((f, i) => {
                 const cta = CTA_BY_KEY[f.key] ?? FALLBACK_CTA;
                 const Icon = cta.icon;
                 const style = IMPACT_STYLE[f.impact] ?? IMPACT_STYLE.med;
                 return (
                   <div
                     key={f.key}
-                    className={`flex flex-col sm:flex-row items-start gap-3.5 px-4 py-3 rounded-xl border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38]`}
+                    className={`flex flex-col sm:flex-row items-start gap-3.5 py-3 ${
+                      i > 0 ? `border-t ${borderDefault}` : ""
+                    }`}
                   >
-                    <div className="w-9 h-9 rounded-lg bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] flex items-center justify-center text-[#C4001E] shrink-0">
-                      <Icon className="w-[18px] h-[18px]" />
-                    </div>
+                    <Icon className="w-[18px] h-[18px] text-[#C4001E] shrink-0 mt-0.5" />
                     <div className="min-w-0 w-full flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[13.5px] font-semibold ${textPrimary}`}>{f.title}</span>

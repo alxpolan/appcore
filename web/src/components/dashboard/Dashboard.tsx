@@ -6,7 +6,11 @@ import RecentSuggestionsTable from "./RecentSuggestionsTable";
 import DownloadsChart from "../analytics/DownloadsChart";
 import type { DashboardData, DownloadsData } from "../../types";
 
-export default function Dashboard() {
+export default function Dashboard({
+  addToast,
+}: {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}) {
   const { data, loading, error } = useApi<DashboardData>("/dashboard");
   const { data: downloads } = useApi<DownloadsData>("/analytics/downloads?days=90");
 
@@ -24,7 +28,7 @@ export default function Dashboard() {
     <div>
       {app && <AppInfoCard app={app} />}
 
-      {app && <ActionPlan hasASC={config.hasASC} />}
+      {app && <ActionPlan hasASC={config.hasASC} addToast={addToast} />}
 
       <StatsGrid stats={stats} />
 

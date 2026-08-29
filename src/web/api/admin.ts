@@ -142,6 +142,7 @@ const detailIncludes: Record<string, any> = {
 const SECRET_KEYS = new Set([
   "passwordHash",
   "ascPrivateKey",
+  "ascAutoPrivateKey",
   "githubAccessToken",
   "githubWebhookSecret",
   "signingCertP12",

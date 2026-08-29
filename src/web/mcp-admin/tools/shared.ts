@@ -18,6 +18,7 @@ export function fail(message: string) {
 const SECRET_KEYS = new Set([
   "passwordHash",
   "ascPrivateKey",
+  "ascAutoPrivateKey",
   "githubAccessToken",
   "githubWebhookSecret",
   "signingCertP12",

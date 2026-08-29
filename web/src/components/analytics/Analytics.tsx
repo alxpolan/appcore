@@ -22,6 +22,7 @@ import type { AnalyticsSummary, DashboardData, DownloadsData, PlatformsData, Pur
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRelativeDateTime, fmtPct, countryName } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
+import AscConnectCard from "../AscConnectCard";
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -347,6 +348,14 @@ export default function Analytics({ addToast }: Props) {
           </button>
         </div>
       </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to pull downloads, proceeds, impressions and reviews."
+          addToast={addToast}
+        />
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <StatCard
