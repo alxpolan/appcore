@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import {
   ComposedChart,
@@ -38,15 +38,54 @@ const METRICS = [
 
 type MetricKey = (typeof METRICS)[number]["key"];
 
+// Both come from Apple's engagement report, which arrives independently of the downloads
+// report. When it is missing the day's row still exists (sessions keep counting) and both
+// land on 0, which is what made the lines dive to zero instead of showing a gap.
+//
+// Deliberately limited to these two: a live app does not record literally zero impressions
+// AND zero page views, so 0/0 reliably means "no report". Downloads and updates are left
+// alone because 0 downloads on a day is a perfectly real value for a small app.
+const ENGAGEMENT_KEYS = ["impressions", "pageViews"] as const;
+
+const DASH_PREFIX = "__dash_";
+
+type ChartPoint = Record<string, string | number | null>;
+
+/** Straight line between the nearest real values on either side of a gap. */
+function bridgeValue(data: DayData[], isGap: boolean[], index: number, key: string): number | null {
+  let prev = index - 1;
+  while (prev >= 0 && isGap[prev]) prev--;
+  let next = index + 1;
+  while (next < data.length && isGap[next]) next++;
+
+  const prevVal = prev >= 0 ? (data[prev][key as keyof DayData] as number) : null;
+  const nextVal = next < data.length ? (data[next][key as keyof DayData] as number) : null;
+
+  if (prevVal === null && nextVal === null) return null;
+  // Gap runs to the edge of the range: hold the one known value flat.
+  if (prevVal === null) return nextVal;
+  if (nextVal === null) return prevVal;
+
+  const ratio = (index - prev) / (next - prev);
+  return prevVal + (nextVal - prevVal) * ratio;
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
+
+  // Hide the dashed bridge series and any metric that has no report for this day.
+  const rows = payload.filter(
+    (p: any) => !String(p.dataKey).startsWith(DASH_PREFIX) && p.value !== null && p.value !== undefined,
+  );
+
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl px-4 py-3`}
       style={{ boxShadow: "0 4px 16px rgba(0,0,0,0.08)", minWidth: 160 }}
     >
       <div className={`text-[11px] ${textMuted} mb-2 font-medium`}>{fmtShortDate(String(label))}</div>
-      {payload.map((p: any) => (
+      {rows.length === 0 && <div className={`text-[12px] ${textSecondary}`}>No report for this day</div>}
+      {rows.map((p: any) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-3 text-[12px] mb-1">
           <span className={`flex items-center gap-1.5 ${textSecondary}`}>
             <span className="inline-block w-2 h-2 rounded-full" style={{ background: p.color }} />
@@ -67,6 +106,25 @@ export default function MetricsChart({ data, markers = [] }: Props) {
   const [activeMetrics, setActiveMetrics] = useState<Set<MetricKey>>(
     new Set(["downloads", "impressions", "pageViews"]),
   );
+
+  const chartData = useMemo<ChartPoint[]>(() => {
+    const isGap = data.map((d) => ENGAGEMENT_KEYS.every((k) => !d[k]));
+
+    return data.map((d, i) => {
+      const point: ChartPoint = { ...d };
+      for (const key of ENGAGEMENT_KEYS) {
+        if (isGap[i]) {
+          point[key] = null;
+          point[DASH_PREFIX + key] = bridgeValue(data, isGap, i, key);
+        } else {
+          // The days on either side of a gap must also carry the dashed value, otherwise
+          // the dashed segment floats free instead of meeting the solid line.
+          point[DASH_PREFIX + key] = isGap[i - 1] || isGap[i + 1] ? d[key] : null;
+        }
+      }
+      return point;
+    });
+  }, [data]);
 
   const hasEngagement = data.some((d) => d.impressions > 0 || d.pageViews > 0);
   const hasRevenue = data.some((d) => d.proceeds > 0);
@@ -147,7 +205,7 @@ export default function MetricsChart({ data, markers = [] }: Props) {
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           <ComposedChart
-            data={data}
+            data={chartData}
             margin={{
               top: 4,
               right: showRightAxis ? 48 : 16,
@@ -223,6 +281,24 @@ export default function MetricsChart({ data, markers = [] }: Props) {
                   }}
                 />
               ))}
+            {METRICS.filter(
+              (m) => activeMetrics.has(m.key) && (ENGAGEMENT_KEYS as readonly string[]).includes(m.key),
+            ).map((m) => (
+              <Line
+                key={DASH_PREFIX + m.key}
+                yAxisId="left"
+                type="monotoneX"
+                dataKey={DASH_PREFIX + m.key}
+                stroke={m.color}
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                strokeOpacity={0.55}
+                dot={false}
+                activeDot={false}
+                legendType="none"
+                isAnimationActive={false}
+              />
+            ))}
             {METRICS.filter((m) => activeMetrics.has(m.key)).map((m) =>
               m.key === "proceeds" ? (
                 <Bar
@@ -245,6 +321,10 @@ export default function MetricsChart({ data, markers = [] }: Props) {
                   stroke={m.color}
                   strokeWidth={2}
                   dot={false}
+                  // Recharts draws its reveal animation via stroke-dasharray. With null
+                  // values in the series that animation never completes and the whole
+                  // line stays invisible, so it has to be off here.
+                  isAnimationActive={false}
                   activeDot={{
                     r: 5,
                     strokeWidth: 2,
