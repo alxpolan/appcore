@@ -75,6 +75,7 @@ import {
   ArrowLeft,
   CreditCard,
   Shield,
+  PanelLeft,
 } from "lucide-react";
 
 const sidebarLinks = [
@@ -227,31 +228,28 @@ function AppSwitcher({
 
   return (
     <>
-      <div ref={ref} className="relative mx-2 mb-4">
+      <div ref={ref} className="relative">
         <button
           onClick={() => setOpen(!open)}
-          className="w-full px-3 py-2.5 bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl flex items-center gap-2.5 hover:border-[#d1d5db] dark:hover:border-[#3a4050] transition-colors group"
+          className="w-full pl-1.5 pr-2 py-1.5 rounded-[10px] flex items-center gap-2 bg-black/[0.06] dark:bg-white/10 hover:bg-black/[0.09] dark:hover:bg-white/[0.15] transition-colors"
         >
           {activeApp ? (
-            <AppAvatar url={activeApp.iconUrl} name={activeApp.displayName ?? activeApp.name} size={9} accent />
+            <AppAvatar url={activeApp.iconUrl} name={activeApp.displayName ?? activeApp.name} size={5} accent />
           ) : (
-            <div className="w-9 h-9 rounded-lg bg-gray-200 dark:bg-[#2a2f3d] shrink-0" />
+            <div className="w-5 h-5 rounded-lg bg-gray-200 dark:bg-[#2a2f3d] shrink-0" />
           )}
-          <div className="overflow-hidden flex-1 text-left">
-            <div className="text-[15px] font-semibold text-[#1a1a2e] dark:text-[#e8eaf0] truncate leading-tight">
-              {activeApp?.displayName ?? activeApp?.name ?? current?.displayName ?? current?.name ?? "No app"}
-            </div>
-            <div className={`text-[11px] ${textMuted} truncate font-mono`}>
-              {activeApp?.bundleId ?? current?.bundleId ?? "—"}
-            </div>
-          </div>
+          {/* min-w-0 so the flex item may shrink below its text width and actually truncate */}
+          <span className="min-w-0 text-[14px] font-semibold text-[#1a1a2e] dark:text-[#e8eaf0] truncate">
+            {activeApp?.displayName ?? activeApp?.name ?? current?.displayName ?? current?.name ?? "No app"}
+          </span>
           <ChevronDown
-            className={`w-4 h-4 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${open ? "rotate-180" : ""}`}
+            /* #FF6B00 is the logo gradient's own top stop, so the marker reads as the brand accent */
+            className={`w-4 h-4 shrink-0 ml-auto text-[#FF6B00] transition-transform ${open ? "rotate-180" : ""}`}
           />
         </button>
 
         {open && (
-          <div className="absolute left-0 right-0 top-[calc(100%+6px)] bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden">
+          <div className="absolute left-0 top-[calc(100%+6px)] w-[280px] bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden">
             <div className="px-3 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-[#5c6478]">
               Your Apps
             </div>
@@ -264,13 +262,10 @@ function AppSwitcher({
                 onClick={() => handleSelect(a)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors text-left ${a.bundleId === activeBundleResolved ? "bg-[#fef2f3] dark:bg-[#2a1f23]" : ""}`}
               >
-                <AppAvatar url={a.iconUrl} name={a.displayName ?? a.name} size={8} accent />
-                <div className="overflow-hidden">
-                  <div className="text-[13px] font-medium text-[#1a1a2e] dark:text-[#e8eaf0] truncate">
-                    {a.displayName ?? a.name}
-                  </div>
-                  <div className="text-[10px] text-gray-400 dark:text-[#5c6478] font-mono truncate">{a.bundleId}</div>
-                </div>
+                <AppAvatar url={a.iconUrl} name={a.displayName ?? a.name} size={7} accent />
+                <span className="min-w-0 text-[13px] font-medium text-[#1a1a2e] dark:text-[#e8eaf0] truncate">
+                  {a.displayName ?? a.name}
+                </span>
                 {a.bundleId === activeBundleResolved && (
                   <Check className="w-3.5 h-3.5 shrink-0 text-[#C4001E] ml-auto" />
                 )}
@@ -572,12 +567,12 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
       <div className="flex items-center gap-1 mb-0.5">
         <button
           onClick={handleHeaderClick}
-          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
         >
           <BarChart2 />
           <span className="flex-1 text-left">Analytics</span>
           <ChevronDown
-            className={`!w-3.5 !h-3.5 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
           />
         </button>
       </div>
@@ -592,7 +587,7 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
                 `flex items-center px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
                   isActive
                     ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
-                    : "text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
+                    : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
                 }`
               }
             >
@@ -746,12 +741,12 @@ function VersionsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive
       <div className="flex items-center gap-1 mb-0.5">
         <button
           onClick={handleToggle}
-          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
         >
           <FileText />
           <span className="flex-1 text-left">Versions</span>
           <ChevronDown
-            className={`!w-3.5 !h-3.5 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
           />
         </button>
         <button
@@ -833,7 +828,7 @@ function VersionsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive
                 className={`flex items-center justify-between gap-2 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
                   isActive
                     ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
-                    : "text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
+                    : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
                 }`}
               >
                 <span className="truncate">{v.versionString}</span>
@@ -879,12 +874,12 @@ function GameCenterSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActi
       <div className="flex items-center gap-1 mb-0.5">
         <button
           onClick={handleHeaderClick}
-          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
         >
           <Trophy />
           <span className="flex-1 text-left">Game Center</span>
           <ChevronDown
-            className={`!w-3.5 !h-3.5 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
           />
         </button>
       </div>
@@ -898,7 +893,7 @@ function GameCenterSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActi
                 `flex items-center px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
                   isActive
                     ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
-                    : "text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
+                    : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
                 }`
               }
             >
@@ -923,12 +918,12 @@ function MoreSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive: bo
     <div>
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+        className="w-full flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
       >
         <Swords />
         <span className="flex-1 text-left">More</span>
         <ChevronDown
-          className={`!w-3.5 !h-3.5 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
         />
       </button>
       {expanded && (
@@ -969,12 +964,12 @@ function MonetizationSidebarSection({ navLinkClass }: { navLinkClass: (p: { isAc
       <div className="flex items-center gap-1 mb-0.5">
         <button
           onClick={handleHeaderClick}
-          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
         >
           <DollarSign />
           <span className="flex-1 text-left">Monetization</span>
           <ChevronDown
-            className={`!w-3.5 !h-3.5 shrink-0 text-gray-400 dark:text-[#5c6478] transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
           />
         </button>
       </div>
@@ -988,7 +983,7 @@ function MonetizationSidebarSection({ navLinkClass }: { navLinkClass: (p: { isAc
                 `flex items-center px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
                   isActive
                     ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
-                    : "text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
+                    : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
                 }`
               }
             >
@@ -1016,7 +1011,7 @@ function SettingsSidebar({ navLinkClass }: { navLinkClass: (p: { isActive: boole
     <nav className="px-2 pt-1 flex-1 flex flex-col">
       <button
         onClick={() => navigate("/dashboard")}
-        className="flex items-center gap-2 px-3 py-[9px] mb-2 rounded-lg text-sm font-medium text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] transition-all"
+        className="flex items-center gap-2 px-3 py-[9px] mb-2 rounded-lg text-sm font-medium text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] transition-all"
       >
         <ArrowLeft className="w-[18px] h-[18px] opacity-60" />
         Back
@@ -1047,6 +1042,12 @@ export default function App() {
   const [dark, setDark] = useState(() => {
     return localStorage.getItem("theme") === "dark";
   });
+  // Desktop-only: on mobile the sidebar is already an overlay driven by mobileNavOpen.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar") === "collapsed");
+
+  useEffect(() => {
+    localStorage.setItem("sidebar", sidebarCollapsed ? "collapsed" : "expanded");
+  }, [sidebarCollapsed]);
   const inSettings = location.pathname.startsWith("/settings");
 
   useEffect(() => {
@@ -1207,7 +1208,7 @@ export default function App() {
     `flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium mb-0.5 transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] ${
       isActive
         ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)] [&_svg]:opacity-100"
-        : "text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&_svg]:opacity-60"
+        : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&_svg]:opacity-60"
     }`;
 
   return (
@@ -1240,9 +1241,28 @@ export default function App() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <a href="/" className="flex items-center">
-            <img src="/logo-wordmark.svg" alt="Marteso" className="h-[28px] w-auto" />
-          </a>
+          {/* Only way back once the sidebar is collapsed, since the collapse button lives inside it */}
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              className="hidden lg:flex mr-2 -ml-1 p-1.5 rounded-lg text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
+            >
+              <PanelLeft className="w-[18px] h-[18px]" />
+            </button>
+          )}
+          {/* Fixed 216px from the header's 16px inset ends at x=232, the same right edge
+              as the sidebar nav items (240px sidebar, px-2). Only pinned from lg up,
+              where the sidebar exists. */}
+          <div className="flex items-center min-w-0 lg:w-[216px] lg:shrink-0">
+            <a href="/" className="flex items-center shrink-0">
+              <img src="/logo.svg" alt="Marteso" className="h-[24px] w-auto" />
+            </a>
+            <div className="ml-2.5 min-w-0 flex-1">
+              <AppSwitcher current={dash?.app ?? null} addToast={addToast} />
+            </div>
+          </div>
           <div className="flex-1" />
           <button
             onClick={() => setSearchOpen(true)}
@@ -1266,15 +1286,15 @@ export default function App() {
             />
           )}
           <aside
-            className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto w-[250px] min-w-[250px] bg-[var(--shell-bg)] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:translate-x-0 lg:shadow-none lg:transition-colors ${
+            className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto w-[240px] min-w-[240px] bg-[var(--shell-bg)] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:translate-x-0 lg:shadow-none lg:transition-colors ${
               mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-            }`}
+            } ${sidebarCollapsed ? "lg:hidden" : ""}`}
           >
             <div className="lg:hidden flex justify-end px-2 pt-2">
               <button
                 onClick={() => setMobileNavOpen(false)}
                 aria-label="Close menu"
-                className="p-2 rounded-lg text-[#374151] dark:text-[#c4cad8] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
+                className="p-2 rounded-lg text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1283,7 +1303,6 @@ export default function App() {
               <SettingsSidebar navLinkClass={navLinkClass} />
             ) : (
               <>
-                <AppSwitcher current={dash?.app ?? null} addToast={addToast} />
                 <nav className="px-2 pt-1 flex-1 flex flex-col">
                   {sidebarLinks.slice(0, 1).map((link) => (
                     <NavLink key={link.to} to={link.to} className={navLinkClass}>
@@ -1312,6 +1331,14 @@ export default function App() {
                         {link.label}
                       </NavLink>
                     ))}
+                    <button
+                      onClick={() => setSidebarCollapsed(true)}
+                      aria-label="Collapse sidebar"
+                      title="Collapse sidebar"
+                      className="hidden lg:flex items-center px-3 py-[9px] mt-0.5 rounded-lg text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                    >
+                      <PanelLeft className="w-[18px] h-[18px]" />
+                    </button>
                   </div>
                 </nav>
               </>
