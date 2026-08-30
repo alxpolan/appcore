@@ -12,10 +12,18 @@ import {
   Tooltip,
 } from "recharts";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
-import type { AnalyticsSummary, DownloadsData, LtvData, PurchaseData } from "../../types";
+import type { AnalyticsSummary, DashboardData, DownloadsData, LtvData, PurchaseData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRevenueShort, fmtShortDate } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
+import DemoModeFrame from "../DemoModeFrame";
+import AscConnectCard from "../AscConnectCard";
+import {
+  generateDemoDownloads,
+  generateDemoSummary,
+  generateDemoLtv,
+  generateDemoPurchases,
+} from "../../utils/demoAnalyticsData";
 
 function StatCard({
   label,
@@ -81,7 +89,11 @@ const LtvTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export default function AnalyticsFinancial() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsFinancial({ addToast }: Props) {
   const bundleId = getActiveBundleId() ?? "";
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
@@ -97,71 +109,48 @@ export default function AnalyticsFinancial() {
     `/analytics/purchases?bundleId=${bundleId}&limit=100`,
   );
 
-  const revenueByDay = downloads?.byDay.map((d) => ({ date: d.date, proceeds: d.proceeds })) ?? [];
-  const ltvByDay = ltv?.byDay ?? [];
+  const { data: dash } = useApi<DashboardData>("/dashboard");
+  const hasASC = dash?.config?.hasASC ?? true;
+  const demoDownloads = useMemo(() => generateDemoDownloads(range), [range]);
+  const demoSummary = useMemo(() => generateDemoSummary(demoDownloads), [demoDownloads]);
+  const demoLtv = useMemo(() => generateDemoLtv(demoDownloads), [demoDownloads]);
+  const demoPurchases = useMemo(() => generateDemoPurchases(20), []);
+
+  const effSummary = hasASC ? summary : demoSummary;
+  const effDownloads = hasASC ? downloads : demoDownloads;
+  const effLtv = hasASC ? ltv : demoLtv;
+  const effPurchases = hasASC ? purchases : demoPurchases;
+  const summaryLoading = hasASC && sumLoading;
+  const effPurchasesLoading = hasASC && purchasesLoading;
+
+  const revenueByDay = effDownloads?.byDay.map((d) => ({ date: d.date, proceeds: d.proceeds })) ?? [];
+  const ltvByDay = effLtv?.byDay ?? [];
 
   const avgTransactionValue = useMemo(() => {
-    const rows = purchases ?? [];
+    const rows = effPurchases ?? [];
     const totalProceeds = rows.reduce((s, r) => s + r.proceedsUsd, 0);
     const totalQty = rows.reduce((s, r) => s + r.purchases, 0);
     return totalQty > 0 ? totalProceeds / totalQty : 0;
-  }, [purchases]);
+  }, [effPurchases]);
 
-  return (
-    <div className="max-w-[1440px] mx-auto">
-      <h1 className={`${pageTitle} mb-6`}>Financial</h1>
-
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
-          {RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setRange(opt.key)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                range === opt.key
-                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
-                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {range === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-            <span className={`${textMuted} text-[12px]`}>–</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-          </div>
-        )}
-      </div>
-
+  const financialContent = (
+    <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <StatCard
           label="Revenue"
-          value={sumLoading ? "—" : fmtRevenue(summary?.totalProceeds ?? 0)}
+          value={summaryLoading ? "—" : fmtRevenue(effSummary?.totalProceeds ?? 0)}
           sub={rangeLabel(range)}
           icon={<DollarSign className="w-4 h-4" />}
         />
         <StatCard
           label="LTV"
-          value={fmtRevenue(ltv?.currentLtv ?? 0)}
+          value={fmtRevenue(effLtv?.currentLtv ?? 0)}
           sub="proceeds per install, all time"
           icon={<TrendingUp className="w-4 h-4" />}
         />
         <StatCard
           label="Paying Users"
-          value={sumLoading ? "—" : fmtNumber(summary?.totalPayingUsers ?? 0)}
+          value={summaryLoading ? "—" : fmtNumber(effSummary?.totalPayingUsers ?? 0)}
           sub={rangeLabel(range)}
           icon={<Users className="w-4 h-4" />}
         />
@@ -247,9 +236,9 @@ export default function AnalyticsFinancial() {
           <ShoppingBag className={`w-4 h-4 ${textMuted}`} />
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Recent Transactions</div>
         </div>
-        {purchasesLoading ? (
+        {effPurchasesLoading ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
-        ) : (purchases ?? []).length === 0 ? (
+        ) : (effPurchases ?? []).length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No purchases synced yet</div>
         ) : (
           <table className="w-full">
@@ -264,7 +253,7 @@ export default function AnalyticsFinancial() {
               </tr>
             </thead>
             <tbody>
-              {(purchases ?? []).map((p, i) => (
+              {(effPurchases ?? []).map((p, i) => (
                 <tr key={i} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
                   <td className={TD}>{p.date}</td>
                   <td className={TD}>
@@ -293,6 +282,57 @@ export default function AnalyticsFinancial() {
           </table>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="max-w-[1440px] mx-auto">
+      <h1 className={`${pageTitle} mb-6`}>Financial</h1>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setRange(opt.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                range === opt.key
+                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+            <span className={`${textMuted} text-[12px]`}>–</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+          </div>
+        )}
+      </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to pull real revenue, LTV and transaction data."
+          addToast={addToast}
+        />
+      )}
+
+      {hasASC ? financialContent : <DemoModeFrame>{financialContent}</DemoModeFrame>}
     </div>
   );
 }

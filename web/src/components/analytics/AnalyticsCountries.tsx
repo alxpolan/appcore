@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi, getActiveBundleId, authHeaders } from "../../hooks/useApi";
-import type { DownloadsData, CountryData } from "../../types";
+import type { DashboardData, DownloadsData, CountryData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, countryName, fmtLargeNum } from "../../utils/formatters";
 import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
+import DemoModeFrame from "../DemoModeFrame";
+import AscConnectCard from "../AscConnectCard";
+import { generateDemoDownloads } from "../../utils/demoAnalyticsData";
 import {
   BarChart,
   Bar,
@@ -21,7 +24,6 @@ import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel, prevPeriodPara
 
 type CountrySortKey = "country" | "downloads" | "impressions" | "pageViews" | "conv" | "share";
 
-// Validated categorical palette (slots 1-5) for the top-country lines; "Other" is gray.
 const COUNTRY_LINE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
 const OTHER_LINE_COLOR = "#9ca3af";
 
@@ -55,7 +57,11 @@ function TrendBadge({ current, prev }: { current: number; prev: number | undefin
   );
 }
 
-export default function AnalyticsCountries() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsCountries({ addToast }: Props) {
   const bundleId = getActiveBundleId() ?? "";
   const navigate = useNavigate();
   const [range, setRange] = useState<RangeKey>("30d");
@@ -78,19 +84,25 @@ export default function AnalyticsCountries() {
 
   const { data: downloads, loading } = useApi<DownloadsData>(`/analytics/downloads?bundleId=${bundleId}${params}`);
 
+  const { data: dash } = useApi<DashboardData>("/dashboard");
+  const hasASC = dash?.config?.hasASC ?? true;
+  const demoDownloads = useMemo(() => generateDemoDownloads(range), [range]);
+  const effDownloads = hasASC ? downloads : demoDownloads;
+  const effLoading = hasASC && loading;
+
   const anchorDate = useMemo(() => {
-    const days = downloads?.byDay ?? [];
+    const days = effDownloads?.byDay ?? [];
     if (!days.length) return undefined;
     const max = days.reduce((m, d) => (d.date > m ? d.date : m), days[0].date);
     return new Date(max);
-  }, [downloads]);
+  }, [effDownloads]);
 
   const prevParams = useMemo(
-    () => prevPeriodParams(range, customStart, customEnd, anchorDate),
-    [range, customStart, customEnd, anchorDate],
+    () => (hasASC ? prevPeriodParams(range, customStart, customEnd, anchorDate) : null),
+    [range, customStart, customEnd, anchorDate, hasASC],
   );
 
-  const hasEngagementData = (downloads?.byCountry ?? []).some((c) => c.impressions > 0 || c.pageViews > 0);
+  const hasEngagementData = (effDownloads?.byCountry ?? []).some((c) => c.impressions > 0 || c.pageViews > 0);
 
   useEffect(() => {
     if (!showTrend || !prevParams || !bundleId) {
@@ -119,7 +131,7 @@ export default function AnalyticsCountries() {
   );
 
   const sortedCountries = useMemo(() => {
-    const rows = [...(downloads?.byCountry ?? [])];
+    const rows = [...(effDownloads?.byCountry ?? [])];
     rows.sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -144,7 +156,7 @@ export default function AnalyticsCountries() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return rows;
-  }, [downloads, sortBy, sortDir]);
+  }, [effDownloads, sortBy, sortDir]);
 
   const SortableTh = ({
     sortKey,
@@ -168,56 +180,17 @@ export default function AnalyticsCountries() {
     </th>
   );
 
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className={`${pageTitle} mb-1`}>Countries</h1>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
-          {RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setRange(opt.key)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                range === opt.key
-                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
-                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {range === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-            <span className={`${textMuted} text-[12px]`}>–</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-          </div>
-        )}
-      </div>
-
-      {!loading &&
-        (downloads?.byCountryDay ?? []).length > 1 &&
-        (downloads?.countrySeries ?? []).length > 0 &&
+  const countriesContent = (
+    <>
+      {!effLoading &&
+        (effDownloads?.byCountryDay ?? []).length > 1 &&
+        (effDownloads?.countrySeries ?? []).length > 0 &&
         (() => {
-          const series = downloads!.countrySeries;
-          const byCountryDay = downloads!.byCountryDay;
+          const series = effDownloads!.countrySeries;
+          const byCountryDay = effDownloads!.byCountryDay;
           const seriesLabel = (code: string) => (code === "Other" ? "Other" : countryName(code));
           const totals: Record<string, number> = {};
-          for (const c of downloads!.byCountry) {
+          for (const c of effDownloads!.byCountry) {
             const label = series.includes(c.country) ? c.country : "Other";
             totals[label] = (totals[label] ?? 0) + c.downloads;
           }
@@ -334,10 +307,10 @@ export default function AnalyticsCountries() {
           );
         })()}
 
-      {!loading &&
-        (downloads?.byCountry ?? []).length > 0 &&
+      {!effLoading &&
+        (effDownloads?.byCountry ?? []).length > 0 &&
         (() => {
-          const top = (downloads?.byCountry ?? []).slice(0, 15);
+          const top = (effDownloads?.byCountry ?? []).slice(0, 15);
           const chartData = top.map((c) => ({
             name: countryName(c.country),
             downloads: c.downloads,
@@ -407,7 +380,13 @@ export default function AnalyticsCountries() {
           <button
             onClick={() => setShowTrend((v) => !v)}
             disabled={!prevParams}
-            title={!prevParams ? "Trend not available for this range" : "Toggle period-over-period trend"}
+            title={
+              !hasASC
+                ? "Trend not available in demo mode"
+                : !prevParams
+                  ? "Trend not available for this range"
+                  : "Toggle period-over-period trend"
+            }
             className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
               showTrend
                 ? "bg-[#D94412] text-white"
@@ -417,9 +396,9 @@ export default function AnalyticsCountries() {
             Trend
           </button>
         </div>
-        {loading ? (
+        {effLoading ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
-        ) : (downloads?.byCountry ?? []).length === 0 ? (
+        ) : (effDownloads?.byCountry ?? []).length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No data for this period</div>
         ) : (
           <table className="w-full">
@@ -439,7 +418,7 @@ export default function AnalyticsCountries() {
             </thead>
             <tbody>
               {(() => {
-                const total = (downloads?.byCountry ?? []).reduce((s, r) => s + r.downloads, 0);
+                const total = (effDownloads?.byCountry ?? []).reduce((s, r) => s + r.downloads, 0);
                 return sortedCountries.map((r) => {
                   const conv = r.impressions > 0 ? ((r.downloads / r.impressions) * 100).toFixed(1) + "%" : "—";
                   return (
@@ -506,6 +485,59 @@ export default function AnalyticsCountries() {
           </table>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className={`${pageTitle} mb-1`}>Countries</h1>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setRange(opt.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                range === opt.key
+                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+            <span className={`${textMuted} text-[12px]`}>–</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+          </div>
+        )}
+      </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to see your real country breakdown."
+          addToast={addToast}
+        />
+      )}
+
+      {hasASC ? countriesContent : <DemoModeFrame>{countriesContent}</DemoModeFrame>}
     </div>
   );
 }

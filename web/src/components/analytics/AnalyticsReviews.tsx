@@ -1,34 +1,51 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import ReviewsList from "./ReviewsList";
 import RatingTrendChart from "./RatingTrendChart";
-import type { Review, RatingsData } from "../../types";
+import type { DashboardData, Review, RatingsData } from "../../types";
+import DemoModeFrame from "../DemoModeFrame";
+import AscConnectCard from "../AscConnectCard";
+import { generateDemoReviews, generateDemoRatings } from "../../utils/demoAnalyticsData";
 
-export default function AnalyticsReviews() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsReviews({ addToast }: Props) {
   const bundleId = getActiveBundleId() ?? "";
   const [minRating, setMinRating] = useState<number | null>(null);
   const { data: reviews, loading } = useApi<Review[]>(`/analytics/reviews?bundleId=${bundleId}&limit=200`);
   const { data: ratings } = useApi<RatingsData>(`/analytics/ratings?bundleId=${bundleId}&period=all`);
-  const filtered = reviews ? (minRating !== null ? reviews.filter((r) => r.rating === minRating) : reviews) : [];
 
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className={`${pageTitle} mb-1`}>Reviews</h1>
-      </div>
+  const { data: dash } = useApi<DashboardData>("/dashboard");
+  const hasASC = dash?.config?.hasASC ?? true;
+  const demoReviews = useMemo(() => generateDemoReviews(24), []);
+  const demoRatings = useMemo(() => generateDemoRatings(), []);
 
-      {ratings && <RatingTrendChart data={ratings} />}
+  const effReviews = hasASC ? reviews : demoReviews;
+  const effRatings = hasASC ? ratings : demoRatings;
+  const effLoading = hasASC && loading;
 
-      {!loading && (reviews ?? []).length > 0 && (
+  const filtered = effReviews
+    ? minRating !== null
+      ? effReviews.filter((r) => r.rating === minRating)
+      : effReviews
+    : [];
+
+  const reviewsContent = (
+    <>
+      {effRatings && <RatingTrendChart data={effRatings} />}
+
+      {!effLoading && (effReviews ?? []).length > 0 && (
         <div
           className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
         >
           <div className={`text-[16px] font-semibold ${textPrimary} mb-4`}>Rating Distribution</div>
           <div className="space-y-2.5">
             {[5, 4, 3, 2, 1].map((star) => {
-              const total = reviews?.length ?? 0;
-              const count = (reviews ?? []).filter((r) => r.rating === star).length;
+              const total = effReviews?.length ?? 0;
+              const count = (effReviews ?? []).filter((r) => r.rating === star).length;
               const pct = total > 0 ? (count / total) * 100 : 0;
               const isActive = minRating === star;
               return (
@@ -63,6 +80,24 @@ export default function AnalyticsReviews() {
       )}
 
       <ReviewsList reviews={filtered} />
+    </>
+  );
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className={`${pageTitle} mb-1`}>Reviews</h1>
+      </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to pull your real reviews and ratings."
+          addToast={addToast}
+        />
+      )}
+
+      {hasASC ? reviewsContent : <DemoModeFrame>{reviewsContent}</DemoModeFrame>}
     </div>
   );
 }

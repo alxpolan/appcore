@@ -527,6 +527,23 @@ export class SnapshotRunner {
       return false;
     } catch (execErr) {
       const elapsed = Math.round((Date.now() - testStart) / 1000);
+      const eOut = execErr as { stdout?: string; stderr?: string };
+      const combined = `${eOut.stdout ?? ""}${eOut.stderr ?? ""}`;
+
+      // Xcode 26.6: after every suite passes, the runner for a follow-up bundle can
+      // "hang before establishing connection" and xcodebuild exits non-zero although
+      // all tests passed and the screenshots exist. Treat that as success - a retry
+      // would only burn another multi-minute hang.
+      const allPassed = /Test Suite 'All tests' passed/.test(combined);
+      const runnerHung = /hung before establishing connection/.test(combined);
+      const realFailures = /Executed \d+ tests?, with [1-9]\d* failures/.test(combined);
+      if (allPassed && runnerHung && !realFailures) {
+        this.push(
+          `[capture] [${deviceLabel}] ${lang}: tests passed in ${elapsed}s (ignoring post-suite runner hang)`,
+        );
+        return false;
+      }
+
       this.push(`[capture] [${deviceLabel}] ${lang}: tests failed in ${elapsed}s`);
 
       const e = execErr as { stdout?: string; stderr?: string };
@@ -572,10 +589,18 @@ export class SnapshotRunner {
         const outPath = path.join(this.tmpDir, `snap-${this.runId}-${cleanName}`);
 
         try {
-          await execAsync(
-            `xcrun xcresulttool export --legacy --path "${xcPath}" --output-path "${outPath}" --type file --id "${payloadId}"`,
-            { timeout: 30_000 },
-          );
+          // Same story as `get`: Xcode 26.6 wants `export object`, older Xcodes plain `export`.
+          for (const sub of ["export object --legacy", "export object", "export --legacy", "export"]) {
+            try {
+              await execAsync(
+                `xcrun xcresulttool ${sub} --path "${xcPath}" --output-path "${outPath}" --type file --id "${payloadId}"`,
+                { timeout: 30_000 },
+              );
+              if (fs.existsSync(outPath)) break;
+            } catch {
+              // try next variant
+            }
+          }
           if (fs.existsSync(outPath)) {
             (screenshots[lang] ??= []).push({
               filename: cleanName,
@@ -641,10 +666,12 @@ export class SnapshotRunner {
     const getJson = async (id?: string): Promise<unknown> => {
       const idArg = id ? ` --id "${id}"` : "";
       const opts = { timeout: 60_000, maxBuffer: 50 * 1024 * 1024 };
-      for (const flags of ["--legacy ", ""]) {
+      // Xcode 26.6 renamed the object-graph query to `get object`; older Xcodes
+      // want plain `get` (with or without --legacy). Try newest first.
+      for (const sub of ["get object --legacy ", "get object ", "get --legacy ", "get "]) {
         try {
           const { stdout } = await execAsync(
-            `xcrun xcresulttool get ${flags}--path "${xcPath}" --format json${idArg}`,
+            `xcrun xcresulttool ${sub}--path "${xcPath}" --format json${idArg}`,
             opts,
           );
           return JSON.parse(stdout);

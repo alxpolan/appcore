@@ -23,6 +23,14 @@ import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../
 import { fmtNumber, fmtRevenue, fmtRelativeDateTime, fmtPct, countryName } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
 import AscConnectCard from "../AscConnectCard";
+import DemoModeFrame from "../DemoModeFrame";
+import {
+  generateDemoDownloads,
+  generateDemoSummary,
+  generateDemoPlatforms,
+  generateDemoPurchases,
+  generateDemoReviews,
+} from "../../utils/demoAnalyticsData";
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -227,15 +235,28 @@ export default function Analytics({ addToast }: Props) {
   const { data: dash } = useApi<DashboardData>("/dashboard");
   const hasASC = dash?.config?.hasASC ?? true;
 
+  const demoDownloads = useMemo(() => generateDemoDownloads(range), [range]);
+  const demoSummary = useMemo(() => generateDemoSummary(demoDownloads), [demoDownloads]);
+  const demoPlatforms = useMemo(() => generateDemoPlatforms(demoSummary.totalImpressions), [demoSummary]);
+  const demoPurchases = useMemo(() => generateDemoPurchases(5), []);
+  const demoReviews = useMemo(() => generateDemoReviews(24), []);
+
+  const effDownloads = hasASC ? downloads : demoDownloads;
+  const effSummary = hasASC ? summary : demoSummary;
+  const effReviews = hasASC ? reviews : demoReviews;
+  const effPlatforms = hasASC ? platforms : demoPlatforms;
+  const effPurchases = hasASC ? purchases : demoPurchases;
+
   const markers: ChartMarker[] = useMemo(() => {
+    if (!hasASC) return [];
     const result: ChartMarker[] = [];
     if (markersData?.activatedAt) result.push({ date: markersData.activatedAt, type: "activation" });
     for (const v of markersData?.versionUpdates ?? []) result.push({ date: v.date, type: "version", label: v.version });
     return result;
-  }, [markersData]);
+  }, [markersData, hasASC]);
 
   const chartData = useMemo(() => {
-    const byDay = downloads?.byDay ?? [];
+    const byDay = effDownloads?.byDay ?? [];
     if (!byDay.length) return byDay;
     const markerDates = markers.map((m) => m.date);
     const minDate = byDay[0].date;
@@ -253,7 +274,7 @@ export default function Analytics({ addToast }: Props) {
       sessions: 0,
     }));
     return [...byDay, ...injected].sort((a, b) => a.date.localeCompare(b.date));
-  }, [downloads?.byDay, markers]);
+  }, [effDownloads?.byDay, markers]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -272,117 +293,39 @@ export default function Analytics({ addToast }: Props) {
     }
   };
 
-  const hasEngagementData = (summary?.totalImpressions ?? 0) > 0 || (summary?.totalPageViews ?? 0) > 0;
+  const hasEngagementData = (effSummary?.totalImpressions ?? 0) > 0 || (effSummary?.totalPageViews ?? 0) > 0;
 
-  const loading = sumLoading || dlLoading;
+  const loading = hasASC && (sumLoading || dlLoading);
+  const summaryLoading = hasASC && sumLoading;
 
-  return (
-    <div className="max-w-[1440px] mx-auto">
-      <h1 className={`${pageTitle} mb-6`}>Analytics</h1>
-
-      {!loading && !summary?.totalDownloads && (reviews ?? []).length === 0 && hasASC && (
-        <div className="mb-5 px-4 py-3.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/40 text-[13px] text-amber-800 dark:text-amber-400">
-          <strong>No analytics data yet.</strong> Make sure your{" "}
-          <Link to="/settings/team-settings" className="underline font-medium">
-            Vendor Number
-          </Link>{" "}
-          is configured in Settings, then click <strong>Sync Now</strong>.
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => setRange(opt.key)}
-                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                  range === opt.key
-                    ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
-                    : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {range === "custom" && (
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-              />
-              <span className={`${textMuted} text-[12px]`}>–</span>
-              <input
-                type="date"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-              />
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {summary?.lastSyncAt && (
-            <span className={`text-[12px] ${textMuted}`}>Last synced {fmtRelativeDateTime(summary.lastSyncAt)}</span>
-          )}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-3.5 h-[38px] rounded-xl text-[12px] font-medium bg-[#D94412] text-white hover:bg-[#c80b24] disabled:opacity-60 transition-colors shrink-0"
-          >
-            {syncing ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                Syncing…
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-3.5 h-3.5" />
-                Sync Now
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {!hasASC && (
-        <AscConnectCard
-          className="mb-5"
-          description="Connect your App Store Connect API key to pull downloads, proceeds, impressions and reviews."
-          addToast={addToast}
-        />
-      )}
-
+  const analyticsContent = (
+    <>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <StatCard
           label="Downloads"
-          value={sumLoading ? "—" : fmtNumber(summary?.totalDownloads ?? 0)}
+          value={summaryLoading ? "—" : fmtNumber(effSummary?.totalDownloads ?? 0)}
           sub={rangeLabel(range)}
-          sparkline={downloads?.byDay.map((d) => d.downloads)}
+          sparkline={effDownloads?.byDay.map((d) => d.downloads)}
           icon={<Download className="w-4 h-4" />}
           color="#6366f1"
         />
         <StatCard
           label="Impressions"
-          value={sumLoading ? "—" : hasEngagementData ? fmtNumber(summary?.totalImpressions ?? 0) : "—"}
+          value={summaryLoading ? "—" : hasEngagementData ? fmtNumber(effSummary?.totalImpressions ?? 0) : "—"}
           sub={rangeLabel(range)}
           dim={!hasEngagementData}
           note={!hasEngagementData ? "Run a 2nd sync once Apple processes the request" : undefined}
-          sparkline={downloads?.byDay.map((d) => d.impressions)}
+          sparkline={effDownloads?.byDay.map((d) => d.impressions)}
           icon={<Eye className="w-4 h-4" />}
           color="#0ea5e9"
         />
         <StatCard
           label="Product Page Views"
-          value={sumLoading ? "—" : hasEngagementData ? fmtNumber(summary?.totalPageViews ?? 0) : "—"}
+          value={summaryLoading ? "—" : hasEngagementData ? fmtNumber(effSummary?.totalPageViews ?? 0) : "—"}
           sub={rangeLabel(range)}
           dim={!hasEngagementData}
           note={!hasEngagementData ? "Run a 2nd sync once Apple processes the request" : undefined}
-          sparkline={downloads?.byDay.map((d) => d.pageViews)}
+          sparkline={effDownloads?.byDay.map((d) => d.pageViews)}
           icon={<Monitor className="w-4 h-4" />}
           color="#8b5cf6"
         />
@@ -391,29 +334,29 @@ export default function Analytics({ addToast }: Props) {
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
         <StatCard
           label="Sessions"
-          value={sumLoading ? "—" : hasEngagementData ? fmtNumber(summary?.totalSessions ?? 0) : "—"}
+          value={summaryLoading ? "—" : hasEngagementData ? fmtNumber(effSummary?.totalSessions ?? 0) : "—"}
           sub={rangeLabel(range)}
           dim={!hasEngagementData}
           note={!hasEngagementData ? "Run a 2nd sync once Apple processes the request" : undefined}
-          sparkline={downloads?.byDay.map((d) => d.sessions)}
+          sparkline={effDownloads?.byDay.map((d) => d.sessions)}
           icon={<Activity className="w-4 h-4" />}
           color="#10b981"
         />
         <StatCard
           label="Revenue"
-          value={sumLoading ? "—" : fmtRevenue(summary?.totalProceeds ?? 0)}
+          value={summaryLoading ? "—" : fmtRevenue(effSummary?.totalProceeds ?? 0)}
           sub="Developer proceeds"
-          sparkline={downloads?.byDay.map((d) => d.proceeds)}
+          sparkline={effDownloads?.byDay.map((d) => d.proceeds)}
           icon={<DollarSign className="w-4 h-4" />}
           color="#f59e0b"
         />
         <StatCard
           label="Conversion Rate"
-          value={sumLoading ? "—" : summary?.conversionRate != null ? fmtPct(summary.conversionRate) : "—"}
+          value={summaryLoading ? "—" : effSummary?.conversionRate != null ? fmtPct(effSummary.conversionRate) : "—"}
           sub="Downloads / Impressions"
           dim={!hasEngagementData}
           note={!hasEngagementData ? "Requires impressions data" : undefined}
-          sparkline={downloads?.byDay.map((d) => (d.impressions > 0 ? (d.downloads / d.impressions) * 100 : 0))}
+          sparkline={effDownloads?.byDay.map((d) => (d.impressions > 0 ? (d.downloads / d.impressions) * 100 : 0))}
           icon={<TrendingUp className="w-4 h-4" />}
           color="#D94412"
         />
@@ -421,10 +364,10 @@ export default function Analytics({ addToast }: Props) {
 
       {hasEngagementData &&
         (() => {
-          const imp = summary?.totalImpressions ?? 0;
-          const dl = summary?.totalDownloads ?? 0;
-          const pay = summary?.totalPayingUsers ?? 0;
-          const belowMinOs = summary?.impressionsBelowMinOs ?? null;
+          const imp = effSummary?.totalImpressions ?? 0;
+          const dl = effSummary?.totalDownloads ?? 0;
+          const pay = effSummary?.totalPayingUsers ?? 0;
+          const belowMinOs = effSummary?.impressionsBelowMinOs ?? null;
           const afd = belowMinOs != null ? Math.max(0, imp - belowMinOs) : null;
 
           const afdPct = afd != null && imp > 0 ? (afd / imp) * 100 : null;
@@ -543,7 +486,7 @@ export default function Analytics({ addToast }: Props) {
               </Link>
             </div>
           </div>
-          {(downloads?.byCountry ?? []).length === 0 ? (
+          {(effDownloads?.byCountry ?? []).length === 0 ? (
             <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No data yet</div>
           ) : (
             <table className="w-full">
@@ -562,7 +505,7 @@ export default function Analytics({ addToast }: Props) {
               </thead>
               <tbody>
                 {(() => {
-                  const sorted = [...(downloads?.byCountry ?? [])].sort(
+                  const sorted = [...(effDownloads?.byCountry ?? [])].sort(
                     (a, b) => (b[countryMetric] ?? 0) - (a[countryMetric] ?? 0),
                   );
                   const total = sorted.reduce((s, r) => s + (r[countryMetric] ?? 0), 0);
@@ -625,13 +568,13 @@ export default function Analytics({ addToast }: Props) {
               All reviews <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          {(reviews ?? []).length === 0 ? (
+          {(effReviews ?? []).length === 0 ? (
             <div className={`py-8 text-center text-[13px] ${textMuted}`}>No reviews yet</div>
           ) : (
             <div className="space-y-2.5">
               {[5, 4, 3, 2, 1].map((star) => {
-                const count = (reviews ?? []).filter((r) => r.rating === star).length;
-                const pct = (reviews ?? []).length > 0 ? (count / (reviews ?? []).length) * 100 : 0;
+                const count = (effReviews ?? []).filter((r) => r.rating === star).length;
+                const pct = (effReviews ?? []).length > 0 ? (count / (effReviews ?? []).length) * 100 : 0;
                 return (
                   <div key={star} className="flex items-center gap-3">
                     <span className={`text-[13px] ${textPrimary} w-3 text-right`}>{star}</span>
@@ -667,7 +610,7 @@ export default function Analytics({ addToast }: Props) {
             whether an old iOS version is costing you conversions.
           </div>
         </div>
-        {!hasEngagementData || (platforms?.byVersion ?? []).length === 0 ? (
+        {!hasEngagementData || (effPlatforms?.byVersion ?? []).length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
             {hasEngagementData ? "No data yet" : "Run a 2nd sync once Apple processes the request"}
           </div>
@@ -682,7 +625,7 @@ export default function Analytics({ addToast }: Props) {
               </tr>
             </thead>
             <tbody>
-              {(platforms?.byVersion ?? []).slice(0, 8).map((v) => {
+              {(effPlatforms?.byVersion ?? []).slice(0, 8).map((v) => {
                 const tapRate = v.impressions > 0 ? (v.taps / v.impressions) * 100 : 0;
                 return (
                   <tr key={v.iosVersion} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
@@ -725,7 +668,7 @@ export default function Analytics({ addToast }: Props) {
             Financial <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        {(purchases ?? []).length === 0 ? (
+        {(effPurchases ?? []).length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No purchases synced yet</div>
         ) : (
           <table className="w-full">
@@ -740,7 +683,7 @@ export default function Analytics({ addToast }: Props) {
               </tr>
             </thead>
             <tbody>
-              {(purchases ?? []).slice(0, 5).map((p, i) => (
+              {(effPurchases ?? []).slice(0, 5).map((p, i) => (
                 <tr key={i} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
                   <td className={TD}>{p.date}</td>
                   <td className={TD}>
@@ -769,6 +712,95 @@ export default function Analytics({ addToast }: Props) {
           </table>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="max-w-[1440px] mx-auto">
+      <h1 className={`${pageTitle} mb-6`}>Analytics</h1>
+
+      {!loading && !summary?.totalDownloads && (reviews ?? []).length === 0 && hasASC && (
+        <div className="mb-5 px-4 py-3.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/40 text-[13px] text-amber-800 dark:text-amber-400">
+          <strong>No analytics data yet.</strong> Make sure your{" "}
+          <Link to="/settings/team-settings" className="underline font-medium">
+            Vendor Number
+          </Link>{" "}
+          is configured in Settings, then click <strong>Sync Now</strong>.
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
+            {RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setRange(opt.key)}
+                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                  range === opt.key
+                    ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                    : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {range === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+              />
+              <span className={`${textMuted} text-[12px]`}>–</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+              />
+            </div>
+          )}
+        </div>
+        {hasASC && (
+          <div className="flex items-center gap-3">
+            {summary?.lastSyncAt && (
+              <span className={`text-[12px] ${textMuted}`}>
+                Last synced {fmtRelativeDateTime(summary.lastSyncAt)}
+              </span>
+            )}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 px-3.5 h-[38px] rounded-xl text-[12px] font-medium bg-[#D94412] text-white hover:bg-[#c80b24] disabled:opacity-60 transition-colors shrink-0"
+            >
+              {syncing ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Syncing…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Sync Now
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to pull downloads, proceeds, impressions and reviews."
+          addToast={addToast}
+        />
+      )}
+
+      {hasASC ? analyticsContent : <DemoModeFrame>{analyticsContent}</DemoModeFrame>}
     </div>
   );
 }

@@ -4,13 +4,20 @@ import MetricsChart from "./MetricsChart";
 import type { ChartMarker } from "./MetricsChart";
 import DownloadSourcesChart from "./DownloadSourcesChart";
 import DeletionsChart from "./DeletionsChart";
-import type { DownloadsData } from "../../types";
+import type { DashboardData, DownloadsData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { fmtNumber, fmtRevenue, fmtShortDate } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import DemoModeFrame from "../DemoModeFrame";
+import AscConnectCard from "../AscConnectCard";
+import { generateDemoDownloads } from "../../utils/demoAnalyticsData";
 
-export default function AnalyticsDownloads() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsDownloads({ addToast }: Props) {
   const bundleId = getActiveBundleId() ?? "";
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
@@ -20,20 +27,27 @@ export default function AnalyticsDownloads() {
   const params = useMemo(() => rangeToParams(range, customStart, customEnd), [range, customStart, customEnd]);
   const { data: downloads, loading } = useApi<DownloadsData>(`/analytics/downloads?bundleId=${bundleId}${params}`);
 
+  const { data: dash } = useApi<DashboardData>("/dashboard");
+  const hasASC = dash?.config?.hasASC ?? true;
+  const demoDownloads = useMemo(() => generateDemoDownloads(range), [range]);
+  const effDownloads = hasASC ? downloads : demoDownloads;
+  const effLoading = hasASC && loading;
+
   const { data: markersData } = useApi<{
     activatedAt: string | null;
     versionUpdates: { date: string; version: string }[];
   }>(`/analytics/markers?bundleId=${bundleId}`, [bundleId], true);
 
   const markers: ChartMarker[] = useMemo(() => {
+    if (!hasASC) return [];
     const result: ChartMarker[] = [];
     if (markersData?.activatedAt) result.push({ date: markersData.activatedAt, type: "activation" });
     for (const v of markersData?.versionUpdates ?? []) result.push({ date: v.date, type: "version", label: v.version });
     return result;
-  }, [markersData]);
+  }, [markersData, hasASC]);
 
   const chartData = useMemo(() => {
-    const byDay = downloads?.byDay ?? [];
+    const byDay = effDownloads?.byDay ?? [];
     if (!byDay.length) return byDay;
     const markerDates = markers.map((m) => m.date);
     const minDate = byDay[0].date;
@@ -53,7 +67,7 @@ export default function AnalyticsDownloads() {
       deletions: 0,
     }));
     return [...byDay, ...injected].sort((a, b) => a.date.localeCompare(b.date));
-  }, [downloads?.byDay, markers]);
+  }, [effDownloads?.byDay, markers]);
 
   const COL_KEYS = {
     date: "date",
@@ -66,11 +80,11 @@ export default function AnalyticsDownloads() {
     sessions: "sessions",
   } as const;
 
-  const hasEngagementData = (downloads?.byDay ?? []).some((d) => d.impressions > 0 || d.pageViews > 0);
-  const hasDeletionData = (downloads?.byDay ?? []).some((d) => (d.deletions ?? 0) > 0);
+  const hasEngagementData = (effDownloads?.byDay ?? []).some((d) => d.impressions > 0 || d.pageViews > 0);
+  const hasDeletionData = (effDownloads?.byDay ?? []).some((d) => (d.deletions ?? 0) > 0);
 
   const sortedDays = useMemo(() => {
-    const rows = [...(downloads?.byDay ?? [])];
+    const rows = [...(effDownloads?.byDay ?? [])];
     return rows.sort((a, b) => {
       const av = a[sortCol as keyof typeof a];
       const bv = b[sortCol as keyof typeof b];
@@ -79,7 +93,7 @@ export default function AnalyticsDownloads() {
       }
       return sortDir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
-  }, [downloads?.byDay, sortCol, sortDir]);
+  }, [effDownloads?.byDay, sortCol, sortDir]);
 
   function handleSort(col: keyof typeof COL_KEYS) {
     if (sortCol === col) {
@@ -115,53 +129,14 @@ export default function AnalyticsDownloads() {
     );
   }
 
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className={`${pageTitle} mb-1`}>Downloads</h1>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
-          {RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setRange(opt.key)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                range === opt.key
-                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
-                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {range === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-            <span className={`${textMuted} text-[12px]`}>–</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
-            />
-          </div>
-        )}
-      </div>
-
+  const downloadsContent = (
+    <>
       <div className="mb-5">
         <MetricsChart data={chartData} markers={markers} />
       </div>
 
-      {downloads && <DownloadSourcesChart data={downloads} />}
-      {downloads && <DeletionsChart data={downloads} />}
+      {effDownloads && <DownloadSourcesChart data={effDownloads} />}
+      {effDownloads && <DeletionsChart data={effDownloads} />}
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
@@ -169,7 +144,7 @@ export default function AnalyticsDownloads() {
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Daily breakdown</div>
         </div>
-        {loading ? (
+        {effLoading ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
         ) : sortedDays.length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No data for this period</div>
@@ -244,6 +219,59 @@ export default function AnalyticsDownloads() {
           </table>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className={`${pageTitle} mb-1`}>Downloads</h1>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setRange(opt.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                range === opt.key
+                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+            <span className={`${textMuted} text-[12px]`}>–</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+            />
+          </div>
+        )}
+      </div>
+
+      {!hasASC && (
+        <AscConnectCard
+          className="mb-5"
+          description="Connect your App Store Connect API key to pull real download and engagement data."
+          addToast={addToast}
+        />
+      )}
+
+      {hasASC ? downloadsContent : <DemoModeFrame>{downloadsContent}</DemoModeFrame>}
     </div>
   );
 }

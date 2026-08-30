@@ -152,13 +152,23 @@ async function runWorkerScreenshotGeneration(
       result = await workerClient.snapshot(snapshotParams, log);
     } else {
       log(`[capture] Splitting run across ${parts} workers (languages dealt round-robin)`);
-      const partials = await Promise.all(
+      // allSettled: one dead worker must not discard the surviving part's screenshots.
+      const settled = await Promise.allSettled(
         Array.from({ length: parts }, (_, i) =>
           workerClient.snapshot({ ...snapshotParams, splitIndex: i, splitCount: parts }, (line) =>
             log(`[part ${i + 1}/${parts}] ${line}`),
           ),
         ),
       );
+      const partials = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
+      settled.forEach((s, i) => {
+        if (s.status === "rejected") {
+          log(`[capture] Part ${i + 1}/${parts} failed: ${s.reason instanceof Error ? s.reason.message : s.reason}`);
+        }
+      });
+      if (partials.length === 0) {
+        throw settled[0].status === "rejected" ? settled[0].reason : new Error("All snapshot parts failed");
+      }
       result = mergeSnapshotResults(partials);
     }
 

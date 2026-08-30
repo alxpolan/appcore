@@ -1432,11 +1432,11 @@ export default function App() {
               <Route path="/competitors" element={<Competitors addToast={addToast} />} />
               <Route path="/competitors/:id" element={<CompetitorDetailPage addToast={addToast} />} />
               <Route path="/analytics" element={<Analytics addToast={addToast} />} />
-              <Route path="/analytics/downloads" element={<AnalyticsDownloads />} />
-              <Route path="/analytics/countries" element={<AnalyticsCountries />} />
-              <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail />} />
-              <Route path="/analytics/reviews" element={<AnalyticsReviews />} />
-              <Route path="/analytics/financial" element={<AnalyticsFinancial />} />
+              <Route path="/analytics/downloads" element={<AnalyticsDownloads addToast={addToast} />} />
+              <Route path="/analytics/countries" element={<AnalyticsCountries addToast={addToast} />} />
+              <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail addToast={addToast} />} />
+              <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
+              <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />
