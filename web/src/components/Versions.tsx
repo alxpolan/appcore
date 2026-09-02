@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useApi, apiGet, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
 import { usePermissions } from "../hooks/usePermissions";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../styles";
 import type { VersionsData, VersionLocalization, VersionLocalizationSummary } from "../types";
 import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
+import { getDeviceLabel, thumbUrl, DEVICES, type FramedJob } from "../utils/screenshotUtils";
 import { useClickOutside } from "../hooks/useClickOutside";
 import {
   Send,
@@ -173,15 +174,6 @@ interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
 
-interface FramedJob {
-  id: string;
-  commitSha: string;
-  commitMessage: string | null;
-  branch: string | null;
-  createdAt: string;
-  framedByLocale: Record<string, string[]>;
-}
-
 const FIELD_META: {
   key: keyof VersionLocalization;
   label: string;
@@ -301,19 +293,6 @@ function LocaleFlag({ locale, className }: { locale: string; className?: string 
   );
 }
 
-const DEVICES: [RegExp, string][] = [
-  [/iphone[_-]?6\.9/i, 'iPhone 6.9"'],
-  [/iphone[_-]?6\.7/i, 'iPhone 6.7"'],
-  [/iphone[_-]?6\.5/i, 'iPhone 6.5"'],
-  [/iphone[_-]?6\.3/i, 'iPhone 6.3"'],
-  [/iphone[_-]?5\.5/i, 'iPhone 5.5"'],
-  [/iphone[_-]?4\.7/i, 'iPhone 4.7"'],
-  [/ipad[_-]?13/i, 'iPad 13"'],
-  [/ipad[_-]?12\.9/i, 'iPad 12.9"'],
-  [/ipad[_-]?11/i, 'iPad 11"'],
-  [/ipad/i, "iPad"],
-];
-
 const ASC_DISPLAY_TYPE_LABELS: Record<string, string> = {
   APP_IPHONE_69: 'iPhone 6.9"',
   APP_IPHONE_67: 'iPhone 6.7"',
@@ -351,21 +330,6 @@ const ASC_DEVICE_ORDER = [
   'iPad 10.5"',
   'iPad 9.7"',
 ];
-
-function getDeviceLabel(url: string): string {
-  const filename = decodeURIComponent(url.split("/").pop() ?? url);
-
-  for (const [re, label] of DEVICES) {
-    if (re.test(filename)) return label;
-  }
-  return "Other";
-}
-
-function thumbUrl(url: string, width: 200 | 300 | 400 | 600 | 800): string {
-  const rel = url.replace(/^\/screenshots\//, "");
-  if (rel === url) return url;
-  return `/screenshots-thumb/${width}/${rel}`;
-}
 
 const SUBMIT_STATUS_DEFAULT = { dot: "bg-gray-300", text: "text-gray-500" };
 const SUBMIT_STATUS_COLORS: Record<string, { dot: string; text: string }> = {
@@ -1056,32 +1020,21 @@ function LatestBuildCard({ bundleId, appName }: { bundleId: string; appName: str
   );
 }
 
+// Read-only preview of the latest framed run. Curation (reorder, delete, re-run)
+// lives on the Screenshots page.
 function ScreenshotsPanel({
   appId,
   versionId,
   bundleId,
   activeLocale,
-  addToast,
 }: {
   appId: string;
   versionId: string | null;
   bundleId: string | null;
   activeLocale: string | null;
-  addToast: (msg: string, type: "success" | "error" | "info") => void;
 }) {
-  const { canWrite } = usePermissions();
-  const { data, loading, refetch } = useApi<{ job: FramedJob | null }>(`/github/screenshots/latest-framed/${appId}`, [
-    appId,
-  ]);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [orderOverride, setOrderOverride] = useState<Record<string, string[]>>({});
-  const [draggingUrl, setDraggingUrl] = useState<string | null>(null);
-  const [dragOverUrl, setDragOverUrl] = useState<string | null>(null);
+  const { data, loading } = useApi<{ job: FramedJob | null }>(`/github/screenshots/latest-framed/${appId}`, [appId]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    setOrderOverride({});
-  }, [data?.job?.id]);
 
   useEffect(() => {
     if (!previewUrl) return;
@@ -1093,36 +1046,6 @@ function ScreenshotsPanel({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [previewUrl]);
-
-  const deleteScreenshot = async (jobId: string, url: string) => {
-    if (!canWrite) return;
-    if (!confirm("Remove this screenshot?")) return;
-
-    setDeleting(url);
-    try {
-      await apiDelete(`/github/screenshots/framed/${jobId}`, { url });
-      addToast("Screenshot removed", "success");
-      refetch();
-    } catch (err: any) {
-      addToast(`Failed to remove: ${err.message}`, "error");
-    } finally {
-      setDeleting(null);
-    }
-  };
-
-  const persistOrder = async (jobId: string, locale: string, urls: string[]) => {
-    if (!canWrite) return;
-    try {
-      await apiPatch(`/github/screenshots/framed/${jobId}/reorder`, { locale, urls });
-    } catch (err: any) {
-      addToast(`Failed to reorder: ${err.message}`, "error");
-      setOrderOverride((prev) => {
-        const next = { ...prev };
-        delete next[locale];
-        return next;
-      });
-    }
-  };
 
   const job = data?.job;
   const framedByLocale = job?.framedByLocale ?? {};
@@ -1138,7 +1061,7 @@ function ScreenshotsPanel({
 
   if (loading || !job || locales.length === 0) return null;
 
-  const screenshots = effectiveLocale ? (orderOverride[effectiveLocale] ?? framedByLocale[effectiveLocale] ?? []) : [];
+  const screenshots = effectiveLocale ? (framedByLocale[effectiveLocale] ?? []) : [];
   const grouped = new Map<string, string[]>();
 
   for (const url of screenshots) {
@@ -1153,24 +1076,6 @@ function ScreenshotsPanel({
   };
 
   const sortedGroups = [...grouped.entries()].sort(([a], [b]) => deviceOrder(a) - deviceOrder(b));
-
-  const handleDrop = (targetUrl: string) => {
-    const sourceUrl = draggingUrl;
-    setDraggingUrl(null);
-    setDragOverUrl(null);
-    if (!sourceUrl || !effectiveLocale || sourceUrl === targetUrl) return;
-    if (getDeviceLabel(sourceUrl) !== getDeviceLabel(targetUrl)) return;
-
-    const next = [...screenshots];
-    const from = next.indexOf(sourceUrl);
-    const to = next.indexOf(targetUrl);
-    if (from === -1 || to === -1) return;
-    next.splice(from, 1);
-    next.splice(to, 0, sourceUrl);
-
-    setOrderOverride((prev) => ({ ...prev, [effectiveLocale]: next }));
-    persistOrder(job.id, effectiveLocale, next);
-  };
 
   const previewIndex = previewUrl ? screenshots.indexOf(previewUrl) : -1;
   const previewLabel = previewUrl ? getDeviceLabel(previewUrl) : "";
@@ -1187,7 +1092,15 @@ function ScreenshotsPanel({
     <>
       <div className="pb-5 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
         <div className="flex items-center justify-between mb-4">
-          <div className={`text-[14px] font-bold ${textPrimary}`}>Screenshots</div>
+          <div className="flex items-center gap-2.5">
+            <div className={`text-[14px] font-bold ${textPrimary}`}>Screenshots</div>
+            <Link
+              to="/screenshots"
+              className="text-[11px] font-medium text-[#C4001E] hover:underline underline-offset-2"
+            >
+              Manage in Screenshots
+            </Link>
+          </div>
           <span className={`text-[11px] ${textSecondary} font-mono`}>
             {job.commitSha.slice(0, 7)}
             {job.branch ? ` · ${job.branch}` : ""}
@@ -1206,75 +1119,25 @@ function ScreenshotsPanel({
                   <span className="text-[10px] text-[#c8cdd3] dark:text-[#3a4050]">- max 10</span>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-1">
-                  {urls.map((url) => {
-                    const isDragging = draggingUrl === url;
-                    const isDropTarget =
-                      dragOverUrl === url &&
-                      draggingUrl &&
-                      draggingUrl !== url &&
-                      getDeviceLabel(draggingUrl) === label;
-                    return (
-                      <div
-                        key={url}
-                        draggable
-                        onDragStart={(e) => {
-                          setDraggingUrl(url);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => {
-                          setDraggingUrl(null);
-                          setDragOverUrl(null);
-                        }}
-                        onDragOver={(e) => {
-                          if (!draggingUrl || draggingUrl === url) return;
-                          if (getDeviceLabel(draggingUrl) !== label) return;
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                          if (dragOverUrl !== url) setDragOverUrl(url);
-                        }}
-                        onDragLeave={() => {
-                          if (dragOverUrl === url) setDragOverUrl(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          handleDrop(url);
-                        }}
-                        className={`relative shrink-0 group/img cursor-grab active:cursor-grabbing transition-all ${
-                          isDragging ? "opacity-40" : ""
-                        } ${isDropTarget ? "ring-2 ring-[#D94412] ring-offset-2 rounded-xl" : ""}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setPreviewUrl(url)}
-                          className="block text-left"
-                          aria-label={`Open ${label} screenshot preview`}
-                        >
-                          <img
-                            src={thumbUrl(url, 300)}
-                            srcSet={`${thumbUrl(url, 300)} 1x, ${thumbUrl(url, 600)} 2x`}
-                            alt={`${label} screenshot`}
-                            draggable={false}
-                            loading="lazy"
-                            decoding="async"
-                            className="h-[200px] w-auto rounded-xl border border-[#eef0f3] object-cover shadow-sm group-hover/img:shadow-md group-hover/img:opacity-90 transition-all"
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            deleteScreenshot(job.id, url);
-                          }}
-                          disabled={deleting === url}
-                          title="Remove screenshot"
-                          className="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover/img:opacity-100 hover:bg-red-600 transition-all disabled:opacity-50"
-                        >
-                          {deleting === url ? <div className="spinner !w-3.5 !h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {urls.map((url) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setPreviewUrl(url)}
+                      className="block text-left shrink-0 group/img"
+                      aria-label={`Open ${label} screenshot preview`}
+                    >
+                      <img
+                        src={thumbUrl(url, 300)}
+                        srcSet={`${thumbUrl(url, 300)} 1x, ${thumbUrl(url, 600)} 2x`}
+                        alt={`${label} screenshot`}
+                        draggable={false}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-[200px] w-auto rounded-xl border border-[#eef0f3] object-cover shadow-sm group-hover/img:shadow-md group-hover/img:opacity-90 transition-all"
+                      />
+                    </button>
+                  ))}
                 </div>
               </div>
             ))}
@@ -2390,7 +2253,6 @@ export default function Versions({ addToast }: Props) {
                 versionId={data.versionId}
                 bundleId={data.bundleId}
                 activeLocale={activeLocale}
-                addToast={addToast}
               />
             )}
 

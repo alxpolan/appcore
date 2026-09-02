@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, GitBranch } from "lucide-react";
-import { useApi, apiPost, apiPut, getActiveBundleId, authHeaders } from "../hooks/useApi";
+import { ChevronDown, GitBranch } from "lucide-react";
+import { useApi, apiPost, apiPut, authHeaders } from "../hooks/useApi";
 import {
   badgeOutline,
   borderDefault,
@@ -8,11 +8,10 @@ import {
   btnSecSm,
   btnSecondary,
   cardCls,
-  pageTitle,
   textPrimary,
   textSecondary,
 } from "../styles";
-import type { GitHubRepo, AppRepoLink, RepoBranch, ScreenshotJob, BuildJob, AppItem, Framework } from "../types";
+import type { GitHubRepo, AppRepoLink, RepoBranch, ScreenshotJob, BuildJob, Framework } from "../types";
 
 const FRAMEWORK_LABELS: Record<Framework, string> = {
   capacitor: "Capacitor",
@@ -191,11 +190,13 @@ export function RepoLinker({
   appName,
   connected,
   addToast,
+  onChanged,
 }: {
   appId: string;
   appName: string;
   connected: boolean;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
+  onChanged?: () => void;
 }) {
   const { data: link, refetch } = useApi<AppRepoLink>(`/github/app-repo/${appId}`, [appId], true);
   const [repos, setRepos] = useState<GitHubRepo[] | null>(null);
@@ -308,6 +309,7 @@ export function RepoLinker({
       setSelectedDir("");
       setStep("repo");
       refetch();
+      onChanged?.();
     } catch (err: any) {
       addToast(err.message, "error");
     } finally {
@@ -347,6 +349,7 @@ export function RepoLinker({
       await apiPost("/github/unlink", { appId });
       addToast("Repo unlinked", "info");
       refetch();
+      onChanged?.();
     } catch (err: any) {
       addToast(err.message, "error");
     }
@@ -593,44 +596,35 @@ export function RepoLinker({
 export function ScreenshotJobsTable({
   appId,
   addToast,
+  reloadToken,
+  onJobFinished,
 }: {
   appId: string;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
+  reloadToken?: number;
+  onJobFinished?: () => void;
 }) {
-  const { data: jobs, loading, refetch } = useApi<ScreenshotJob[]>(`/github/screenshots/${appId}`, [appId], true);
+  const { data: jobs, loading, refetch } = useApi<ScreenshotJob[]>(
+    `/github/screenshots/${appId}`,
+    [appId, reloadToken],
+    true,
+  );
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
-  const [triggering, setTriggering] = useState(false);
-
-  async function handleTrigger() {
-    setTriggering(true);
-    try {
-      await apiPost(`/github/screenshots/trigger/${appId}`);
-      addToast("Screenshot job started", "success");
-      setTimeout(refetch, 800);
-    } catch {
-      addToast("Failed to trigger screenshot job", "error");
-    } finally {
-      setTriggering(false);
-    }
-  }
 
   return (
     <div className={`${cardCls} mb-5`}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className={`text-[16px] font-semibold ${textPrimary}`}>Screenshot Jobs</h2>
-        <button onClick={handleTrigger} disabled={triggering} className={btnSecSm}>
-          {triggering ? "Starting…" : "Run Now"}
-        </button>
-      </div>
-      <p className={`text-xs ${textSecondary} mb-4`}>Recent screenshot generation runs triggered by GitHub pushes.</p>
+      <h2 className={`text-[16px] font-semibold ${textPrimary} mb-1`}>Runs</h2>
+      <p className={`text-xs ${textSecondary} mb-4`}>
+        Screenshot pipeline runs, started manually or by a push to the linked repo.
+      </p>
 
-      {loading ? (
+      {loading && !jobs ? (
         <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center">
           <div className="spinner !w-4 !h-4" /> Loading…
         </div>
       ) : !jobs || jobs.length === 0 ? (
         <div className="text-center py-8 text-sm text-gray-400 dark:text-[#5c6478]">
-          No screenshot jobs yet. Link a repo and push a commit to trigger one.
+          No runs yet. Generate Screenshots starts your first one.
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -641,7 +635,10 @@ export function ScreenshotJobsTable({
               expanded={expandedJob === j.id}
               onToggle={() => setExpandedJob(expandedJob === j.id ? null : j.id)}
               addToast={addToast}
-              onJobDone={() => setTimeout(refetch, 1000)}
+              onJobDone={() => {
+                setTimeout(refetch, 1000);
+                onJobFinished?.();
+              }}
             />
           ))}
         </div>
@@ -784,47 +781,24 @@ function JobRow({
   );
 }
 
-export function BuildJobsTable({
-  appId,
-  addToast,
-}: {
-  appId: string;
-  addToast: (msg: string, type: "success" | "error" | "info") => void;
-}) {
-  const { data: jobs, loading, refetch } = useApi<BuildJob[]>(`/github/builds/${appId}`, [appId], true);
+export function BuildJobsTable({ appId, reloadToken }: { appId: string; reloadToken?: number }) {
+  const { data: jobs, loading } = useApi<BuildJob[]>(`/github/builds/${appId}`, [appId, reloadToken], true);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
-  const [triggering, setTriggering] = useState(false);
-
-  async function handleTrigger() {
-    setTriggering(true);
-    try {
-      await apiPost(`/github/builds/trigger/${appId}`);
-      addToast("Build job started", "success");
-      setTimeout(refetch, 800);
-    } catch {
-      addToast("Failed to trigger build job", "error");
-    } finally {
-      setTriggering(false);
-    }
-  }
 
   return (
     <div className={`${cardCls} mb-5`}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className={`text-[16px] font-semibold ${textPrimary}`}>Build Jobs</h2>
-        <button onClick={handleTrigger} disabled={triggering} className={btnSecSm}>
-          {triggering ? "Starting…" : "Run Now"}
-        </button>
-      </div>
-      <p className={`text-xs ${textSecondary} mb-4`}>Binary build runs triggered by GitHub pushes.</p>
+      <h2 className={`text-[16px] font-semibold ${textPrimary} mb-1`}>Runs</h2>
+      <p className={`text-xs ${textSecondary} mb-4`}>
+        Binary build runs, started manually or by a push to the linked repo.
+      </p>
 
-      {loading ? (
+      {loading && !jobs ? (
         <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center">
           <div className="spinner !w-4 !h-4" /> Loading…
         </div>
       ) : !jobs || jobs.length === 0 ? (
         <div className="text-center py-8 text-sm text-gray-400 dark:text-[#5c6478]">
-          No build jobs yet. Link a repo and push a commit to trigger one.
+          No builds yet. Build Binary starts your first one.
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -896,25 +870,3 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
   );
 }
 
-interface Props {
-  addToast: (msg: string, type: "success" | "error" | "info") => void;
-}
-
-export default function Actions({ addToast }: Props) {
-  const { data: apps } = useApi<AppItem[]>("/apps?ownOnly=true", [], true);
-  const bundleId = getActiveBundleId();
-  const activeApp = apps?.find((a) => a.bundleId === bundleId && a.isOwnApp);
-
-  return (
-    <div>
-      <h1 className={`${pageTitle} mb-5`}>Logs</h1>
-
-      {activeApp && (
-        <>
-          <BuildJobsTable appId={activeApp.id} addToast={addToast} />
-          <ScreenshotJobsTable appId={activeApp.id} addToast={addToast} />
-        </>
-      )}
-    </div>
-  );
-}

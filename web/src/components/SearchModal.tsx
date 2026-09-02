@@ -56,10 +56,17 @@ const STATIC_ITEMS: SearchItem[] = [
     icon: "page",
   },
   {
-    id: "logs",
-    label: "Logs",
+    id: "screenshots",
+    label: "Screenshots",
     category: "Pages",
-    to: "/logs",
+    to: "/screenshots",
+    icon: "page",
+  },
+  {
+    id: "builds",
+    label: "Builds",
+    category: "Pages",
+    to: "/builds",
     icon: "page",
   },
   {

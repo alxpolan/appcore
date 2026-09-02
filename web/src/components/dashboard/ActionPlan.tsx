@@ -53,7 +53,7 @@ const CTA_BY_KEY: Record<string, CtaMeta> = {
   title: { to: "/versions", label: "Edit metadata", icon: Type },
   subtitle: { to: "/versions", label: "Edit metadata", icon: Tag },
   description: { to: "/versions", label: "Edit description", icon: AlignLeft },
-  screenshots: { to: "/versions", label: "Manage screenshots", icon: ImageIcon },
+  screenshots: { to: "/screenshots", label: "Manage screenshots", icon: ImageIcon },
   keyword: { to: "/keywords", label: "Open Keywords", icon: Search },
   competitor: { to: "/competitors", label: "Find competitors", icon: Users },
   localization: { to: "/versions", label: "Add languages", icon: Globe },

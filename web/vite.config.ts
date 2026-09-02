@@ -16,6 +16,12 @@ export default defineConfig({
       "/screenshots": {
         target: "http://localhost:3100",
         changeOrigin: true,
+        // The SPA page lives at exactly /screenshots; only the image paths below it
+        // (/screenshots/<jobId>/… and /screenshots-thumb/…) belong to the backend.
+        bypass(req) {
+          const path = req.url?.split("?")[0];
+          if (path === "/screenshots" || path === "/screenshots/") return "/index.html";
+        },
       },
     },
   },
