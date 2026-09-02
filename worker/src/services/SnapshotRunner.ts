@@ -46,6 +46,7 @@ export class SnapshotRunner {
   private readonly artifactsDir: string;
   private readonly logs: string[] = [];
   private readonly errors: string[] = [];
+  private skipTesting: string[] = [];
   private readonly xcresultLogs: Array<{ filename: string; sizeBytes: number }> = [];
   private readonly deviceNameMap: Map<string, string> = new Map();
 
@@ -216,6 +217,23 @@ export class SnapshotRunner {
         return;
       }
     }
+
+    // Convention over configuration: skip the Xcode template's launch-performance
+    // test class; a config.json `skipTesting: [...]` array overrides the default.
+    // Skip the whole unit-test target (app-hosted runner hangs under iOS 26.5 and
+    // contributes nothing to screenshots) plus the template's launch-perf class.
+    this.skipTesting = [`${scheme}Tests`, `${scheme}UITests/${scheme}UITestsLaunchTests`];
+    if (configFile) {
+      try {
+        const cfgSkip = (JSON.parse(fs.readFileSync(configFile, "utf8"))._config ?? {}).skipTesting;
+        if (Array.isArray(cfgSkip)) {
+          this.skipTesting = cfgSkip.filter((s: unknown): s is string => typeof s === "string");
+        }
+      } catch {
+        // keep convention default
+      }
+    }
+    if (this.skipTesting.length) this.push(`[capture] Skipping test targets: ${this.skipTesting.join(", ")}`);
 
     const simInfo = await SnapshotRunner.getIosSimulatorInfo();
     this.push(`[capture] Detected iOS simulator version: ${simInfo?.version ?? "unknown"}`);
@@ -447,6 +465,14 @@ export class SnapshotRunner {
           }
         };
 
+        // Set the language on the DEVICE itself (fastlane-style): launch-argument
+        // injection alone silently falls back to the simulator's system language,
+        // which produced e.g. German UI in es-ES captures. The device is shut down
+        // between language runs, so the plist takes effect on the next boot.
+        if (UDID_RE.test(device)) {
+          await this.setDeviceLanguage(device, lang, localeId, deviceLabel);
+        }
+
         this.push(`[capture] [${deviceLabel}] ${lang} - running UI tests ...`);
         let testFailed = await this.runXcodebuild(
           scheme,
@@ -499,6 +525,33 @@ export class SnapshotRunner {
     return screenshots;
   }
 
+  // Writes AppleLanguages/AppleLocale into the (shut-down) simulator's global
+  // preferences so the whole device boots in the target language.
+  private async setDeviceLanguage(
+    udid: string,
+    lang: string,
+    localeId: string,
+    deviceLabel: string,
+  ): Promise<void> {
+    try {
+      const prefsDir = path.join(
+        os.homedir(),
+        "Library/Developer/CoreSimulator/Devices",
+        udid,
+        "data/Library/Preferences",
+      );
+      fs.mkdirSync(prefsDir, { recursive: true });
+      const domain = path.join(prefsDir, ".GlobalPreferences");
+      await execAsync(`defaults write "${domain}" AppleLanguages -array "${lang}"`, { timeout: 15_000 });
+      await execAsync(`defaults write "${domain}" AppleLocale -string "${localeId}"`, { timeout: 15_000 });
+      this.push(`[capture] [${deviceLabel}] device language set to ${lang} (${localeId})`);
+    } catch (err) {
+      this.push(
+        `[capture] [${deviceLabel}] Warning: could not set device language: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   private async runXcodebuild(
     scheme: string,
     projectArg: string,
@@ -512,7 +565,8 @@ export class SnapshotRunner {
   ): Promise<boolean> {
     const testStart = Date.now();
     try {
-      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO TEST_RUNNER_XCUITESTS_LANGUAGE=${lang} TEST_RUNNER_XCUITESTS_LOCALE=${localeId} build test`;
+      const skipArgs = this.skipTesting.map((t) => `-skip-testing:"${t.replace(/[^a-zA-Z0-9 _./\-]/g, "")}"`).join(" ");
+      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO ${skipArgs} TEST_RUNNER_XCUITESTS_LANGUAGE=${lang} TEST_RUNNER_XCUITESTS_LOCALE=${localeId} build test`;
 
       const { stdout } = await execAsync(`${xcodebuildCmd} 2>&1`, {
         cwd: workDir,
@@ -534,13 +588,11 @@ export class SnapshotRunner {
       // "hang before establishing connection" and xcodebuild exits non-zero although
       // all tests passed and the screenshots exist. Treat that as success - a retry
       // would only burn another multi-minute hang.
-      const allPassed = /Test Suite 'All tests' passed/.test(combined);
+      const allPassed = /Test Suite '(All tests|Selected tests)' passed/.test(combined);
       const runnerHung = /hung before establishing connection/.test(combined);
       const realFailures = /Executed \d+ tests?, with [1-9]\d* failures/.test(combined);
       if (allPassed && runnerHung && !realFailures) {
-        this.push(
-          `[capture] [${deviceLabel}] ${lang}: tests passed in ${elapsed}s (ignoring post-suite runner hang)`,
-        );
+        this.push(`[capture] [${deviceLabel}] ${lang}: tests passed in ${elapsed}s (ignoring post-suite runner hang)`);
         return false;
       }
 
@@ -670,10 +722,7 @@ export class SnapshotRunner {
       // want plain `get` (with or without --legacy). Try newest first.
       for (const sub of ["get object --legacy ", "get object ", "get --legacy ", "get "]) {
         try {
-          const { stdout } = await execAsync(
-            `xcrun xcresulttool ${sub}--path "${xcPath}" --format json${idArg}`,
-            opts,
-          );
+          const { stdout } = await execAsync(`xcrun xcresulttool ${sub}--path "${xcPath}" --format json${idArg}`, opts);
           return JSON.parse(stdout);
         } catch {
           // try next variant
