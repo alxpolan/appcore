@@ -21,6 +21,7 @@ import Keywords from "./components/keywords/Keywords";
 import Competitors from "./components/competitors/Competitors";
 import CompetitorDetailPage from "./components/competitors/CompetitorDetailPage";
 import Builds from "./components/Builds";
+import Integrations from "./components/Integrations";
 import Agents from "./components/Agents";
 import Settings from "./components/settings/Settings";
 import AppSettings from "./components/settings/AppSettings";
@@ -1458,6 +1459,7 @@ export default function App() {
               <Route path="/game-center/achievements" element={<GameCenterAchievements addToast={addToast} />} />
               <Route path="/game-center/challenges" element={<GameCenterChallenges addToast={addToast} />} />
               <Route path="/logs" element={<Navigate to="/builds" replace />} />
+              <Route path="/integrations" element={<Integrations />} />
               <Route path="/app-settings" element={<AppSettings addToast={addToast} />} />
               <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
               <Route
