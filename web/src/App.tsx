@@ -20,7 +20,7 @@ import Suggestions from "./components/suggestions/Suggestions";
 import Keywords from "./components/keywords/Keywords";
 import Competitors from "./components/competitors/Competitors";
 import CompetitorDetailPage from "./components/competitors/CompetitorDetailPage";
-import Actions from "./components/Logs";
+import Builds from "./components/Builds";
 import Agents from "./components/Agents";
 import Settings from "./components/settings/Settings";
 import AppSettings from "./components/settings/AppSettings";
@@ -34,6 +34,7 @@ import AnalyticsCountryDetail from "./components/analytics/AnalyticsCountryDetai
 import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
 import Versions from "./components/Versions";
+import Screenshots from "./components/Screenshots";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
 import MonetizationProducts from "./components/monetization/Products";
 import GameCenterLeaderboards from "./components/gamecenter/Leaderboards";
@@ -52,7 +53,6 @@ import {
   Layers,
   Search,
   Users,
-  Zap,
   BarChart2,
   Settings as SettingsIcon,
   FileText,
@@ -77,6 +77,8 @@ import {
   Shield,
   PanelLeft,
   Cable,
+  Camera,
+  Hammer,
 } from "lucide-react";
 
 const sidebarLinks = [
@@ -87,7 +89,6 @@ const sidebarLinks = [
 ];
 
 const sidebarOperations = [
-  { to: "/logs", label: "Logs", icon: Zap },
   { to: "/integrations", label: "Integrations", icon: Cable },
   { to: "/app-settings", label: "App Settings", icon: SettingsIcon },
 ];
@@ -120,6 +121,8 @@ const railLinks: SidebarLink[] = [
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
   { to: "/monetization/subscriptions", label: "Monetization", icon: DollarSign },
   { to: "/versions", label: "Versions", icon: FileText },
+  { to: "/screenshots", label: "Screenshots", icon: Camera },
+  { to: "/builds", label: "Builds", icon: Hammer },
   { to: "/game-center/leaderboards", label: "Game Center", icon: Swords, fringeloOnly: true },
 ];
 
@@ -408,7 +411,7 @@ function HelpMenu() {
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] w-48 bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden py-1">
           <a
-            href="https://docs.marteso.com/"
+            href="https://marteso.com/docs/"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => setOpen(false)}
@@ -1397,6 +1400,14 @@ export default function App() {
                     ))}
                   <MonetizationSidebarSection navLinkClass={navLinkClass} />
                   <VersionsSidebarSection navLinkClass={navLinkClass} />
+                  <NavLink to="/screenshots" className={navLinkClass}>
+                    <Camera />
+                    Screenshots
+                  </NavLink>
+                  <NavLink to="/builds" className={navLinkClass}>
+                    <Hammer />
+                    Builds
+                  </NavLink>
                   {user.isFringeloTeam && <MoreSidebarSection navLinkClass={navLinkClass} />}
                   <div className="mt-auto pb-3">
                     <div className="h-px bg-[#eef0f3] dark:bg-[#2a2f3d] mx-1 mb-2 mt-1" />
@@ -1439,12 +1450,14 @@ export default function App() {
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
+              <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />
+              <Route path="/builds" element={<Builds addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />
               <Route path="/monetization/products" element={<MonetizationProducts addToast={addToast} />} />
               <Route path="/game-center/leaderboards" element={<GameCenterLeaderboards addToast={addToast} />} />
               <Route path="/game-center/achievements" element={<GameCenterAchievements addToast={addToast} />} />
               <Route path="/game-center/challenges" element={<GameCenterChallenges addToast={addToast} />} />
-              <Route path="/logs" element={<Actions addToast={addToast} />} />
+              <Route path="/logs" element={<Navigate to="/builds" replace />} />
               <Route path="/app-settings" element={<AppSettings addToast={addToast} />} />
               <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
               <Route
