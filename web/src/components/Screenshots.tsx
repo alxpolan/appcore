@@ -16,7 +16,16 @@ import {
 import { useApi, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
 import { usePermissions } from "../hooks/usePermissions";
 import { RepoLinker, ScreenshotJobsTable } from "./Logs";
-import { borderDefault, btnPrimary, cardCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
+import {
+  borderDefault,
+  btnPrimary,
+  btnSecondary,
+  cardCls,
+  pageTitle,
+  textMuted,
+  textPrimary,
+  textSecondary,
+} from "../styles";
 import type { AppItem, AppRepoLink, GitHubStatus } from "../types";
 import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
 import { getDeviceLabel, thumbUrl, DEVICES, type FramedJob } from "../utils/screenshotUtils";
@@ -68,8 +77,7 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
         <div>
           <h1 className={pageTitle}>Screenshots</h1>
           <p className={`text-[13px] ${textSecondary} mt-1 max-w-xl`}>
-            Captured on iOS simulators, framed and captioned for every device size and locale, ready for the App
-            Store.
+            Captured on iOS simulators, framed and captioned for every device size and locale, ready for the App Store.
           </p>
         </div>
         {link?.linked && (
@@ -97,8 +105,8 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
           />
           <p className={`text-[12px] ${textMuted}`}>
             Runs also start automatically on every push to{" "}
-            <span className="font-mono">{link.branch ?? "the linked branch"}</span>. Repo, signing and pipeline
-            settings live in{" "}
+            <span className="font-mono">{link.branch ?? "the linked branch"}</span>. Repo, signing and pipeline settings
+            live in{" "}
             <Link to="/app-settings" className="underline underline-offset-2 hover:text-[#C4001E]">
               App Settings
             </Link>
@@ -224,6 +232,8 @@ function StudioGallery({
   const [draggingUrl, setDraggingUrl] = useState<string | null>(null);
   const [dragOverUrl, setDragOverUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pendingReorder, setPendingReorder] = useState<{ locale: string; urls: string[] } | null>(null);
+  const [savingReorder, setSavingReorder] = useState<"one" | "all" | null>(null);
 
   useEffect(() => {
     setOrderOverride({});
@@ -247,7 +257,9 @@ function StudioGallery({
 
   if (loading && !data) {
     return (
-      <div className={`${cardCls} mb-5 flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center`}>
+      <div
+        className={`${cardCls} mb-5 flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center`}
+      >
         <div className="spinner !w-4 !h-4" /> Loading screenshots…
       </div>
     );
@@ -326,7 +338,50 @@ function StudioGallery({
     next.splice(to, 0, sourceUrl);
 
     setOrderOverride((prev) => ({ ...prev, [effectiveLocale]: next }));
-    persistOrder(job.id, effectiveLocale, next);
+    if (locales.length > 1) {
+      setPendingReorder({ locale: effectiveLocale, urls: next });
+    } else {
+      persistOrder(job.id, effectiveLocale, next);
+    }
+  };
+
+  const confirmReorder = async (applyToAll: boolean) => {
+    if (!pendingReorder) return;
+    setSavingReorder(applyToAll ? "all" : "one");
+    try {
+      await apiPatch(`/github/screenshots/framed/${job.id}/reorder`, {
+        locale: pendingReorder.locale,
+        urls: pendingReorder.urls,
+        allLocales: applyToAll,
+      });
+      if (applyToAll) {
+        setOrderOverride({});
+        refetch();
+      }
+      addToast(applyToAll ? "Order applied to all languages" : `Order saved for ${pendingReorder.locale}`, "success");
+    } catch (err: any) {
+      addToast(`Failed to reorder: ${err.message}`, "error");
+      setOrderOverride((prev) => {
+        const next = { ...prev };
+        delete next[pendingReorder.locale];
+        return next;
+      });
+    } finally {
+      setSavingReorder(null);
+      setPendingReorder(null);
+    }
+  };
+
+  const cancelReorder = () => {
+    if (pendingReorder) {
+      setOrderOverride((prev) => {
+        const next = { ...prev };
+        delete next[pendingReorder.locale];
+        return next;
+      });
+      refetch();
+    }
+    setPendingReorder(null);
   };
 
   const previewIndex = previewUrl ? screenshots.indexOf(previewUrl) : -1;
@@ -514,6 +569,25 @@ function StudioGallery({
             className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {pendingReorder && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4"
+          onClick={cancelReorder}
+        >
+          <div className={`${cardCls} w-full max-w-md`} onClick={(e) => e.stopPropagation()}>
+            <p className={`text-[15px] font-semibold ${textPrimary} mb-4`}>Apply to all locales?</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button className={btnSecondary} onClick={() => confirmReorder(false)} disabled={!!savingReorder}>
+                {savingReorder === "one" ? "Saving…" : `Only ${getLocaleName(pendingReorder.locale)}`}
+              </button>
+              <button className={btnPrimary} onClick={() => confirmReorder(true)} disabled={!!savingReorder}>
+                {savingReorder === "all" ? "Applying…" : "All locales"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

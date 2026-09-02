@@ -208,20 +208,25 @@ githubRouter.get("/repo-branches/:owner/:repo", requireAuth, loadTeamSettings, a
   }
 });
 
-githubRouter.get("/detect-framework/:owner/:repo", requireAuth, loadTeamSettings, async (req: Request, res: Response) => {
-  try {
-    const settings = req.teamSettings;
-    if (!settings?.githubAccessToken) {
-      res.status(400).json({ error: "GitHub not connected" });
-      return;
+githubRouter.get(
+  "/detect-framework/:owner/:repo",
+  requireAuth,
+  loadTeamSettings,
+  async (req: Request, res: Response) => {
+    try {
+      const settings = req.teamSettings;
+      if (!settings?.githubAccessToken) {
+        res.status(400).json({ error: "GitHub not connected" });
+        return;
+      }
+      const repoFullName = `${req.params.owner}/${req.params.repo}`;
+      const framework = await detectFramework(decryptNullable(settings.githubAccessToken)!, repoFullName);
+      res.json({ framework });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
-    const repoFullName = `${req.params.owner}/${req.params.repo}`;
-    const framework = await detectFramework(decryptNullable(settings.githubAccessToken)!, repoFullName);
-    res.json({ framework });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  },
+);
 
 githubRouter.post("/link", writeAuth, async (req: Request, res: Response) => {
   try {
@@ -608,9 +613,7 @@ async function fetchLatestCommit(repoFullName: string, token: string, branch?: s
   };
 
   if (branch) {
-    const ref = await get(
-      `https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`,
-    );
+    const ref = await get(`https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`);
     return { commitSha: (ref?.object?.sha ?? "unknown") as string, branch };
   }
 
@@ -807,7 +810,7 @@ githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request
 githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: Request, res: Response) => {
   try {
     const jobId = req.params.jobId as string;
-    const { locale, urls } = req.body as { locale?: string; urls?: string[] };
+    const { locale, urls, allLocales } = req.body as { locale?: string; urls?: string[]; allLocales?: boolean };
     if (!locale || !Array.isArray(urls)) {
       res.status(400).json({ error: "locale and urls are required" });
       return;
@@ -833,6 +836,20 @@ githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: 
     }
 
     const updated = { ...framedByLocale, [locale]: urls };
+
+    if (allLocales) {
+      const basename = (u: string) => decodeURIComponent(u.split("/").pop() ?? u);
+      const orderIndex = new Map(urls.map((u, i) => [basename(u), i]));
+
+      for (const [loc, locUrls] of Object.entries(framedByLocale)) {
+        if (loc === locale) continue;
+        updated[loc] = locUrls
+          .map((u, i) => ({ u, i, key: orderIndex.get(basename(u)) ?? Number.MAX_SAFE_INTEGER }))
+          .sort((a, b) => a.key - b.key || a.i - b.i)
+          .map((entry) => entry.u);
+      }
+    }
+
     await prisma.screenshotJob.update({
       where: { id: jobId },
       data: { framedByLocale: updated as any },
