@@ -404,7 +404,10 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
 
     const [combinedOutput] = await Promise.all([runFrameit(tmpDir), ...(tmpDirNoBg ? [runFrameit(tmpDirNoBg)] : [])]);
 
-    const framedFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith("_framed.png"));
+    // frameit also frames our generated background-*.png assets sitting in the same
+    // dir - exclude them or every locale ships two content-less "screenshots".
+    const isRealFrame = (f: string) => f.endsWith("_framed.png") && !f.startsWith("background-");
+    const framedFiles = fs.readdirSync(tmpDir).filter(isRealFrame);
     const producedBases = new Set(framedFiles.map((f) => f.replace(/_framed\.png$/, "")));
     const missing = images
       .map((img) => img.filename.replace(/\.[^.]+$/, ""))
@@ -441,7 +444,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return result;
     };
 
-    const noBgFiles = tmpDirNoBg ? fs.readdirSync(tmpDirNoBg).filter((f) => f.endsWith("_framed.png")) : [];
+    const noBgFiles = tmpDirNoBg ? fs.readdirSync(tmpDirNoBg).filter(isRealFrame) : [];
     const [framedImages, unframedImages] = await Promise.all([
       processFramedFiles(tmpDir, framedFiles),
       tmpDirNoBg ? processFramedFiles(tmpDirNoBg, noBgFiles) : Promise.resolve([]),
