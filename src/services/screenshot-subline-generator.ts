@@ -84,10 +84,9 @@ export async function generateScreenshotSublines(
   const topKeywords = app.rankings
     .map((r) => ({
       term: r.keyword.term,
-      rank: r.rank,
       popularity: r.keyword.popularity ?? 0,
     }))
-    .sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999))
+    .sort((a, b) => b.popularity - a.popularity)
     .slice(0, 20);
 
   const ai = new AIClient();
@@ -100,20 +99,21 @@ export async function generateScreenshotSublines(
     .map(([key, desc]) => `  - ${key}: ${desc}`)
     .join("\n");
 
-  const keywordList = topKeywords
-    .map((k) => `  ${k.term} (rank: ${k.rank ?? "unranked"}, popularity: ${k.popularity})`)
-    .join("\n");
+  const keywordList = topKeywords.map((k) => `  ${k.term} (popularity: ${k.popularity})`).join("\n");
 
   const systemPrompt = `
-  You are an expert Apple App Store Optimization (ASO) specialist.
-  Your task is to generate ultra-concise screenshot sublines that:
-  1. Are ≤ 30 characters each (HARD LIMIT — Apple's algorithm and space constraints)
-  2. Naturally include high-value keywords from the provided list (Apple scrapes text visible in screenshots)
-  3. Are benefit-driven and conversion-optimized (focus on user outcome, not features)
-  4. Feel native and natural in the target language (no awkward machine translations)
-  5. Use sentence case, not ALL CAPS
+  You are an expert App Store conversion copywriter.
+  Your task is to write ultra-concise screenshot sublines that make people download the app:
+  1. Are ≤ 30 characters each (HARD LIMIT - space constraints)
+  2. Sell the outcome: say what the user gets from what the screenshot shows, not the feature name
+  3. Read like a native speaker wrote them - fluent, idiomatic language is more important than anything else; never keyword-stuffed, never robotic
+  4. Use sentence case, not ALL CAPS
 
-  Respond with valid JSON only — no markdown, no explanation.`;
+  You will get a list of search keywords. Treat it as market research only: it tells you what users
+  are looking for, so you can speak to that need directly. Work a keyword in only when it fits the
+  sentence naturally - mentioning them is optional, fluent copy always wins.
+
+  Respond with valid JSON only - no markdown, no explanation.`;
 
   try {
     const sublines: ScreenshotSublines = {};
@@ -135,7 +135,7 @@ export async function generateScreenshotSublines(
       Reference subtitle: ${preferredMetadata?.subtitle || "none"}
       Reference keywords: ${preferredMetadata?.keywords || "none"}
 
-      Top ranking keywords (use these naturally only if they fit ${localeConfig.promptLang}; do not force English keywords into non-English copy):
+      What users search for (inspiration only - address these needs in the sublines; using the terms themselves is optional and they must never be forced into ${localeConfig.promptLang} copy):
       ${keywordList || "  (none tracked yet)"}
 
       Screenshots to generate sublines for:
