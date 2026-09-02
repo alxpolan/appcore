@@ -7,7 +7,8 @@ import { Prisma } from "@prisma/client";
 import { logger, prisma } from "../config";
 import { env } from "../config/env";
 import type { EffectiveSettings } from "../config";
-import { AppStoreConnectClient, type ASCAppStoreVersion } from "./appstore-connect";
+import { type AppStoreConnectClient, type ASCAppStoreVersion } from "./appstore-connect";
+import { ascClientFromSettings } from "./asc-client";
 import { workerClient } from "./worker-client";
 
 export const ipaDownloadTokens = new Map<string, string>();
@@ -197,14 +198,11 @@ export class FastlaneService {
     this.bundleId = bundleId;
     this.settings = settings;
 
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
+    const asc = ascClientFromSettings(settings);
+    if (!asc) {
       throw new Error("App Store Connect credentials not configured. Set them in Settings.");
     }
-
-    this.asc = new AppStoreConnectClient(
-      { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-      { teamId: settings.teamId || undefined },
-    );
+    this.asc = asc;
   }
 
   async preview(): Promise<SubmissionPreview> {

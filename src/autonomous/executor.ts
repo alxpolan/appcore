@@ -1,6 +1,6 @@
 import { prisma, logger, getEffectiveSettings } from "../config";
 import { AsoExperimentStatus, AsoExperimentType } from "@prisma/client";
-import { AppStoreConnectClient } from "../services/appstore-connect";
+import { ascClientFromSettings } from "../services/asc-client";
 
 export class ASOExecutor {
   async deployExperiment(experimentId: string, userId: string) {
@@ -20,7 +20,8 @@ export class ASOExecutor {
     logger.info(`[ASOExecutor] Deploying experiment ${experimentId} for app "${app.name}" (${app.bundleId})`);
 
     const settings = await getEffectiveSettings(userId);
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
+    const asc = ascClientFromSettings(settings);
+    if (!asc) {
       throw new Error(
         "App Store Connect credentials not configured. Set ascIssuerId / ascKeyId / ascPrivateKey in Settings.",
       );
@@ -96,11 +97,6 @@ export class ASOExecutor {
     });
 
     const locale = "en-US";
-    const asc = new AppStoreConnectClient(
-      { issuerId: settings.ascIssuerId!, keyId: settings.ascKeyId!, privateKey: settings.ascPrivateKey! },
-      { teamId: settings.teamId || undefined },
-    );
-
     const ascResult = await asc.applyASOChanges(
       {
         title: newMetadata.title,

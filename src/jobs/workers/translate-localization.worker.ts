@@ -1,7 +1,7 @@
 import type { Job } from "pg-boss";
-import { logger, getEffectiveSettingsForTeam } from "../../config";
+import { logger } from "../../config";
 import { prisma } from "../../config/database";
-import { AppStoreConnectClient } from "../../services/appstore-connect";
+import { ascClientForTeam } from "../../services/asc-client";
 import { AIAnalyzer } from "../../services/ai-analyzer";
 import * as tracker from "../translation-tracker";
 
@@ -43,8 +43,8 @@ export async function handler([job]: Job<TranslateLocalizationData>[]): Promise<
   tracker.add(versionId, targetLocale);
 
   try {
-    const settings = await getEffectiveSettingsForTeam(teamId);
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
+    const asc = await ascClientForTeam(teamId);
+    if (!asc) {
       logger.warn(`[BOSS] ASC credentials missing for team ${teamId}, aborting translation`);
       return;
     }
@@ -58,11 +58,6 @@ export async function handler([job]: Job<TranslateLocalizationData>[]): Promise<
       if (!trimmed) continue;
       (APP_INFO_FIELDS.has(field) ? appInfoUpdates : versionUpdates)[field] = trimmed;
     }
-
-    const asc = new AppStoreConnectClient(
-      { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-      { teamId },
-    );
 
     const persistedUpdates: Record<string, string> = {};
     if (appInfoLocalizationId && Object.keys(appInfoUpdates).length > 0) {

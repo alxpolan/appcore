@@ -2,7 +2,7 @@ import { prisma, logger } from "../config";
 import type { EffectiveSettings } from "../config";
 import { AIClient } from "./ai-client";
 import { AppStoreScraper } from "./appstore-scraper";
-import { AppStoreConnectClient } from "./appstore-connect";
+import { ascClientFromSettings } from "./asc-client";
 import { langForCountry, localeToCountry } from "./app-store-markets";
 
 export class KeywordDiscoveryAgent {
@@ -24,19 +24,14 @@ export class KeywordDiscoveryAgent {
   }
 
   private async getActiveCountries(): Promise<string[]> {
-    const s = this.settings;
-    if (s?.ascIssuerId && s?.ascKeyId && s?.ascPrivateKey && this.bundleId) {
+    const asc = this.settings ? ascClientFromSettings(this.settings) : null;
+    if (asc && this.bundleId) {
       try {
         const appRow = await prisma.app.findUnique({
           where: { bundleId: this.bundleId },
           select: { trackId: true },
         });
         const ascAppId = appRow?.trackId?.toString();
-        const asc = new AppStoreConnectClient({
-          issuerId: s.ascIssuerId,
-          keyId: s.ascKeyId,
-          privateKey: s.ascPrivateKey,
-        });
         const liveVersion = ascAppId ? await asc.getLiveVersion(ascAppId) : null;
         if (liveVersion) {
           const localizations = await asc.getVersionLocalizations(liveVersion.id);

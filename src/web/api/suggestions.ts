@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma, getEffectiveSettings } from "../../config";
+import { ascClientFromSettings } from "../../services/asc-client";
 import { requireAuth, verifyAppOwnershipByBundleId } from "../auth";
 import type { Request, Response } from "express";
 
@@ -111,15 +112,10 @@ suggestionsRouter.post("/:id/apply", async (req, res) => {
 
     const settings = await getEffectiveSettings(req.user!.userId);
 
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
+    const asc = ascClientFromSettings(settings);
+    if (!asc) {
       return res.status(400).json({ error: "App Store Connect credentials not configured." });
     }
-
-    const { AppStoreConnectClient } = await import("../../services/appstore-connect");
-    const asc = new AppStoreConnectClient(
-      { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-      { teamId: settings.teamId || undefined },
-    );
 
     const locale = suggestion.locale || "en-US";
     const changes: Record<string, string> = {};
@@ -188,7 +184,8 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
     const ownedApp = await verifyAppOwnershipByBundleId(req, res, bundleId);
     if (!ownedApp) return;
 
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
+    const asc = ascClientFromSettings(settings);
+    if (!asc) {
       res.status(400).json({ error: "App Store Connect credentials not configured." });
       return;
     }
@@ -220,12 +217,6 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
       group.push(s);
       byLocale.set(s.locale, group);
     }
-
-    const { AppStoreConnectClient } = await import("../../services/appstore-connect");
-    const asc = new AppStoreConnectClient(
-      { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-      { teamId: settings.teamId || undefined },
-    );
 
     let totalApplied = 0;
     const results: { locale: string; applied: string[]; errors: string[] }[] = [];

@@ -63,16 +63,13 @@ export async function getSettingsWithBundleId(userId: string, bundleId?: string)
   return { settings, resolvedBundleId };
 }
 
-export function hasAscCredentials(settings: EffectiveSettings) {
-  return Boolean(settings.ascIssuerId && settings.ascKeyId && settings.ascPrivateKey);
-}
+export { hasAscCredentials } from "../../../services/asc-client";
 
 export async function createAscClient(settings: EffectiveSettings) {
-  const { AppStoreConnectClient } = await import("../../../services/appstore-connect");
-  return new AppStoreConnectClient(
-    { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-    { teamId: settings.teamId || undefined },
-  );
+  const { ascClientFromSettings } = await import("../../../services/asc-client");
+  const asc = ascClientFromSettings(settings);
+  if (!asc) throw new Error("App Store Connect credentials missing.");
+  return asc;
 }
 
 export async function resolveAscAppId(

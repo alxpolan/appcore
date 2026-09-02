@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type RequestHandler } from "express";
 import axios from "../../services/utils/http";
 import { prisma, logger } from "../../config";
+import { ascClientForUser as ascClientForUserOrNull } from "../../services/asc-client";
 import { requireAuth, bundleAccess, loadVersionInBundle, loadVersionLocalizationInBundle } from "../auth";
 import { AppStoreConnectClient } from "../../services/appstore-connect";
 import { LOCALE_MAP } from "../../services/utils/country_lang";
@@ -286,22 +287,9 @@ async function invalidateVersionCache(bundleId: string): Promise<void> {
 }
 
 async function ascClientForUser(userId: string): Promise<AppStoreConnectClient> {
-  const membership = await prisma.teamMember.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-  });
-  const s = membership
-    ? await prisma.teamSettings.findUnique({
-        where: { teamId: membership.teamId },
-      })
-    : null;
-  if (s?.ascIssuerId && s?.ascKeyId && s?.ascPrivateKey) {
-    return new AppStoreConnectClient(
-      { issuerId: s.ascIssuerId, keyId: s.ascKeyId, privateKey: s.ascPrivateKey },
-      { teamId: membership?.teamId },
-    );
-  }
-  return new AppStoreConnectClient();
+  const asc = await ascClientForUserOrNull(userId);
+  if (!asc) throw new Error("App Store Connect credentials missing.");
+  return asc;
 }
 
 ascRouter.get(

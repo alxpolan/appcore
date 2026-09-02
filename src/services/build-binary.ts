@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { logger, prisma, getEffectiveSettings } from "../config";
+import { logger, prisma } from "../config";
 import { workerClient } from "./worker-client";
 import { postCommitStatus } from "./github";
 import { parseProvisioningProfiles } from "./utils/provisioning-profiles";
@@ -52,16 +52,10 @@ export async function runBuildJob(
   let versionString: string | undefined;
   if (app?.teamId) {
     try {
-      const { getEffectiveSettingsForTeam } = await import("../config");
-      const settings = await getEffectiveSettingsForTeam(app.teamId);
+      const { ascClientForTeam } = await import("./asc-client");
+      const asc = await ascClientForTeam(app.teamId);
 
-      if (settings.ascIssuerId && settings.ascKeyId && settings.ascPrivateKey) {
-        const { AppStoreConnectClient } = await import("./appstore-connect");
-        const asc = new AppStoreConnectClient(
-          { issuerId: settings.ascIssuerId, keyId: settings.ascKeyId, privateKey: settings.ascPrivateKey },
-          { teamId: app.teamId },
-        );
-
+      if (asc) {
         const ascApp = await asc.getApp(params.bundleId).catch(() => null);
         if (ascApp) {
           const editable = await asc.getEditableVersion(ascApp.id).catch(() => null);

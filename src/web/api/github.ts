@@ -6,6 +6,7 @@ import path from "path";
 import { logger, prisma } from "../../config";
 import { env } from "../../config/env";
 import { requireAuth, loadTeamRole, loadTeamSettings, requireWriteRole } from "../auth";
+import { resolveInternalAppId } from "../lib/resolve-app";
 
 const writeAuth = [requireAuth, loadTeamRole, requireWriteRole];
 import { encrypt, decryptNullable } from "../../config/encryption";
@@ -846,19 +847,14 @@ githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: 
 
 githubRouter.get("/screenshots/latest-framed/:appId", requireAuth, async (req: Request, res: Response) => {
   try {
-    const ascAppId = req.params.appId as string;
-
-    const internalApp = await prisma.app.findFirst({
-      where: { trackId: BigInt(ascAppId) },
-      select: { id: true },
-    });
-    if (!internalApp) {
+    const internalAppId = await resolveInternalAppId(req.params.appId as string);
+    if (!internalAppId) {
       res.json({ job: null });
       return;
     }
 
     const jobs = await prisma.screenshotJob.findMany({
-      where: { appId: internalApp.id, status: "COMPLETED" },
+      where: { appId: internalAppId, status: "COMPLETED" },
       orderBy: { createdAt: "desc" },
       take: 20,
     });

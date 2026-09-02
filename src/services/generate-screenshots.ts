@@ -6,7 +6,7 @@ import { frameWithFastlane } from "./frame-screenshots";
 import { workerClient, type WorkerSnapshotResult } from "./worker-client";
 import { postCommitStatus } from "./github";
 import { generateScreenshotSublines, type ScreenshotSublines } from "./screenshot-subline-generator";
-import { AppStoreConnectClient } from "./appstore-connect";
+import { ascClientForTeam } from "./asc-client";
 import { Prisma } from "@prisma/client";
 import { createJobLogEmitter } from "./log-bus";
 import { normalizeLocale } from "./utils/country_lang";
@@ -462,19 +462,14 @@ async function resolveLatestVersionLocales(
     return [];
   }
 
-  const teamSettings = await getTeamSettings(job.app.teamId);
-  const privateKey = decryptNullable(teamSettings?.ascPrivateKey);
+  const asc = await ascClientForTeam(job.app.teamId);
 
-  if (!teamSettings?.ascIssuerId || !teamSettings.ascKeyId || !privateKey) {
+  if (!asc) {
     log("[framing] No ASC credentials available for version locale refresh - using captured screenshot locales");
     return [];
   }
 
   try {
-    const asc = new AppStoreConnectClient(
-      { issuerId: teamSettings.ascIssuerId, keyId: teamSettings.ascKeyId, privateKey },
-      { teamId: job.app.teamId },
-    );
     const ascAppId = String(job.app.trackId);
     const versionsFromAsc = await asc.listVersions(ascAppId);
     const latestVersion = versionsFromAsc.sort((a, b) =>
