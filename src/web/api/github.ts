@@ -415,6 +415,8 @@ githubRouter.get("/builds/:appId", requireAuth, async (req: Request, res: Respon
         status: true,
         errors: true,
         ipaPath: true,
+        version: true,
+        buildNumber: true,
         startedAt: true,
         completedAt: true,
         createdAt: true,

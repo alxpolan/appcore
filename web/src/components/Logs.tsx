@@ -940,7 +940,13 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
         onClick={onToggle}
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {job.version && (
+              <span className={`text-[13px] font-semibold ${textPrimary}`}>
+                v{job.version}
+                {job.buildNumber && <span className={`font-normal ${textSecondary}`}> ({job.buildNumber})</span>}
+              </span>
+            )}
             {job.commitSha && (
               <span className={`text-[13px] font-mono ${textPrimary}`}>{job.commitSha.slice(0, 7)}</span>
             )}

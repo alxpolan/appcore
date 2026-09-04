@@ -177,6 +177,8 @@ interface LatestBuild {
   exportMethod: string;
   sizeBytes: number;
   iconUrl: string | null;
+  version: string | null;
+  buildNumber: string | null;
 }
 
 function LatestBuildCard({ app, reloadToken }: { app: AppItem; reloadToken: number }) {
@@ -237,7 +239,16 @@ function LatestBuildCard({ app, reloadToken }: { app: AppItem; reloadToken: numb
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className={`text-[14px] font-semibold ${textPrimary} leading-tight`}>{appName}</div>
+              <div className={`text-[14px] font-semibold ${textPrimary} leading-tight`}>
+                {appName}
+                {build.version && (
+                  <span className={`font-normal ${textSecondary}`}>
+                    {" "}
+                    v{build.version}
+                    {build.buildNumber && ` (${build.buildNumber})`}
+                  </span>
+                )}
+              </div>
               <div className={`text-[11px] ${textMuted} font-mono mt-0.5`}>{build.bundleId}</div>
             </div>
             <span className={`${badgeOutline("sandbox")} shrink-0 uppercase tracking-wide`}>{build.exportMethod}</span>

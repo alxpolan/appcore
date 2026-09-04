@@ -149,6 +149,8 @@ export async function runBuildJob(
             bundleId: params.bundleId,
             exportMethod: params.exportMethod ?? "app-store",
             sizeBytes: result.sizeBytes ?? ipaBuffer.length,
+            version: versionString ?? null,
+            buildNumber: result.buildNumber ?? null,
           },
           null,
           2,
@@ -173,6 +175,8 @@ export async function runBuildJob(
         logs: JSON.stringify(result.logs ?? []),
         errors: JSON.stringify(result.errors ?? []),
         ipaPath,
+        version: versionString ?? null,
+        buildNumber: result.buildNumber ?? null,
         completedAt: new Date(),
       },
     });

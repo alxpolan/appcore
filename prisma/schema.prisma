@@ -715,6 +715,8 @@ model BuildJob {
   logs        String?
   errors      String?
   ipaPath     String?
+  version     String?
+  buildNumber String?
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())

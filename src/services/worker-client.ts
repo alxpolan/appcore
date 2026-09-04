@@ -64,6 +64,7 @@ export interface WorkerBuildResult {
   originalFilename?: string;
   sizeBytes?: number;
   appStoreInfoBase64?: string;
+  buildNumber?: string;
 }
 
 export interface WorkerFrameitParams {

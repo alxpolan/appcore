@@ -259,7 +259,13 @@ export async function buildWithGym(
   logs: string[],
   signingCreds?: SigningCreds,
   versionString?: string,
-): Promise<{ ipaBase64: string; originalFilename: string; sizeBytes: number; appStoreInfoBase64?: string }> {
+): Promise<{
+  ipaBase64: string;
+  originalFilename: string;
+  sizeBytes: number;
+  appStoreInfoBase64?: string;
+  buildNumber: string;
+}> {
   logs.push("[build] Starting build");
 
   let signingCleanup: (() => Promise<void>) | undefined;
@@ -277,9 +283,10 @@ export async function buildWithGym(
   const fastlaneDir = path.join(repoDir, "fastlane");
   fs.mkdirSync(fastlaneDir, { recursive: true });
 
+  const buildNumber = String(Math.floor(Date.now() / 1000));
   const xcargsList: string[] = [];
   if (versionString) xcargsList.push(`MARKETING_VERSION=${versionString}`);
-  xcargsList.push(`CURRENT_PROJECT_VERSION=${Math.floor(Date.now() / 1000)}`);
+  xcargsList.push(`CURRENT_PROJECT_VERSION=${buildNumber}`);
 
   const gymfile = [
     `scheme("${gymScheme ?? appName}")`,
@@ -352,9 +359,7 @@ export async function buildWithGym(
   if (versionString) {
     logs.push(`[build] Version set to ${versionString} (via xcargs)`);
   }
-  logs.push(
-    `[build] Build number set to ${xcargsList.find((x) => x.startsWith("CURRENT_PROJECT_VERSION="))?.split("=")[1]}`,
-  );
+  logs.push(`[build] Build number set to ${buildNumber}`);
 
   logs.push(`[build] Building ...`);
   const gymStart = Date.now();
@@ -457,5 +462,6 @@ export async function buildWithGym(
     originalFilename: path.basename(ipa),
     sizeBytes: ipaSize,
     appStoreInfoBase64,
+    buildNumber,
   };
 }

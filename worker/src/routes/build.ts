@@ -129,6 +129,7 @@ buildRouter.post("/build", async (req: Request, res: Response) => {
       originalFilename: ipaResult.originalFilename,
       sizeBytes: ipaResult.sizeBytes,
       appStoreInfoBase64: ipaResult.appStoreInfoBase64,
+      buildNumber: ipaResult.buildNumber,
     });
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
