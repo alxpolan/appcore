@@ -85,6 +85,7 @@ keywordsRouter.get("/", bundleAccess("query", "bundleId"), async (req, res) => {
       const v = await p;
       return [v, performance.now() - s];
     };
+
     const [[topCompRows, tComp], [previousRankings, tPrev], groupMembers] = await Promise.all([
       time(
         "comp",

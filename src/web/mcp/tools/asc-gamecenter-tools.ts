@@ -46,6 +46,7 @@ async function getGameCenterDetailId(asc: any, appId: string): Promise<string | 
 }
 
 export function registerAscGameCenterTools(server: McpServer, userId: string) {
+  // @ts-ignore
   server.registerTool(
     "list_asc_leaderboards",
     {

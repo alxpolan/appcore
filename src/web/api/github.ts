@@ -76,6 +76,7 @@ githubRouter.get("/oauth/callback", async (req: Request, res: Response) => {
       res.status(400).json({ error: "Invalid or tampered state" });
       return;
     }
+    
     const { userId, ts } = parsed;
     if (Date.now() - ts > 10 * 60 * 1000) {
       res.status(400).json({ error: "OAuth state expired" });
@@ -639,19 +640,22 @@ async function fetchLatestCommit(repoFullName: string, token: string, branch?: s
     Accept: "application/vnd.github+json",
   };
 
-  const get = async (url: string) => {
+  const get = async <T>(url: string): Promise<T> => {
     const r = await fetch(url, { headers });
     if (!r.ok) throw new Error(`GitHub API Error: ${r.status}`);
-    return r.json();
+    return r.json() as Promise<T>;
   };
 
+  type GitRef = { ref?: string; object?: { sha?: string } };
+
   if (branch) {
-    const ref = await get(`https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`);
+    const ref = await get<GitRef>(`https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`);
     return { commitSha: (ref?.object?.sha ?? "unknown") as string, branch };
   }
 
-  const data = await get(`https://api.github.com/repos/${repoFullName}/git/refs/heads`);
+  const data = await get<GitRef[]>(`https://api.github.com/repos/${repoFullName}/git/refs/heads`);
   const ref = Array.isArray(data) ? data[0] : null;
+
   return {
     commitSha: (ref?.object?.sha ?? "unknown") as string,
     branch: (ref?.ref?.replace("refs/heads/", "") ?? "main") as string,
@@ -702,6 +706,7 @@ githubRouter.post("/builds/trigger/:appId", writeAuth, async (req: Request, res:
       bundleId: ctx.app.bundleId,
       commitSha,
     }).catch((err) => logger.error(`Build job for app ${ctx.app.id} failed: ${err.message}`));
+
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
