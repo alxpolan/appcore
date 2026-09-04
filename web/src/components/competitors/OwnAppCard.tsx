@@ -10,6 +10,7 @@ export interface AppItem {
   ratingsCount: number | null;
   iconUrl: string | null;
   subtitle: string | null;
+  languagesCount: number;
   competitorCount: number;
   inAppPurchases: { name: string; price: string | null; kind: string }[];
   updatedAt: string;

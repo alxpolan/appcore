@@ -98,6 +98,7 @@ appsRouter.get("/", async (req, res) => {
         ratingsCount: a.snapshots[0]?.ratingsCount ?? null,
         iconUrl: a.snapshots[0]?.iconUrl ?? null,
         accentColor: a.accentColor,
+        languagesCount: a.supportedLanguages.length,
         competitorCount: "_count" in a ? (a as any)._count.competitors + (a as any)._count.competitorOf : 0,
         inAppPurchases: [...a.inAppPurchases].sort(
           (x, y) => (x.kind === "subscription" ? 0 : 1) - (y.kind === "subscription" ? 0 : 1),
@@ -133,10 +134,12 @@ async function excludedBundleIds(ownAppId: string, ownBundleId: string): Promise
   const rels = await prisma.competitorRelation.findMany({
     where: { OR: [{ appId: ownAppId }, { competitorId: ownAppId }] },
   });
+
   const relatedIds = rels.map((r) => (r.appId === ownAppId ? r.competitorId : r.appId));
   const relatedApps = relatedIds.length
     ? await prisma.app.findMany({ where: { id: { in: relatedIds } }, select: { bundleId: true } })
     : [];
+
   return new Set<string>([ownBundleId, ...relatedApps.map((a) => a.bundleId)]);
 }
 
@@ -144,13 +147,16 @@ appsRouter.get("/:id/competitor-search", appAccess("params", "id"), async (req, 
   try {
     const ownApp = req.bundleApp!;
     const q = ((req.query.q as string) ?? "").trim();
+
     if (q.length < 2) {
       res.json([]);
       return;
     }
+
     const exclude = await excludedBundleIds(ownApp.id, ownApp.bundleId);
     const scraper = new AppStoreScraper(ownApp.country, undefined, ownApp.bundleId);
     const results = await scraper.searchApps(q, 15);
+
     res.json(
       results
         .filter((r) => !exclude.has(r.bundleId))
@@ -177,6 +183,7 @@ appsRouter.get("/:id/competitor-suggestions", appAccess("params", "id"), async (
       orderBy: { popularity: "desc" },
       take: 5,
     });
+
     if (keywords.length === 0) {
       res.json([]);
       return;
@@ -199,6 +206,7 @@ appsRouter.get("/:id/competitor-suggestions", appAccess("params", "id"), async (
         bestPos: number;
       }
     >();
+
     for (const results of perTerm) {
       results.forEach((r, idx) => {
         if (exclude.has(r.bundleId)) return;
@@ -422,6 +430,7 @@ function extractCandidateKeywords(title: string | null, subtitle: string | null,
       add(`${word} ${next}`);
     }
   }
+
   for (const word of tokens) {
     if (!KEYWORD_STOPWORDS.has(word)) add(word);
   }
@@ -504,12 +513,14 @@ appsRouter.get("/:id/competitor-detail", bundleAccess("query", "bundleId"), asyn
             orderBy: { trackedAt: "desc" },
             distinct: ["keywordId"],
           }),
+
           prisma.keywordRanking.findMany({
             where: { keywordId: { in: kwIds }, appId: ownApp.id },
             orderBy: { trackedAt: "desc" },
             distinct: ["keywordId"],
           }),
         ]);
+
         const compRankMap = new Map(compRankings.map((r) => [r.keywordId, r.rank]));
         const ownRankMap = new Map(ownRankings.map((r) => [r.keywordId, r.rank]));
 
@@ -542,6 +553,7 @@ appsRouter.get("/:id/competitor-detail", bundleAccess("query", "bundleId"), asyn
       version: snapshot?.version ?? null,
       developerName: snapshot?.developerName ?? null,
       category: snapshot?.category ?? null,
+      languages: app.supportedLanguages,
       reviews: reviews.map((r: any) => ({
         id: r.id,
         rating: r.rating,
@@ -613,7 +625,6 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
   try {
     const { p12Base64, p12Password, profileBase64, profilesBase64, teamId } = req.body;
 
-    // Accepts either the array (one profile per bundle ID) or the old single value.
     const profiles: string[] = Array.isArray(profilesBase64)
       ? profilesBase64.filter((p): p is string => typeof p === "string" && p.length > 0)
       : profileBase64
@@ -633,11 +644,11 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
         signingCertP12: p12Base64,
         signingCertPassword: p12Password,
         signingProvisioningProfiles: JSON.stringify(profiles),
-        // Cleared so the legacy column can never shadow a freshly uploaded set.
         signingProvisioningProfile: null,
         signingTeamId: teamId ?? null,
       },
     });
+    
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -653,6 +664,7 @@ appsRouter.patch("/:id", requireAuth, appAccess("params", "id"), async (req, res
       where: { id: req.bundleApp!.id },
       data: { displayName: trimmed || null },
     });
+
     res.json({ id: app.id, displayName: app.displayName });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -700,6 +712,7 @@ appsRouter.delete("/:id/signing", requireAuth, appAccess("params", "id"), async 
         signingTeamId: null,
       },
     });
+
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });

@@ -3,7 +3,7 @@ import { TD, TH, borderDefault, textMuted, textPrimary, textSecondary } from "..
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { AppItem } from "./OwnAppCard";
 
-type SortKey = "name" | "rating" | "ratingsCount" | "competitorCount";
+type SortKey = "name" | "rating" | "ratingsCount" | "languagesCount" | "competitorCount";
 
 interface Props {
   competitors: AppItem[];
@@ -37,6 +37,7 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
   const sorted = [...competitors].sort((a, b) => {
     const dir = sortDir === "asc" ? 1 : -1;
     if (sortBy === "name") return a.name.localeCompare(b.name) * dir;
+    
     const av = (a[sortBy] as number | null) ?? -1;
     const bv = (b[sortBy] as number | null) ?? -1;
     return (av - bv) * dir;
@@ -60,11 +61,12 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
     >
       <table className="w-full border-collapse table-fixed">
         <colgroup>
-          <col style={{ width: "24%" }} />
-          <col style={{ width: "16%" }} />
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "8%" }} />
           <col style={{ width: "9%" }} />
           <col style={{ width: "10%" }} />
-          <col style={{ width: "25%" }} />
+          <col style={{ width: "21%" }} />
           <col style={{ width: "10%" }} />
           <col style={{ width: "6%" }} />
         </colgroup>
@@ -74,6 +76,7 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
             <th className={TH}>Bundle ID</th>
             {col("rating", "Rating")}
             {col("ratingsCount", "Ratings")}
+            {col("languagesCount", "Languages")}
             <th className={TH}>Monetization</th>
             {col("competitorCount", "Competitors")}
             <th className={TH}></th>
@@ -99,9 +102,7 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
                     <span className={`block font-medium ${textPrimary} truncate`} title={c.name}>
                       {c.name}
                     </span>
-                    {c.subtitle && (
-                      <span className={`block text-[11px] ${textMuted} truncate`}>{c.subtitle}</span>
-                    )}
+                    {c.subtitle && <span className={`block text-[11px] ${textMuted} truncate`}>{c.subtitle}</span>}
                   </span>
                 </span>
               </td>
@@ -120,6 +121,9 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
               </td>
               <td className={`${TD} ${textSecondary} tabular-nums`}>
                 {c.ratingsCount != null ? c.ratingsCount.toLocaleString() : "—"}
+              </td>
+              <td className={`${TD} ${textSecondary}`}>
+                {c.languagesCount > 0 ? `${c.languagesCount} languages` : "—"}
               </td>
               <td className={TD}>
                 {c.inAppPurchases.length === 0 ? (
@@ -140,9 +144,7 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
                         <span className={`text-xs ${textPrimary} truncate`} title={p.name}>
                           {p.name}
                         </span>
-                        <span className={`text-xs ${textMuted} shrink-0 ml-auto tabular-nums`}>
-                          {p.price ?? "—"}
-                        </span>
+                        <span className={`text-xs ${textMuted} shrink-0 ml-auto tabular-nums`}>{p.price ?? "—"}</span>
                       </div>
                     ))}
                   </div>

@@ -152,13 +152,15 @@ export class CompetitorIntelService {
 }
 Be concise but thorough. Extract actionable insights.`;
 
-    const userPrompt = `Here are ${reviews.length} recent reviews (avg rating: ${avgRating.toFixed(1)}/5):\n\n${reviewTexts}`;
-
-    const ai = await this.ai.query(systemPrompt, userPrompt, {
-      temperature: 0.5,
-      maxTokens: 4000,
-      jsonMode: true,
-    });
+    const ai = await this.ai.query(
+      systemPrompt,
+      `Here are ${reviews.length} recent reviews (avg rating: ${avgRating.toFixed(1)}/5):\n\n${reviewTexts}`,
+      {
+        temperature: 0.5,
+        maxTokens: 4000,
+        jsonMode: true,
+      },
+    );
 
     try {
       const parsed = JSON.parse(ai.content);
@@ -419,27 +421,56 @@ Be concise but thorough. Extract actionable insights.`;
     return { products, apps };
   }
 
+  async scrapeLanguagesForAllCompetitors(bundleId: string): Promise<{ apps: number }> {
+    const ownApp = await prisma.app.findUnique({
+      where: { bundleId },
+      include: { competitors: { include: { competitor: true } } },
+    });
+
+    if (!ownApp) throw new Error(`App not found: ${bundleId}`);
+
+    let apps = 0;
+    const scraper = new AppStoreScraper();
+
+    for (const rel of ownApp.competitors) {
+      const comp = rel.competitor;
+      if (!comp.trackId) continue;
+
+      const languages = await scraper.scrapeLanguages(Number(comp.trackId));
+      await prisma.app.update({
+        where: { id: comp.id },
+        data: { supportedLanguages: languages },
+      });
+
+      apps++;
+      await this.sleep(1000);
+    }
+
+    logger.info(`Scraped languages for ${apps} competitors`);
+    return { apps };
+  }
+
   async runFullIntelJob(bundleId: string): Promise<{
     reviewsScraped: number;
     appsSummarized: number;
     metadataChanges: number;
     monetizationProducts: number;
+    languagesScraped: number;
   }> {
     logger.info(`Starting full competitor intel job for ${bundleId}`);
 
     const { total: reviewsScraped } = await this.scrapeAllCompetitorReviews(bundleId);
-
     const appsSummarized = await this.summarizeAllCompetitorReviews(bundleId);
 
     const { changes: metadataChanges } = await this.detectAllMetadataChanges(bundleId);
-
     const { products: monetizationProducts } = await this.scrapeMonetizationForAllCompetitors(bundleId);
+    const { apps: languagesScraped } = await this.scrapeLanguagesForAllCompetitors(bundleId);
 
     logger.info(
-      `Competitor intel complete: ${reviewsScraped} reviews, ${appsSummarized} summaries, ${metadataChanges} changes, ${monetizationProducts} monetization products`,
+      `Competitor intel complete: ${reviewsScraped} reviews, ${appsSummarized} summaries, ${metadataChanges} changes, ${monetizationProducts} monetization products, ${languagesScraped} apps with languages scraped`,
     );
 
-    return { reviewsScraped, appsSummarized, metadataChanges, monetizationProducts };
+    return { reviewsScraped, appsSummarized, metadataChanges, monetizationProducts, languagesScraped };
   }
 
   private sleep(ms: number): Promise<void> {

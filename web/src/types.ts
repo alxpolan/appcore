@@ -539,6 +539,7 @@ export interface CompetitorDetail {
   version: string | null;
   developerName: string | null;
   category: string | null;
+  languages: string[];
   reviews: CompetitorReview[];
   reviewSummary: CompetitorReviewSummary | null;
   metadataChanges: MetadataChange[];

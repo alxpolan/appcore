@@ -176,10 +176,10 @@ export class AppStoreScraper {
 
     logger.debug(
       `Keyword "${term}": popularity=${popularity} ` +
-      `(ac=${autocompleteScore} depth=${depthScore} eng=${engagementScore} qual=${qualityScore} ` +
-      `exactIdx=${exactIndex} prefixIdx=${prefixIndex} results=${resultCount} mult=${popularityMultiplier}), ` +
-      `difficulty=${difficulty} (blendedAvg=${Math.round(blendedAvgRatings)} domBonus=${dominanceBonus}), ` +
-      `volume=${searchVolume}`,
+        `(ac=${autocompleteScore} depth=${depthScore} eng=${engagementScore} qual=${qualityScore} ` +
+        `exactIdx=${exactIndex} prefixIdx=${prefixIndex} results=${resultCount} mult=${popularityMultiplier}), ` +
+        `difficulty=${difficulty} (blendedAvg=${Math.round(blendedAvgRatings)} domBonus=${dominanceBonus}), ` +
+        `volume=${searchVolume}`,
     );
 
     return { results, popularity, difficulty, searchVolume };
@@ -304,7 +304,9 @@ export class AppStoreScraper {
       const infoItems = serverData?.data?.[0]?.data?.shelfMapping?.information?.items;
       if (!Array.isArray(infoItems)) return [];
 
-      const section = infoItems.find((it: any) => /in.?app purchase/i.test(typeof it?.title === "string" ? it.title : ""));
+      const section = infoItems.find((it: any) =>
+        /in.?app purchase/i.test(typeof it?.title === "string" ? it.title : ""),
+      );
       if (!section) return [];
 
       const pairs: Array<[string, string | null]> = [];
@@ -337,6 +339,44 @@ export class AppStoreScraper {
       return items;
     } catch (error) {
       logger.warn(`Failed to scrape monetization for track ${trackId}`, {
+        error: error instanceof Error ? error.message : error,
+      });
+      return [];
+    }
+  }
+
+  async scrapeLanguages(trackId: number): Promise<string[]> {
+    try {
+      const url = `https://apps.apple.com/us/app/id${trackId}`;
+      const { data: html } = await axios.get<string>(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+
+      const $ = cheerio.load(html);
+      const serverData = this.parseServerData($);
+      const infoItems = serverData?.data?.[0]?.data?.shelfMapping?.information?.items;
+      if (!Array.isArray(infoItems)) return [];
+
+      const section = infoItems.find(
+        (it: any) => (typeof it?.title === "string" ? it.title.trim() : "").toLowerCase() === "languages",
+      );
+      if (!section) return [];
+
+      const raw: string =
+        (typeof section.items?.[0]?.text === "string" && section.items[0].text) ||
+        (typeof section.items_V3?.[0]?.linkableText?.styledText?.rawText === "string" &&
+          section.items_V3[0].linkableText.styledText.rawText) ||
+        "";
+
+      return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } catch (error) {
+      logger.warn(`Failed to scrape languages for track ${trackId}`, {
         error: error instanceof Error ? error.message : error,
       });
       return [];
@@ -482,8 +522,7 @@ export class AppStoreScraper {
     }
 
     const description = itunesData.description;
-    const screenshotUrls =
-      itunesData.screenshotUrls?.length ? itunesData.screenshotUrls : webData?.screenshots ?? [];
+    const screenshotUrls = itunesData.screenshotUrls?.length ? itunesData.screenshotUrls : (webData?.screenshots ?? []);
 
     await prisma.appSnapshot.create({
       data: {

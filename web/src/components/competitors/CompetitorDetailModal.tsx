@@ -159,7 +159,27 @@ export function OverviewTab({ data }: { data: CompetitorDetail }) {
         {data.developerName && <InfoCard label="Developer" value={data.developerName} />}
         {data.category && <InfoCard label="Category" value={data.category} />}
         {data.version && <InfoCard label="Version" value={data.version} />}
+        {data.languages.length > 0 && (
+          <InfoCard label="Languages" value={`${data.languages.length} localized`} />
+        )}
       </div>
+      {data.languages.length > 0 && (
+        <div>
+          <div className={`text-xs font-medium uppercase tracking-wide ${textMuted} mb-2`}>
+            Localized languages ({data.languages.length})
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.languages.map((lang, i) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#252b38] text-[11px] text-[#374151] dark:text-[#c0c5d0]"
+              >
+                {lang}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {data.description && (
         <div>
           <div className={`text-xs font-medium uppercase tracking-wide ${textMuted} mb-2`}>Description</div>

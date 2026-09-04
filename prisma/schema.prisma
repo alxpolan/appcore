@@ -207,6 +207,7 @@ model App {
   snapshotEnvVars            String?
   accentColor                String?
   accentColorIconUrl         String?
+  supportedLanguages         String[]                  @default([])
   memberAccess               TeamMemberAppAccess[]
   snapshots                  AppSnapshot[]
   rankings                   KeywordRanking[]
