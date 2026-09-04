@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Frame,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useApi, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
 import { usePermissions } from "../hooks/usePermissions";
+import { useClickOutside } from "../hooks/useClickOutside";
 import { RepoLinker, ScreenshotJobsTable } from "./Logs";
 import {
   borderDefault,
@@ -212,6 +214,72 @@ function StudioRepoLinker({
   );
 }
 
+function LocaleFlag({ locale }: { locale: string }) {
+  return (
+    <img
+      src={`/country-flags/${getLocaleFlag(locale)}.svg`}
+      alt=""
+      width={20}
+      height={15}
+      className="h-[12px] w-4 object-cover shrink-0 rounded-xs"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
+  );
+}
+
+function LocaleDropdown({
+  locales,
+  value,
+  onChange,
+}: {
+  locales: string[];
+  value: string;
+  onChange: (locale: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-2 pl-3 pr-2.5 py-[6px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] text-[13px] font-medium ${textPrimary} hover:border-gray-300 dark:hover:border-[#3a4050] transition-all`}
+      >
+        <LocaleFlag locale={value} />
+        <span>{getLocaleName(value)}</span>
+        <ChevronDown className={`w-3.5 h-3.5 ${textMuted} transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          className={`absolute right-0 top-full mt-1.5 z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[200px] max-h-[320px] overflow-auto`}
+        >
+          {locales.map((locale) => (
+            <button
+              key={locale}
+              type="button"
+              onClick={() => {
+                onChange(locale);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left ${
+                value === locale ? "font-semibold" : ""
+              }`}
+            >
+              <LocaleFlag locale={locale} />
+              {getLocaleName(locale)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StudioGallery({
   appId,
   reloadToken,
@@ -221,11 +289,56 @@ function StudioGallery({
   reloadToken: number;
   addToast: Props["addToast"];
 }) {
-  const { canWrite } = usePermissions();
-  const { data, loading, refetch } = useApi<{ job: FramedJob | null }>(`/github/screenshots/latest-framed/${appId}`, [
+  const { data, loading, refetch } = useApi<{ jobs: FramedJob[] }>(`/github/screenshots/framed-history/${appId}`, [
     appId,
     reloadToken,
   ]);
+
+  if (loading && !data) {
+    return (
+      <div
+        className={`${cardCls} mb-5 flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center`}
+      >
+        <div className="spinner !w-4 !h-4" /> Loading screenshots…
+      </div>
+    );
+  }
+
+  const jobs = data?.jobs ?? [];
+
+  if (jobs.length === 0) {
+    return (
+      <div className={`${cardCls} mb-5 text-center py-10`}>
+        <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />
+        <div className={`text-sm font-medium ${textPrimary} mb-1`}>No screenshots yet</div>
+        <p className={`text-[13px] ${textSecondary}`}>
+          Hit Generate Screenshots to start your first run. Results show up here once it completes.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {jobs.map((job, index) => (
+        <RunResults key={job.id} job={job} isLatest={index === 0} addToast={addToast} onChanged={refetch} />
+      ))}
+    </>
+  );
+}
+
+function RunResults({
+  job,
+  isLatest,
+  addToast,
+  onChanged,
+}: {
+  job: FramedJob;
+  isLatest: boolean;
+  addToast: Props["addToast"];
+  onChanged: () => void;
+}) {
+  const { canWrite } = usePermissions();
   const [activeLocale, setActiveLocale] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [orderOverride, setOrderOverride] = useState<Record<string, string[]>>({});
@@ -234,10 +347,6 @@ function StudioGallery({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pendingReorder, setPendingReorder] = useState<{ locale: string; urls: string[] } | null>(null);
   const [savingReorder, setSavingReorder] = useState<"one" | "all" | null>(null);
-
-  useEffect(() => {
-    setOrderOverride({});
-  }, [data?.job?.id]);
 
   useEffect(() => {
     if (!previewUrl) return;
@@ -250,32 +359,11 @@ function StudioGallery({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [previewUrl]);
 
-  const job = data?.job;
-  const framedByLocale = job?.framedByLocale ?? {};
+  const framedByLocale = job.framedByLocale ?? {};
   const locales = Object.keys(framedByLocale).filter((l) => (framedByLocale[l]?.length ?? 0) > 0);
   const effectiveLocale = activeLocale && locales.includes(activeLocale) ? activeLocale : (locales[0] ?? null);
 
-  if (loading && !data) {
-    return (
-      <div
-        className={`${cardCls} mb-5 flex items-center gap-2 text-sm text-gray-400 dark:text-[#5c6478] py-8 justify-center`}
-      >
-        <div className="spinner !w-4 !h-4" /> Loading screenshots…
-      </div>
-    );
-  }
-
-  if (!job || locales.length === 0) {
-    return (
-      <div className={`${cardCls} mb-5 text-center py-10`}>
-        <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />
-        <div className={`text-sm font-medium ${textPrimary} mb-1`}>No screenshots yet</div>
-        <p className={`text-[13px] ${textSecondary}`}>
-          Hit Generate Screenshots to start your first run. Results show up here once it completes.
-        </p>
-      </div>
-    );
-  }
+  if (locales.length === 0) return null;
 
   const deleteScreenshot = async (jobId: string, url: string) => {
     if (!canWrite) return;
@@ -285,7 +373,8 @@ function StudioGallery({
     try {
       await apiDelete(`/github/screenshots/framed/${jobId}`, { url });
       addToast("Screenshot removed", "success");
-      refetch();
+      setOrderOverride({});
+      onChanged();
     } catch (err: any) {
       addToast(`Failed to remove: ${err.message}`, "error");
     } finally {
@@ -356,7 +445,7 @@ function StudioGallery({
       });
       if (applyToAll) {
         setOrderOverride({});
-        refetch();
+        onChanged();
       }
       addToast(applyToAll ? "Order applied to all languages" : `Order saved for ${pendingReorder.locale}`, "success");
     } catch (err: any) {
@@ -379,7 +468,7 @@ function StudioGallery({
         delete next[pendingReorder.locale];
         return next;
       });
-      refetch();
+      onChanged();
     }
     setPendingReorder(null);
   };
@@ -399,32 +488,27 @@ function StudioGallery({
     <>
       <div className={`${cardCls} mb-5`}>
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <h2 className={`text-[16px] font-semibold ${textPrimary}`}>Latest Screenshots</h2>
-          <span className={`text-[11px] ${textSecondary} font-mono`}>
-            {job.commitSha.slice(0, 7)}
-            {job.branch ? ` · ${job.branch}` : ""}
-            {` · ${new Date(job.createdAt).toLocaleDateString()}`}
-          </span>
-        </div>
-
-        {locales.length > 1 && (
-          <div className="flex gap-1.5 flex-wrap mb-4">
-            {locales.map((locale) => (
-              <button
-                key={locale}
-                onClick={() => setActiveLocale(locale)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium border transition-all ${
-                  locale === effectiveLocale
-                    ? "border-[#C4001E] text-[#C4001E] bg-[#C4001E]/5"
-                    : `${borderDefault} ${textSecondary} hover:border-[#C4001E] hover:text-[#C4001E]`
-                }`}
-              >
-                <span>{getLocaleFlag(locale)}</span>
-                {getLocaleName(locale)}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className={`text-[15px] font-semibold ${textPrimary} truncate`}>
+              {job.commitMessage || job.commitSha.slice(0, 7)}
+            </h2>
+            {isLatest && (
+              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                Latest
+              </span>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-3 shrink-0">
+            <span className={`text-[11px] ${textSecondary} font-mono`}>
+              {job.commitSha.slice(0, 7)}
+              {job.branch ? ` · ${job.branch}` : ""}
+              {` · ${new Date(job.createdAt).toLocaleDateString()}`}
+            </span>
+            {effectiveLocale && locales.length > 1 && (
+              <LocaleDropdown locales={locales} value={effectiveLocale} onChange={setActiveLocale} />
+            )}
+          </div>
+        </div>
 
         <div className="flex flex-col gap-5">
           {sortedGroups.map(([label, urls]) => (

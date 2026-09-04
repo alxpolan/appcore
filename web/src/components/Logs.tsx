@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, GitBranch } from "lucide-react";
+import { Check, ChevronDown, GitBranch } from "lucide-react";
 import { useApi, apiPost, apiPut, authHeaders } from "../hooks/useApi";
 import {
   badgeOutline,
@@ -604,12 +604,21 @@ export function ScreenshotJobsTable({
   reloadToken?: number;
   onJobFinished?: () => void;
 }) {
-  const { data: jobs, loading, refetch } = useApi<ScreenshotJob[]>(
-    `/github/screenshots/${appId}`,
-    [appId, reloadToken],
-    true,
-  );
+  const {
+    data: jobs,
+    loading,
+    refetch,
+  } = useApi<ScreenshotJob[]>(`/github/screenshots/${appId}`, [appId, reloadToken], true);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
+
+  // Average duration of recent completed runs feeds the progress bar and ETA of
+  // active ones. Sub-minute runs are outliers (instant failures), skip them.
+  const durations = (jobs ?? [])
+    .filter((j) => j.status === "COMPLETED" && j.startedAt && j.completedAt)
+    .map((j) => new Date(j.completedAt!).getTime() - new Date(j.startedAt!).getTime())
+    .filter((d) => d > 60_000)
+    .slice(0, 5);
+  const avgDurationMs = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
   return (
     <div className={`${cardCls} mb-5`}>
@@ -634,6 +643,7 @@ export function ScreenshotJobsTable({
               job={j}
               expanded={expandedJob === j.id}
               onToggle={() => setExpandedJob(expandedJob === j.id ? null : j.id)}
+              avgDurationMs={avgDurationMs}
               addToast={addToast}
               onJobDone={() => {
                 setTimeout(refetch, 1000);
@@ -647,16 +657,110 @@ export function ScreenshotJobsTable({
   );
 }
 
+const RUN_STAGES = [
+  { chip: "Clone", running: "Cloning repository", match: /^\[repo\]/ },
+  { chip: "Prepare", running: "Preparing project", match: /^\[(config|signing|build)\]/ },
+  { chip: "Capture", running: "Capturing screenshots", match: /^\[capture\]/ },
+  { chip: "Frame", running: "Framing and captioning", match: /^\[(frame|framing)\]/ },
+];
+
+// Rough completion percentage when a stage begins; used as a floor under the
+// time-based estimate so the bar never trails what the logs already show.
+const RUN_STAGE_BASE_PCT = [4, 10, 25, 88];
+
+function formatEta(remainingMs: number): string {
+  if (remainingMs <= 15_000) return "almost done";
+  if (remainingMs < 90_000) return "~1 min left";
+  return `~${Math.round(remainingMs / 60_000)} min left`;
+}
+
+function RunProgress({
+  job,
+  lines,
+  avgDurationMs,
+}: {
+  job: ScreenshotJob;
+  lines: string[];
+  avgDurationMs: number | null;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  let stageIdx = -1;
+  for (let i = 0; i < RUN_STAGES.length; i++) {
+    if (lines.some((l) => RUN_STAGES[i].match.test(l))) stageIdx = i;
+  }
+
+  const startedAt = job.startedAt ? new Date(job.startedAt).getTime() : null;
+  const elapsed = startedAt ? Date.now() - startedAt : 0;
+  const timePct = avgDurationMs && startedAt ? (elapsed / avgDurationMs) * 100 : 0;
+  const stagePct = stageIdx >= 0 ? RUN_STAGE_BASE_PCT[stageIdx] : 2;
+  const pct = Math.max(2, Math.min(97, Math.max(timePct, stagePct)));
+
+  const lastLine = lines.length > 0 ? lines[lines.length - 1] : null;
+  const activity = lastLine ? lastLine.replace(/^\[[^\]]+\]\s*/, "").trim() : null;
+  const stageLabel = stageIdx >= 0 ? RUN_STAGES[stageIdx].running : startedAt ? "Starting…" : "Waiting for a worker…";
+  const eta = !startedAt ? "queued" : avgDurationMs ? formatEta(avgDurationMs - elapsed) : "estimating…";
+
+  return (
+    <div className="px-4 pb-3">
+      <div className="flex items-center justify-between gap-3 text-[11px] mb-1.5">
+        <span className={`${textSecondary} truncate`}>
+          {stageLabel}
+          {activity ? ` · ${activity}` : ""}
+        </span>
+        <span className={`${textSecondary} shrink-0`}>
+          {eta} · {Math.round(pct)}%
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-gray-200/70 dark:bg-[#1c2028] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#D94412] to-[#C4001E] transition-[width] duration-1000 ease-linear"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex items-center gap-3 mt-2 flex-wrap">
+        {RUN_STAGES.map((stage, i) => (
+          <span
+            key={stage.chip}
+            className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
+              i < stageIdx
+                ? "text-emerald-600 dark:text-emerald-400"
+                : i === stageIdx
+                  ? textPrimary
+                  : "text-gray-400 dark:text-[#5c6478]"
+            }`}
+          >
+            {i < stageIdx ? (
+              <Check className="w-3 h-3" />
+            ) : i === stageIdx ? (
+              <div className="spinner !w-2.5 !h-2.5" />
+            ) : (
+              <span className="w-1 h-1 rounded-full bg-current inline-block" />
+            )}
+            {stage.chip}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function JobRow({
   job,
   expanded,
   onToggle,
+  avgDurationMs,
   addToast,
   onJobDone,
 }: {
   job: ScreenshotJob;
   expanded: boolean;
   onToggle: () => void;
+  avgDurationMs: number | null;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
   onJobDone?: () => void;
 }) {
@@ -668,11 +772,13 @@ function JobRow({
     loading: logsLoading,
     error: logsError,
   } = useLazyLogs(!isActive && expanded ? `/github/screenshots/${job.appId}/${job.id}/logs` : null);
+  // Streams whenever the job is active (not only when expanded) so the progress
+  // bar can track stages while the row is collapsed.
   const {
     lines: streamLines,
     done: streamDone,
     liveCount,
-  } = useStreamingLogs(isActive ? job.id : null, isActive ? job.appId : null, expanded);
+  } = useStreamingLogs(isActive ? job.id : null, isActive ? job.appId : null, isActive);
 
   const logsRef = useRef<HTMLPreElement>(null);
 
@@ -714,6 +820,8 @@ function JobRow({
           className={`w-4 h-4 ${textSecondary} shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
         />
       </button>
+
+      {isActive && <RunProgress job={job} lines={streamLines} avgDurationMs={avgDurationMs} />}
 
       {expanded && (
         <div className={`border-t ${borderDefault} bg-[#fafbfc] dark:bg-[#161920] px-4 py-3`}>
@@ -869,4 +977,3 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
     </div>
   );
 }
-

@@ -58,6 +58,12 @@ interface FramefileEntry {
 const BUNDLED_FRAMEIT_FONT = path.join(__dirname, "ArialRoundedBold.ttf");
 const FRAMEIT_FONT_NAME = "FrameitTextFont";
 
+const WIDE_LATIN_FONTS = [
+  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+];
+
 const FONT_CANDIDATES: FontCandidate[] = [
   {
     // Devanagari (Hindi, Marathi, Nepali, Sanskrit)
@@ -157,6 +163,14 @@ const FONT_CANDIDATES: FontCandidate[] = [
       "/System/Library/Fonts/Supplemental/PTSerif.ttc",
       "/System/Library/Fonts/Supplemental/Arial.ttf",
     ],
+  },
+  {
+    test: /[\u0370-\u03FF\u1F00-\u1FFF]/u,
+    paths: WIDE_LATIN_FONTS,
+  },
+  {
+    test: /[\u0100-\u024F\u1E00-\u1EFF]/u,
+    paths: WIDE_LATIN_FONTS,
   },
 ];
 
