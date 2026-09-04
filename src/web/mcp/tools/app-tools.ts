@@ -18,55 +18,55 @@ export function registerAppTools(server: McpServer, userId: string) {
     {
       description:
         "List all apps managed in Marteso. Returns bundle IDs, names, and key metrics. " +
-        "Always call this first to discover available bundle IDs before using other tools.",
-      inputSchema: {
-        ownOnly: z
-          .boolean()
-          .default(true)
-          .describe(
-            "When true (default) returns only your own apps. Set false to include tracked competitor apps too.",
-          ),
-      },
+        "Call this to discover available bundle IDs before using other tools.",
     },
-    async ({ ownOnly }) => {
+    async () => {
       const teamId = await getMcpUserTeamId(userId);
+
       if (!teamId) {
         return {
           content: [{ type: "text", text: "[]" }],
         };
       }
+
       const allowedAppIds = await getMcpAllowedAppIds(userId, teamId);
       const apps = await prisma.app.findMany({
         where: {
           teamId,
-          ...(ownOnly ? { isOwnApp: true } : {}),
+          ...{ isOwnApp: true },
           ...(allowedAppIds ? { id: { in: allowedAppIds } } : {}),
         },
         include: {
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
           _count: { select: { rankings: true, competitors: true } },
         },
-        orderBy: [{ isOwnApp: "desc" }, { name: "asc" }],
+        orderBy: [{ name: "asc" }],
       });
 
-      const result = apps.map((a) => ({
-        bundleId: a.bundleId,
-        name: a.name,
-        displayName: a.displayName,
-        isOwnApp: a.isOwnApp,
-        country: a.country,
-        title: a.currentTitle,
-        subtitle: a.currentSubtitle,
-        rating: a.snapshots[0]?.rating ?? null,
-        ratingsCount: a.snapshots[0]?.ratingsCount ?? null,
-        iconUrl: a.snapshots[0]?.iconUrl ?? null,
-        trackedKeywords: a._count.rankings,
-        competitors: a._count.competitors,
-        lastScraped: a.snapshots[0]?.scrapedAt ?? null,
-      }));
-
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              apps.map((a) => ({
+                bundleId: a.bundleId,
+                name: a.name,
+                displayName: a.displayName,
+                country: a.country,
+                title: a.currentTitle,
+                subtitle: a.currentSubtitle,
+                rating: a.snapshots[0]?.rating ?? null,
+                ratingsCount: a.snapshots[0]?.ratingsCount ?? null,
+                iconUrl: a.snapshots[0]?.iconUrl ?? null,
+                trackedKeywords: a._count.rankings,
+                competitors: a._count.competitors,
+                lastScraped: a.snapshots[0]?.scrapedAt ?? null,
+              })),
+              null,
+              2,
+            ),
+          },
+        ],
       };
     },
   );
@@ -82,16 +82,11 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Falls back to the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Falls back to the user's default app if omitted."),
       },
     },
     async ({ bundleId }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
           content: [
@@ -114,6 +109,7 @@ export function registerAppTools(server: McpServer, userId: string) {
           ],
         };
       }
+
       const app = await prisma.app.findUnique({
         where: { bundleId: resolvedBundleId },
         include: { snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 } },
@@ -171,23 +167,13 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(50)
-          .default(10)
-          .describe("Max versions to return (default 10, max 50)"),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
+        limit: z.number().int().min(1).max(50).default(10).describe("Max versions to return (default 10, max 50)"),
       },
     },
     async ({ bundleId, limit }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
+      
       if (!resolvedBundleId) {
         return {
           content: [
@@ -254,9 +240,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         limit: z
           .number()
           .int()
@@ -267,10 +251,7 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, limit }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
           content: [
@@ -336,9 +317,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         terms: z
           .array(z.string())
           .min(1)
@@ -355,10 +334,7 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, terms, country }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
           content: [
@@ -373,9 +349,7 @@ export function registerAppTools(server: McpServer, userId: string) {
       const app = await verifyMcpAppAccess(userId, resolvedBundleId);
       if (!app) {
         return {
-          content: [
-            { type: "text", text: appNotFoundWithListApps(resolvedBundleId) },
-          ],
+          content: [{ type: "text", text: appNotFoundWithListApps(resolvedBundleId) }],
         };
       }
 
@@ -433,9 +407,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         displayName: z
           .string()
           .max(60)
@@ -443,15 +415,10 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, displayName }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
-          content: [
-            { type: "text", text: mcpToolMessages.noBundleIdProvidedWithDefault },
-          ],
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdProvidedWithDefault }],
         };
       }
 
@@ -484,28 +451,23 @@ export function registerAppTools(server: McpServer, userId: string) {
     "get_competitors",
     {
       description:
-        "Get competitor apps tracked for an app, including ratings, relevance scores, and latest metadata. " +
-        "Use list_apps to find the bundleId first.",
+        "Get competitor apps tracked for an app, including ratings, relevance scores, latest metadata, " +
+        "how many languages their listing is localized into, a monetization summary, and AI review sentiment. " +
+        "Use get_competitor_detail for the full breakdown (reviews, monetization items, metadata changes, keyword rankings) " +
+        "on a single competitor. Use list_apps to find the bundleId first.",
       inputSchema: {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
       },
     },
     async ({ bundleId }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
 
       if (!resolvedBundleId) {
         return {
-          content: [
-            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
-          ],
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdConfigured }],
         };
       }
 
@@ -523,19 +485,209 @@ export function registerAppTools(server: McpServer, userId: string) {
           competitor: {
             include: {
               snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+              inAppPurchases: { select: { kind: true } },
+              reviewSummaries: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { sentiment: true, averageRating: true, reviewCount: true },
+              },
             },
           },
         },
       });
 
-      const result = rels.map((r) => ({
-        bundleId: r.competitor.bundleId,
-        name: r.competitor.name,
-        rating: r.competitor.snapshots[0]?.rating ?? null,
-        ratingsCount: r.competitor.snapshots[0]?.ratingsCount ?? null,
-        title: r.competitor.snapshots[0]?.title ?? null,
-        relevanceScore: r.relevanceScore,
-      }));
+      const result = rels.map((r) => {
+        const latestSummary = r.competitor.reviewSummaries[0];
+        return {
+          bundleId: r.competitor.bundleId,
+          name: r.competitor.name,
+          rating: r.competitor.snapshots[0]?.rating ?? null,
+          ratingsCount: r.competitor.snapshots[0]?.ratingsCount ?? null,
+          title: r.competitor.snapshots[0]?.title ?? null,
+          relevanceScore: r.relevanceScore,
+          languagesCount: r.competitor.supportedLanguages.length,
+          monetization:
+            r.competitor.inAppPurchases.length > 0
+              ? {
+                  itemCount: r.competitor.inAppPurchases.length,
+                  hasSubscription: r.competitor.inAppPurchases.some((p) => p.kind === "subscription"),
+                }
+              : null,
+          aiReviewSummary: latestSummary
+            ? {
+                sentiment: latestSummary.sentiment,
+                averageRating: latestSummary.averageRating,
+                reviewCount: latestSummary.reviewCount,
+              }
+            : null,
+        };
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    },
+  );
+
+  // @ts-ignore
+  server.registerTool(
+    "get_competitor_detail",
+    {
+      description:
+        "Get the full competitive intel Marteso has on a single tracked competitor — everything visible in the " +
+        "Competitors dashboard detail view: metadata (subtitle, description, category, version, developer), how many " +
+        "languages its App Store listing is localized into, in-app purchase/subscription monetization, recent reviews, " +
+        "the AI-generated review summary (strengths, weaknesses, themes, sentiment), recent metadata changes, and keyword " +
+        "ranking comparisons against your app. Use get_competitors first to find the competitor's bundle ID.",
+      inputSchema: {
+        bundleId: z.string().optional().describe("Your app's bundle ID. Uses the user's default app if omitted."),
+        competitorBundleId: z.string().describe("The competitor app's bundle ID, from get_competitors."),
+        reviewLimit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(20)
+          .describe("Max recent reviews to include (default 20, max 100)."),
+      },
+    },
+    async ({ bundleId, competitorBundleId, reviewLimit }) => {
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
+      if (!resolvedBundleId) {
+        return {
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdConfigured }],
+        };
+      }
+
+      const ownApp = await verifyMcpAppAccess(userId, resolvedBundleId);
+      if (!ownApp) {
+        return { content: [{ type: "text", text: appNotFound(resolvedBundleId) }] };
+      }
+
+      const competitor = await prisma.app.findUnique({
+        where: { bundleId: competitorBundleId },
+        include: { snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 } },
+      });
+
+      if (!competitor) {
+        return { content: [{ type: "text", text: appNotFound(competitorBundleId) }] };
+      }
+
+      const relation = await prisma.competitorRelation.findFirst({
+        where: {
+          OR: [
+            { appId: ownApp.id, competitorId: competitor.id },
+            { appId: competitor.id, competitorId: ownApp.id },
+          ],
+        },
+      });
+
+      if (!relation) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${competitorBundleId} is not tracked as a competitor of ${resolvedBundleId}.`,
+            },
+          ],
+        };
+      }
+
+      const [reviews, reviewSummary, metadataChanges, inAppPurchases, trackedKeywords] = await Promise.all([
+        prisma.competitorReview.findMany({
+          where: { appId: competitor.id },
+          orderBy: { reviewedAt: "desc" },
+          take: reviewLimit,
+        }),
+
+        prisma.competitorReviewSummary.findFirst({
+          where: { appId: competitor.id },
+          orderBy: { createdAt: "desc" },
+        }),
+
+        prisma.appMetadataChange.findMany({
+          where: { appId: competitor.id },
+          orderBy: { detectedAt: "desc" },
+          take: 30,
+        }),
+
+        prisma.appInAppPurchase.findMany({
+          where: { appId: competitor.id },
+          orderBy: { position: "asc" },
+        }),
+
+        prisma.keyword.findMany({
+          where: { rankings: { some: { appId: ownApp.id } } },
+          orderBy: { popularity: "desc" },
+        }),
+      ]);
+
+      const kwIds = trackedKeywords.map((k) => k.id);
+      const [compRankings, ownRankings] = await Promise.all([
+        prisma.keywordRanking.findMany({
+          where: { keywordId: { in: kwIds }, appId: competitor.id },
+          orderBy: { trackedAt: "desc" },
+          distinct: ["keywordId"],
+        }),
+
+        prisma.keywordRanking.findMany({
+          where: { keywordId: { in: kwIds }, appId: ownApp.id },
+          orderBy: { trackedAt: "desc" },
+          distinct: ["keywordId"],
+        }),
+      ]);
+
+      const compRankMap = new Map(compRankings.map((r) => [r.keywordId, r.rank]));
+      const ownRankMap = new Map(ownRankings.map((r) => [r.keywordId, r.rank]));
+      const snapshot = competitor.snapshots[0];
+
+      const result = {
+        bundleId: competitor.bundleId,
+        name: competitor.name,
+        country: competitor.country,
+        title: competitor.currentTitle,
+        subtitle: competitor.currentSubtitle,
+        description: competitor.currentDescription,
+        rating: snapshot?.rating ?? null,
+        ratingsCount: snapshot?.ratingsCount ?? null,
+        version: snapshot?.version ?? null,
+        developerName: snapshot?.developerName ?? null,
+        category: snapshot?.category ?? null,
+        languages: competitor.supportedLanguages,
+        languagesCount: competitor.supportedLanguages.length,
+        monetization: inAppPurchases.map((p) => ({ name: p.name, price: p.price, kind: p.kind })),
+        reviews: reviews.map((r) => ({
+          rating: r.rating,
+          title: r.title,
+          body: r.body,
+          territory: r.territory,
+          reviewedAt: r.reviewedAt,
+        })),
+        aiReviewSummary: reviewSummary
+          ? {
+              reviewCount: reviewSummary.reviewCount,
+              averageRating: reviewSummary.averageRating,
+              summary: reviewSummary.summary,
+              strengths: reviewSummary.strengths,
+              weaknesses: reviewSummary.weaknesses,
+              topThemes: reviewSummary.topThemes,
+              sentiment: reviewSummary.sentiment,
+              createdAt: reviewSummary.createdAt,
+            }
+          : null,
+        recentMetadataChanges: metadataChanges.map((c) => ({
+          field: c.field,
+          oldValue: c.oldValue,
+          newValue: c.newValue,
+          detectedAt: c.detectedAt,
+        })),
+        keywordRankings: trackedKeywords.map((kw) => ({
+          keyword: kw.term,
+          popularity: kw.popularity,
+          competitorRank: compRankMap.get(kw.id) ?? null,
+          ourRank: ownRankMap.get(kw.id) ?? null,
+        })),
+      };
 
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -554,9 +706,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         days: z
           .number()
           .int()
@@ -567,17 +717,13 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, days }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
-          content: [
-            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
-          ],
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdConfigured }],
         };
       }
+
       if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
         return {
           content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
@@ -648,9 +794,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         days: z
           .number()
           .int()
@@ -661,17 +805,13 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, days }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
-          content: [
-            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
-          ],
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdConfigured }],
         };
       }
+
       if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
         return {
           content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
@@ -700,6 +840,7 @@ export function registerAppTools(server: McpServer, userId: string) {
           taps: 0,
           sessions: 0,
         });
+
         v.impressions += r.impressions;
         v.pageViews += r.pageViews;
         v.taps += r.taps;
@@ -742,9 +883,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         limit: z
           .number()
           .int()
@@ -755,17 +894,13 @@ export function registerAppTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, limit }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
-          content: [
-            { type: "text", text: mcpToolMessages.noBundleIdConfigured },
-          ],
+          content: [{ type: "text", text: mcpToolMessages.noBundleIdConfigured }],
         };
       }
+
       if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
         return {
           content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
@@ -828,9 +963,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         minRating: z
           .number()
           .int()
@@ -848,23 +981,12 @@ export function registerAppTools(server: McpServer, userId: string) {
         territory: z
           .string()
           .optional()
-          .describe(
-            "Filter by territory code, e.g. 'DEU', 'USA'. Returns all territories if omitted.",
-          ),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(200)
-          .default(50)
-          .describe("Max reviews to return (default 50, max 200)"),
+          .describe("Filter by territory code, e.g. 'DEU', 'USA'. Returns all territories if omitted."),
+        limit: z.number().int().min(1).max(200).default(50).describe("Max reviews to return (default 50, max 200)"),
       },
     },
     async ({ bundleId, minRating, maxRating, territory, limit }) => {
-      const { resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!resolvedBundleId) {
         return {
           content: [
@@ -875,6 +997,7 @@ export function registerAppTools(server: McpServer, userId: string) {
           ],
         };
       }
+
       if (!(await verifyMcpAppAccess(userId, resolvedBundleId))) {
         return {
           content: [{ type: "text", text: appNotFound(resolvedBundleId) }],
@@ -887,6 +1010,7 @@ export function registerAppTools(server: McpServer, userId: string) {
         if (minRating !== undefined) where.rating.gte = minRating;
         if (maxRating !== undefined) where.rating.lte = maxRating;
       }
+
       if (territory) where.territory = territory;
 
       const reviews = await prisma.appReview.findMany({

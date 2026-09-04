@@ -68,6 +68,7 @@ export { hasAscCredentials } from "../../../services/asc-client";
 export async function createAscClient(settings: EffectiveSettings) {
   const { ascClientFromSettings } = await import("../../../services/asc-client");
   const asc = ascClientFromSettings(settings);
+  
   if (!asc) throw new Error("App Store Connect credentials missing.");
   return asc;
 }

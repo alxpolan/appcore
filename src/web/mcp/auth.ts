@@ -1,9 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma, logger } from "../../config";
 
-// MCP access tokens are bearer credentials with no refresh flow; cap their
-// lifetime so a leaked token cannot grant indefinite access. Clients re-run the
-// OAuth flow to obtain a fresh token when this elapses.
 const MCP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function rejectUnauthorized(req: Request, res: Response) {

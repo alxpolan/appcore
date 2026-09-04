@@ -12,10 +12,12 @@ export function createMcpHandler() {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
+
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
       logger.error("MCP handler error", err);
+
       if (!res.headersSent) {
         res.status(500).json({ error: "MCP: Internal server error" });
       }

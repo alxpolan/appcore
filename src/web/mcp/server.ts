@@ -4,7 +4,6 @@ import { registerAscTools } from "./tools/asc-tools";
 import { registerAscSubscriptionTools } from "./tools/asc-subscription-tools";
 import { registerAscProductTools } from "./tools/asc-product-tools";
 import { registerAscGameCenterTools } from "./tools/asc-gamecenter-tools";
-import { registerJobTools } from "./tools/job-tools";
 import { registerSuggestionTools } from "./tools/suggestion-tools";
 
 export function createMcpServer(userId: string): McpServer {
@@ -19,7 +18,6 @@ export function createMcpServer(userId: string): McpServer {
   registerAscProductTools(server, userId);
   registerAscGameCenterTools(server, userId);
   registerSuggestionTools(server, userId);
-  registerJobTools(server, userId);
 
   return server;
 }

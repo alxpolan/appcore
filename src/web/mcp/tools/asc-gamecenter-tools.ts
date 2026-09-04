@@ -83,16 +83,13 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
           return json({ leaderboards: [], gcEnabled: false });
         }
 
-        const { data: resp } = await asc.client.get(
-          `/gameCenterDetails/${gcDetailId}/gameCenterLeaderboards`,
-          {
-            params: {
-              "fields[gameCenterLeaderboards]":
-                "referenceName,vendorIdentifier,defaultFormatter,archived,scoreSortType,submissionType",
-              limit: 200,
-            },
+        const { data: resp } = await asc.client.get(`/gameCenterDetails/${gcDetailId}/gameCenterLeaderboards`, {
+          params: {
+            "fields[gameCenterLeaderboards]":
+              "referenceName,vendorIdentifier,defaultFormatter,archived,scoreSortType,submissionType",
+            limit: 200,
           },
-        );
+        });
 
         return json({
           gcDetailId,
@@ -113,6 +110,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
     },
   );
 
+  // @ts-ignore
   server.registerTool(
     "create_asc_leaderboard",
     {
@@ -213,6 +211,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
     },
   );
 
+  // @ts-ignore
   server.registerTool(
     "update_asc_leaderboard",
     {
@@ -291,6 +290,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
             "fields[gameCenterLeaderboardLocalizations]": "locale,name,formatterSuffix,formatterSuffixSingular",
           },
         });
+
         return json(
           (resp.data ?? []).map((l: any) => ({
             id: l.id,
@@ -329,8 +329,10 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const attrs: Record<string, string> = { locale, name };
+
         if (formatterSuffix) attrs.formatterSuffix = formatterSuffix;
         if (formatterSuffixSingular) attrs.formatterSuffixSingular = formatterSuffixSingular;
+
         const { data: resp } = await asc.client.post("/gameCenterLeaderboardLocalizations", {
           data: {
             type: "gameCenterLeaderboardLocalizations",
@@ -342,6 +344,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
             },
           },
         });
+
         return json({
           id: resp.data.id,
           locale,
@@ -375,9 +378,11 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const attrs: Record<string, string> = {};
+
         if (name !== undefined) attrs.name = name;
         if (formatterSuffix !== undefined) attrs.formatterSuffix = formatterSuffix;
         if (formatterSuffixSingular !== undefined) attrs.formatterSuffixSingular = formatterSuffixSingular;
+
         await asc.client.patch(`/gameCenterLeaderboardLocalizations/${localizationId}`, {
           data: {
             type: "gameCenterLeaderboardLocalizations",
@@ -385,6 +390,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
             attributes: attrs,
           },
         });
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);

@@ -57,6 +57,7 @@ async function fetchIapSchedulePrices(
   const included: any[] = resp.included ?? [];
   const terrMap = new Map<string, any>();
   const ppMap = new Map<string, any>();
+
   for (const item of included) {
     if (item.type === "territories") terrMap.set(item.id, item);
     if (item.type === "inAppPurchasePricePoints") ppMap.set(item.id, item);
@@ -67,6 +68,7 @@ async function fetchIapSchedulePrices(
     const ppId = price.relationships?.inAppPurchasePricePoint?.data?.id;
     const terr = terrId ? terrMap.get(terrId) : null;
     const pp = ppId ? ppMap.get(ppId) : null;
+
     return {
       id: price.id,
       territory: terrId ?? null,
@@ -113,6 +115,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const app = await asc.getApp(resolvedBundleId);
+
         if (!app) {
           return {
             content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
@@ -167,6 +170,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const app = await asc.getApp(resolvedBundleId);
+
         if (!app) {
           return {
             content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
@@ -178,6 +182,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
           productId,
           inAppPurchaseType: inAppPurchaseType ?? "NON_CONSUMABLE",
         };
+
         if (reviewNote) attrs.reviewNote = reviewNote;
 
         const { data: resp } = await asc.client.post(`${ASC_V2}/inAppPurchases`, {
@@ -217,6 +222,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const attributes: Record<string, any> = {};
+
         if (name !== undefined) attributes.name = name;
         if (reviewNote !== undefined) attributes.reviewNote = reviewNote;
 
@@ -227,6 +233,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
             attributes,
           },
         });
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);
@@ -284,6 +291,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
             },
           },
         );
+
         return json(
           (resp.data ?? []).map((l: any) => ({
             id: l.id,
@@ -333,6 +341,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
             },
           },
         });
+
         return json({
           id: resp.data.id,
           locale: resp.data.attributes?.locale ?? locale,
@@ -365,6 +374,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const attributes: Record<string, any> = {};
+
         if (name !== undefined) attributes.name = name;
         if (description !== undefined) attributes.description = description;
 
@@ -375,6 +385,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
             attributes,
           },
         });
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);

@@ -10,10 +10,7 @@ import {
   resolveAscAppId,
   verifyMcpAppAccess,
 } from "./shared";
-import {
-  evaluateLocalizationQuality,
-  isFirstVersionLocalizationSet,
-} from "../../lib/localization-quality";
+import { evaluateLocalizationQuality, isFirstVersionLocalizationSet } from "../../lib/localization-quality";
 import { bossScheduler } from "../../../jobs/boss";
 import {
   QUEUE_NAME as TRANSLATE_LOCALIZATION_QUEUE,
@@ -24,7 +21,7 @@ import * as translationTracker from "../../../jobs/translation-tracker";
 export function registerAscTools(server: McpServer, userId: string) {
   // @ts-ignore
   server.registerTool(
-    "list_asc_versions",
+    "list_app_versions",
     {
       description:
         "List all App Store Connect versions for an app with their states (e.g. READY_FOR_SALE, PREPARE_FOR_SUBMISSION, IN_REVIEW). " +
@@ -33,16 +30,11 @@ export function registerAscTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
       },
     },
     async ({ bundleId }) => {
-      const { settings, resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { settings, resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
 
       if (!hasAscCredentials(settings)) {
         return {
@@ -61,9 +53,7 @@ export function registerAscTools(server: McpServer, userId: string) {
 
         if (!ascAppId) {
           return {
-            content: [
-              { type: "text", text: couldNotResolveAscAppId(resolvedBundleId) },
-            ],
+            content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
           };
         }
 
@@ -87,9 +77,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         };
       } catch (err: any) {
         return {
-          content: [
-            { type: "text", text: `ASC error: ${err?.message ?? String(err)}` },
-          ],
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
         };
       }
     },
@@ -102,33 +90,25 @@ export function registerAscTools(server: McpServer, userId: string) {
       description:
         "Get full App Store Connect metadata for a version across all locales. " +
         "Returns name, subtitle, keywords, description, whatsNew (release notes), and promotionalText per locale. " +
-        "Use list_asc_versions to get a versionId, or omit it to use the current editable version.",
+        "Use list_app_versions to get a versionId, or omit it to use the current editable version.",
       inputSchema: {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         versionId: z
           .string()
           .optional()
-          .describe(
-            "ASC version ID from list_asc_versions. Uses the current editable version if omitted.",
-          ),
+          .describe("ASC version ID from list_app_versions. Uses the current editable version if omitted."),
         locale: z
           .string()
           .optional()
-          .describe(
-            "Return only this locale (e.g. 'en-US', 'de-DE'). Returns all locales if omitted.",
-          ),
+          .describe("Return only this locale (e.g. 'en-US', 'de-DE'). Returns all locales if omitted."),
       },
     },
     async ({ bundleId, versionId, locale }) => {
-      const { settings, resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { settings, resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
+      
       if (!hasAscCredentials(settings)) {
         return {
           content: [
@@ -146,9 +126,7 @@ export function registerAscTools(server: McpServer, userId: string) {
 
         if (!ascAppId) {
           return {
-            content: [
-              { type: "text", text: couldNotResolveAscAppId(resolvedBundleId) },
-            ],
+            content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
           };
         }
 
@@ -170,9 +148,7 @@ export function registerAscTools(server: McpServer, userId: string) {
 
         const [appInfoLocs, versionLocs] = await Promise.all([
           asc.getAppInfoLocalizations(ascAppId).catch(() => [] as any[]),
-          asc
-            .getVersionLocalizations(resolvedVersionId, locale)
-            .catch(() => [] as any[]),
+          asc.getVersionLocalizations(resolvedVersionId, locale).catch(() => [] as any[]),
         ]);
 
         const appInfoByLocale: Record<string, any> = {};
@@ -185,6 +161,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         for (const l of versionLocs) {
           const loc = l.attributes?.locale ?? l.locale;
           if (locale && loc !== locale) continue;
+
           const appInfo = appInfoByLocale[loc];
           localeMap[loc] = {
             locale: loc,
@@ -219,9 +196,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         };
       } catch (err: any) {
         return {
-          content: [
-            { type: "text", text: `ASC error: ${err?.message ?? String(err)}` },
-          ],
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
         };
       }
     },
@@ -240,28 +215,19 @@ export function registerAscTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         versionId: z
           .string()
           .optional()
-          .describe(
-            "ASC version ID from list_asc_versions. Uses the current editable version if omitted.",
-          ),
+          .describe("ASC version ID from list_app_versions. Uses the current editable version if omitted."),
         locale: z
           .string()
           .optional()
-          .describe(
-            "Check only this locale (e.g. 'ja', 'de-DE'). Checks all locales if omitted.",
-          ),
+          .describe("Check only this locale (e.g. 'ja', 'de-DE'). Checks all locales if omitted."),
       },
     },
     async ({ bundleId, versionId, locale }) => {
-      const { settings, resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { settings, resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!hasAscCredentials(settings)) {
         return {
           content: [
@@ -279,9 +245,7 @@ export function registerAscTools(server: McpServer, userId: string) {
 
         if (!ascAppId) {
           return {
-            content: [
-              { type: "text", text: couldNotResolveAscAppId(resolvedBundleId) },
-            ],
+            content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
           };
         }
 
@@ -290,9 +254,7 @@ export function registerAscTools(server: McpServer, userId: string) {
           const editable = await asc.getEditableVersion(ascAppId);
           if (!editable) {
             return {
-              content: [
-                { type: "text", text: mcpToolMessages.noEditableVersionFound },
-              ],
+              content: [{ type: "text", text: mcpToolMessages.noEditableVersionFound }],
             };
           }
           resolvedVersionId = editable.id;
@@ -376,9 +338,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         };
       } catch (err: any) {
         return {
-          content: [
-            { type: "text", text: `ASC error: ${err?.message ?? String(err)}` },
-          ],
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
         };
       }
     },
@@ -397,9 +357,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         appInfoLocalizationId: z
           .string()
           .optional()
-          .describe(
-            "ID for app info localization (needed for name, subtitle, privacyPolicyUrl).",
-          ),
+          .describe("ID for app info localization (needed for name, subtitle, privacyPolicyUrl)."),
         versionLocalizationId: z
           .string()
           .optional()
@@ -473,9 +431,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         };
       } catch (err: any) {
         return {
-          content: [
-            { type: "text", text: `ASC error: ${err?.message ?? String(err)}` },
-          ],
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
         };
       }
     },
@@ -494,15 +450,11 @@ export function registerAscTools(server: McpServer, userId: string) {
         bundleId: z
           .string()
           .optional()
-          .describe(
-            "App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted.",
-          ),
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
         versionId: z
           .string()
           .optional()
-          .describe(
-            "ASC version ID from list_asc_versions. Uses the current editable version if omitted.",
-          ),
+          .describe("ASC version ID from list_app_versions. Uses the current editable version if omitted."),
         sourceLocale: z
           .string()
           .optional()
@@ -518,10 +470,7 @@ export function registerAscTools(server: McpServer, userId: string) {
       },
     },
     async ({ bundleId, versionId, sourceLocale, targetLocales }) => {
-      const { settings, resolvedBundleId } = await getSettingsWithBundleId(
-        userId,
-        bundleId,
-      );
+      const { settings, resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
       if (!hasAscCredentials(settings)) {
         return {
           content: [
@@ -532,6 +481,7 @@ export function registerAscTools(server: McpServer, userId: string) {
           ],
         };
       }
+
       if (!resolvedBundleId) {
         return {
           content: [
@@ -546,9 +496,7 @@ export function registerAscTools(server: McpServer, userId: string) {
       const app = await verifyMcpAppAccess(userId, resolvedBundleId);
       if (!app) {
         return {
-          content: [
-            { type: "text", text: appNotFoundWithListApps(resolvedBundleId) },
-          ],
+          content: [{ type: "text", text: appNotFoundWithListApps(resolvedBundleId) }],
         };
       }
 
@@ -558,22 +506,20 @@ export function registerAscTools(server: McpServer, userId: string) {
 
         if (!ascAppId) {
           return {
-            content: [
-              { type: "text", text: couldNotResolveAscAppId(resolvedBundleId) },
-            ],
+            content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
           };
         }
 
         let resolvedVersionId = versionId;
         if (!resolvedVersionId) {
           const editable = await asc.getEditableVersion(ascAppId);
+
           if (!editable) {
             return {
-              content: [
-                { type: "text", text: mcpToolMessages.noEditableVersionFound },
-              ],
+              content: [{ type: "text", text: mcpToolMessages.noEditableVersionFound }],
             };
           }
+
           resolvedVersionId = editable.id;
         }
 
@@ -593,8 +539,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         }
 
         const allLocales = Object.keys(versionByLocale);
-        const resolvedSourceLocale =
-          sourceLocale ?? (allLocales.includes("en-US") ? "en-US" : allLocales[0]);
+        const resolvedSourceLocale = sourceLocale ?? (allLocales.includes("en-US") ? "en-US" : allLocales[0]);
 
         if (!resolvedSourceLocale || !versionByLocale[resolvedSourceLocale]) {
           return {
@@ -619,23 +564,24 @@ export function registerAscTools(server: McpServer, userId: string) {
           whatsNew: sourceVersionLoc?.attributes?.whatsNew ?? undefined,
         };
 
-        const resolvedTargets = (
-          targetLocales ?? allLocales.filter((l) => l !== resolvedSourceLocale)
-        ).filter((l) => l !== resolvedSourceLocale);
+        const resolvedTargets = (targetLocales ?? allLocales.filter((l) => l !== resolvedSourceLocale)).filter(
+          (l) => l !== resolvedSourceLocale,
+        );
 
         const queued: string[] = [];
         const skipped: { locale: string; reason: string }[] = [];
 
         for (const targetLocale of resolvedTargets) {
           const targetVersionLoc = versionByLocale[targetLocale];
+
           if (!targetVersionLoc) {
             skipped.push({
               locale: targetLocale,
-              reason:
-                "Locale does not exist for this version yet. Create it in App Store Connect first.",
+              reason: "Locale does not exist for this version yet. Create it in App Store Connect first.",
             });
             continue;
           }
+
           if (translationTracker.isTranslating(resolvedVersionId, targetLocale)) {
             skipped.push({ locale: targetLocale, reason: "Translation already in progress" });
             continue;
@@ -684,9 +630,7 @@ export function registerAscTools(server: McpServer, userId: string) {
         };
       } catch (err: any) {
         return {
-          content: [
-            { type: "text", text: `ASC error: ${err?.message ?? String(err)}` },
-          ],
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
         };
       }
     },
