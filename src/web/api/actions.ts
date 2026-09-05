@@ -123,10 +123,14 @@ actionsRouter.post("/competitor-intel", async (req, res) => {
   try {
     const teamId = req.user!.teamId;
     const app = req.bundleApp!;
+    const competitorAppIds = Array.isArray(req.body?.competitorAppIds)
+      ? (req.body.competitorAppIds as unknown[]).filter((id): id is string => typeof id === "string")
+      : undefined;
 
     await bossScheduler.sendJob(COMPETITOR_INTEL_QUEUE, {
       teamId,
       bundleId: app.bundleId,
+      ...(competitorAppIds?.length ? { competitorAppIds } : {}),
     });
     res.json({ ok: true, message: `Competitor intel job enqueued for ${app.bundleId}` });
   } catch (err) {

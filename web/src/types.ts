@@ -541,6 +541,7 @@ export interface CompetitorDetail {
   version: string | null;
   developerName: string | null;
   category: string | null;
+  screenshotUrls: string[];
   languages: string[];
   reviews: CompetitorReview[];
   reviewSummary: CompetitorReviewSummary | null;

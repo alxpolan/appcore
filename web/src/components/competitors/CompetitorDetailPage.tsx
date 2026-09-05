@@ -5,7 +5,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { authHeaders, getActiveBundleId } from "../../hooks/useApi";
 import type { CompetitorDetail } from "../../types";
 import AppIcon from "./AppIcon";
-import { OverviewTab, ReviewsTab, ChangesTab, KeywordsTab } from "./CompetitorDetailModal";
+import { OverviewTab, ReviewsTab, ChangesTab, KeywordsTab } from "./CompetitorDetailTabs";
 
 type Tab = "overview" | "reviews" | "changes" | "keywords";
 

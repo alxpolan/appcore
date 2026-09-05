@@ -278,7 +278,7 @@ appsRouter.post("/:id/competitors", appAccess("params", "id"), async (req, res) 
     });
 
     const saved = await prisma.app.findUnique({ where: { id: competitorId }, select: { name: true } });
-    res.json({ ok: true, name: saved?.name ?? bundleId });
+    res.json({ ok: true, name: saved?.name ?? bundleId, competitorId });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -553,6 +553,7 @@ appsRouter.get("/:id/competitor-detail", bundleAccess("query", "bundleId"), asyn
       version: snapshot?.version ?? null,
       developerName: snapshot?.developerName ?? null,
       category: snapshot?.category ?? null,
+      screenshotUrls: snapshot?.screenshotUrls ?? [],
       languages: app.supportedLanguages,
       reviews: reviews.map((r: any) => ({
         id: r.id,

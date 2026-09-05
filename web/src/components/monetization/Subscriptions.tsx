@@ -1737,8 +1737,7 @@ function GroupTable({
             <>
               <AppleLogo />
               <span className={`text-[14px] font-semibold ${textPrimary} truncate`}>
-                {group.referenceName}
-                {bundleId ? ` (${bundleId})` : ""}
+                {group.referenceName} (App Store)
               </span>
             </>
           )}

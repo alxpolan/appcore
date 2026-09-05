@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { LayoutGrid, List, MoreHorizontal, Plus, Radar, Sparkles, Users } from "lucide-react";
 import { useApi, apiPost, apiDelete, getActiveBundleId } from "../../hooks/useApi";
@@ -8,7 +9,6 @@ import { usePostHog } from "@posthog/react";
 import OwnAppCard, { AppItem } from "./OwnAppCard";
 import CompetitorCard from "./CompetitorCard";
 import CompetitorTable from "./CompetitorTable";
-import CompetitorDetailModal from "./CompetitorDetailModal";
 import AddCompetitorsModal from "./AddCompetitorsModal";
 
 type ViewMode = "grid" | "table";
@@ -21,9 +21,9 @@ export default function Competitors({ addToast }: Props) {
   const posthog = usePostHog();
   const { canWrite } = usePermissions();
   const { data, loading, refetch } = useApi<AppItem[]>("/apps");
+  const navigate = useNavigate();
   const [discovering, setDiscovering] = useState(false);
   const [intelRunning, setIntelRunning] = useState(false);
-  const [detailAppId, setDetailAppId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -49,11 +49,12 @@ export default function Competitors({ addToast }: Props) {
     }
   };
 
-  const runCompetitorIntel = async () => {
+  const runCompetitorIntel = async (competitorAppIds?: string[]) => {
     setIntelRunning(true);
     try {
       const res = await apiPost("/actions/competitor-intel", {
         bundleId: getActiveBundleId(),
+        ...(competitorAppIds?.length ? { competitorAppIds } : {}),
       });
       addToast(res.message || "Competitor intel started", "success");
     } catch (e: any) {
@@ -175,7 +176,7 @@ export default function Competitors({ addToast }: Props) {
           competitors={competitors}
           ownAppId={ownApp?.id}
           onRemove={ownApp ? (competitorId) => removeCompetitor(ownApp.id, competitorId) : undefined}
-          onRowClick={(id) => setDetailAppId(id)}
+          onRowClick={(id) => navigate(`/competitors/${id}`)}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -185,21 +186,20 @@ export default function Competitors({ addToast }: Props) {
               competitor={c}
               ownAppId={ownApp?.id}
               onRemove={ownApp ? (competitorId) => removeCompetitor(ownApp.id, competitorId) : undefined}
-              onClick={() => setDetailAppId(c.id)}
+              onClick={() => navigate(`/competitors/${c.id}`)}
             />
           ))}
         </div>
-      )}
-
-      {detailAppId && (
-        <CompetitorDetailModal appId={detailAppId} onClose={() => setDetailAppId(null)} addToast={addToast} />
       )}
 
       <AddCompetitorsModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         ownAppId={ownApp?.id ?? null}
-        onAdded={() => refetch()}
+        onAdded={(_count, competitorAppIds) => {
+          refetch();
+          runCompetitorIntel(competitorAppIds);
+        }}
         addToast={addToast}
       />
     </div>

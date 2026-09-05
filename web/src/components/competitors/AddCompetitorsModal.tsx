@@ -19,7 +19,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   ownAppId: string | null;
-  onAdded: (count: number) => void;
+  onAdded: (count: number, competitorAppIds: string[]) => void;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
 
@@ -91,7 +91,11 @@ export default function AddCompetitorsModal({ open, onClose, ownAppId, onAdded, 
           added === 1 ? `${staged.find((_, i) => outcomes[i].status === "fulfilled")?.name ?? "Competitor"} added` : `${added} competitors added`,
           "success",
         );
-        onAdded(added);
+        const addedAppIds = outcomes
+          .filter((o): o is PromiseFulfilledResult<{ competitorId?: string }> => o.status === "fulfilled")
+          .map((o) => o.value.competitorId)
+          .filter((id): id is string => !!id);
+        onAdded(added, addedAppIds);
       }
       if (failed > 0) addToast(`${failed} competitor${failed === 1 ? "" : "s"} could not be added`, "error");
       if (added > 0) onClose();

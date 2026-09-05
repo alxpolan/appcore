@@ -1,9 +1,18 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
-import { useNavigate } from "react-router-dom";
-import { authHeaders, getActiveBundleId, apiPost } from "../../hooks/useApi";
-import { Maximize2, X, ArrowRight, MessageSquare, RefreshCw, BarChart2, Plus, Check, Sparkles } from "lucide-react";
+import { getActiveBundleId, apiPost } from "../../hooks/useApi";
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  MessageSquare,
+  RefreshCw,
+  BarChart2,
+  Plus,
+  Check,
+  Sparkles,
+  X,
+} from "lucide-react";
 import type {
   CompetitorDetail,
   CompetitorReview,
@@ -11,147 +20,11 @@ import type {
   CompetitorInAppPurchase,
   MetadataChange,
 } from "../../types";
-import AppIcon from "../competitors/AppIcon";
-
-interface Props {
-  appId: string;
-  onClose: () => void;
-  addToast: (msg: string, type: "success" | "error" | "info") => void;
-}
-
-type Tab = "overview" | "reviews" | "changes" | "keywords";
-
-export default function CompetitorDetailModal({ appId, onClose, addToast }: Props) {
-  const [data, setData] = useState<CompetitorDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("overview");
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const bundleId = getActiveBundleId();
-    const url = `/api/apps/${appId}/competitor-detail${bundleId ? `?bundleId=${bundleId}` : ""}`;
-    fetch(url, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch((err) => {
-        addToast(`Load failed: ${err.message}`, "error");
-        setLoading(false);
-      });
-  }, [appId]);
-
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "reviews", label: "Reviews", count: data?.reviews.length },
-    { key: "changes", label: "Changes", count: data?.metadataChanges.length },
-    {
-      key: "keywords",
-      label: "Keywords",
-      count: data?.keywordRankings.filter((k) => k.competitorRank != null).length,
-    },
-  ];
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-10 pb-10">
-      <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={onClose} />
-      <div
-        className={`relative w-full max-w-4xl max-h-[calc(100vh-5rem)] flex flex-col bg-white dark:bg-[#161920] border ${borderDefault} rounded-2xl shadow-2xl overflow-hidden`}
-      >
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${borderDefault} shrink-0`}>
-          {data ? (
-            <div className="flex items-center gap-3">
-              <AppIcon url={data.iconUrl} name={data.name} />
-              <div>
-                <h2 className={`text-lg font-semibold ${textPrimary}`}>{data.name}</h2>
-                <div className={`flex items-center gap-3 text-xs ${textMuted}`}>
-                  <span>{data.bundleId}</span>
-                  {data.rating != null && (
-                    <span className="flex items-center gap-1">
-                      <span className="text-amber-400">&#9733;</span>
-                      {data.rating.toFixed(1)}
-                      {data.ratingsCount != null && <span>({data.ratingsCount.toLocaleString()})</span>}
-                    </span>
-                  )}
-                  {data.version && <span>v{data.version}</span>}
-                  {data.category && <span>{data.category}</span>}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-[#9ca3af]">Loading…</div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => {
-                onClose();
-                navigate(`/competitors/${appId}`);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#9ca3af] hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:bg-gray-100 dark:hover:bg-[#252b38] transition-colors"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              Full page
-            </button>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-[#9ca3af] hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:bg-gray-100 dark:hover:bg-[#252b38] transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        <div className={`flex gap-1 px-6 pt-3 border-b ${borderDefault} shrink-0`}>
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-3.5 py-2 text-[13px] font-medium rounded-t-lg transition-colors ${
-                tab === t.key
-                  ? "text-[#D94412] border-b-2 border-[#D94412] -mb-px"
-                  : `${textMuted} hover:text-[#111827] dark:hover:text-[#e8eaf0]`
-              }`}
-            >
-              {t.label}
-              {t.count != null && t.count > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-[#252b38] text-[11px]">
-                  {t.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-20 gap-3 text-gray-400 dark:text-[#5c6478]">
-              <div className="spinner" /> Loading…
-            </div>
-          ) : !data ? (
-            <div className="text-center py-20 text-[#9ca3af]">Failed to load competitor data</div>
-          ) : (
-            <>
-              {tab === "overview" && <OverviewTab data={data} />}
-              {tab === "reviews" && <ReviewsTab data={data} />}
-              {tab === "changes" && <ChangesTab changes={data.metadataChanges} />}
-              {tab === "keywords" && (
-                <KeywordsTab
-                  rankings={data.keywordRankings}
-                  untracked={data.untrackedKeywords ?? []}
-                  country={data.country}
-                  competitorName={data.name}
-                  addToast={addToast}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
 
 export function OverviewTab({ data }: { data: CompetitorDetail }) {
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const screenshots = data.screenshotUrls ?? [];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
@@ -163,6 +36,32 @@ export function OverviewTab({ data }: { data: CompetitorDetail }) {
           <InfoCard label="Languages" value={`${data.languages.length} localized`} />
         )}
       </div>
+      {screenshots.length > 0 && (
+        <div>
+          <div className={`text-xs font-medium uppercase tracking-wide ${textMuted} mb-2`}>
+            Screenshots ({screenshots.length})
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {screenshots.map((url, i) => (
+              <button
+                key={i}
+                onClick={() => setPreviewIndex(i)}
+                className={`shrink-0 rounded-xl border ${borderDefault} overflow-hidden hover:opacity-90 transition-opacity`}
+              >
+                <img src={url} alt={`Screenshot ${i + 1}`} className="h-56 w-auto object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {previewIndex != null && (
+        <ScreenshotLightbox
+          urls={screenshots}
+          index={previewIndex}
+          onClose={() => setPreviewIndex(null)}
+          onChange={setPreviewIndex}
+        />
+      )}
       {data.languages.length > 0 && (
         <div>
           <div className={`text-xs font-medium uppercase tracking-wide ${textMuted} mb-2`}>
@@ -250,6 +149,58 @@ export function OverviewTab({ data }: { data: CompetitorDetail }) {
           sub="ranked"
         />
       </div>
+    </div>
+  );
+}
+
+function ScreenshotLightbox({
+  urls,
+  index,
+  onClose,
+  onChange,
+}: {
+  urls: string[];
+  index: number;
+  onClose: () => void;
+  onChange: (index: number) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+      >
+        <X className="w-5 h-5" />
+      </button>
+      {urls.length > 1 && (
+        <button
+          onClick={() => onChange((index - 1 + urls.length) % urls.length)}
+          className="absolute left-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+      <img
+        src={urls[index]}
+        alt={`Screenshot ${index + 1}`}
+        className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain shadow-2xl"
+      />
+      {urls.length > 1 && (
+        <button
+          onClick={() => onChange((index + 1) % urls.length)}
+          className="absolute right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      )}
+      {urls.length > 1 && (
+        <span className="absolute bottom-4 text-[12px] text-white/80">
+          {index + 1} / {urls.length}
+        </span>
+      )}
     </div>
   );
 }

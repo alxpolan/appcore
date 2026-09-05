@@ -93,7 +93,10 @@ export class CompetitorIntelService {
     return totalSaved;
   }
 
-  async scrapeAllCompetitorReviews(bundleId: string): Promise<{ total: number; apps: number }> {
+  async scrapeAllCompetitorReviews(
+    bundleId: string,
+    competitorAppIds?: string[],
+  ): Promise<{ total: number; apps: number }> {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId },
       include: {
@@ -109,7 +112,11 @@ export class CompetitorIntelService {
     let total = 0;
     let apps = 0;
 
-    for (const rel of ownApp.competitors) {
+    const relations = competitorAppIds
+      ? ownApp.competitors.filter((rel) => competitorAppIds.includes(rel.competitor.id))
+      : ownApp.competitors;
+
+    for (const rel of relations) {
       const comp = rel.competitor;
       if (!comp.trackId) continue;
 
@@ -200,7 +207,7 @@ Be concise but thorough. Extract actionable insights.`;
     }
   }
 
-  async summarizeAllCompetitorReviews(bundleId: string): Promise<number> {
+  async summarizeAllCompetitorReviews(bundleId: string, competitorAppIds?: string[]): Promise<number> {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId },
       include: {
@@ -210,8 +217,12 @@ Be concise but thorough. Extract actionable insights.`;
 
     if (!ownApp) throw new Error(`App not found: ${bundleId}`);
 
+    const relations = competitorAppIds
+      ? ownApp.competitors.filter((rel) => competitorAppIds.includes(rel.competitor.id))
+      : ownApp.competitors;
+
     let count = 0;
-    for (const rel of ownApp.competitors) {
+    for (const rel of relations) {
       const reviewCount = await prisma.competitorReview.count({
         where: { appId: rel.competitor.id },
       });
@@ -319,7 +330,10 @@ Be concise but thorough. Extract actionable insights.`;
     return changesDetected;
   }
 
-  async detectAllMetadataChanges(bundleId: string): Promise<{ apps: number; changes: number }> {
+  async detectAllMetadataChanges(
+    bundleId: string,
+    competitorAppIds?: string[],
+  ): Promise<{ apps: number; changes: number }> {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId },
       include: {
@@ -329,7 +343,11 @@ Be concise but thorough. Extract actionable insights.`;
 
     if (!ownApp) throw new Error(`App not found: ${bundleId}`);
 
-    const results = await Promise.all(ownApp.competitors.map((rel) => this.detectMetadataChanges(rel.competitor.id)));
+    const relations = competitorAppIds
+      ? ownApp.competitors.filter((rel) => competitorAppIds.includes(rel.competitor.id))
+      : ownApp.competitors;
+
+    const results = await Promise.all(relations.map((rel) => this.detectMetadataChanges(rel.competitor.id)));
 
     const totalChanges = results.reduce((sum, n) => sum + n, 0);
     const appsWithChanges = results.filter((n) => n > 0).length;
@@ -377,7 +395,10 @@ Be concise but thorough. Extract actionable insights.`;
     });
   }
 
-  async scrapeMonetizationForAllCompetitors(bundleId: string): Promise<{ products: number; apps: number }> {
+  async scrapeMonetizationForAllCompetitors(
+    bundleId: string,
+    competitorAppIds?: string[],
+  ): Promise<{ products: number; apps: number }> {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId },
       include: { competitors: { include: { competitor: true } } },
@@ -388,7 +409,11 @@ Be concise but thorough. Extract actionable insights.`;
     let products = 0;
     let apps = 0;
 
-    for (const rel of ownApp.competitors) {
+    const relations = competitorAppIds
+      ? ownApp.competitors.filter((rel) => competitorAppIds.includes(rel.competitor.id))
+      : ownApp.competitors;
+
+    for (const rel of relations) {
       const comp = rel.competitor;
       if (!comp.trackId) continue;
 
@@ -421,7 +446,7 @@ Be concise but thorough. Extract actionable insights.`;
     return { products, apps };
   }
 
-  async scrapeLanguagesForAllCompetitors(bundleId: string): Promise<{ apps: number }> {
+  async scrapeLanguagesForAllCompetitors(bundleId: string, competitorAppIds?: string[]): Promise<{ apps: number }> {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId },
       include: { competitors: { include: { competitor: true } } },
@@ -432,7 +457,11 @@ Be concise but thorough. Extract actionable insights.`;
     let apps = 0;
     const scraper = new AppStoreScraper();
 
-    for (const rel of ownApp.competitors) {
+    const relations = competitorAppIds
+      ? ownApp.competitors.filter((rel) => competitorAppIds.includes(rel.competitor.id))
+      : ownApp.competitors;
+
+    for (const rel of relations) {
       const comp = rel.competitor;
       if (!comp.trackId) continue;
 
@@ -450,21 +479,29 @@ Be concise but thorough. Extract actionable insights.`;
     return { apps };
   }
 
-  async runFullIntelJob(bundleId: string): Promise<{
+  async runFullIntelJob(
+    bundleId: string,
+    competitorAppIds?: string[],
+  ): Promise<{
     reviewsScraped: number;
     appsSummarized: number;
     metadataChanges: number;
     monetizationProducts: number;
     languagesScraped: number;
   }> {
-    logger.info(`Starting full competitor intel job for ${bundleId}`);
+    logger.info(
+      `Starting ${competitorAppIds ? `scoped (${competitorAppIds.length})` : "full"} competitor intel job for ${bundleId}`,
+    );
 
-    const { total: reviewsScraped } = await this.scrapeAllCompetitorReviews(bundleId);
-    const appsSummarized = await this.summarizeAllCompetitorReviews(bundleId);
+    const { total: reviewsScraped } = await this.scrapeAllCompetitorReviews(bundleId, competitorAppIds);
+    const appsSummarized = await this.summarizeAllCompetitorReviews(bundleId, competitorAppIds);
 
-    const { changes: metadataChanges } = await this.detectAllMetadataChanges(bundleId);
-    const { products: monetizationProducts } = await this.scrapeMonetizationForAllCompetitors(bundleId);
-    const { apps: languagesScraped } = await this.scrapeLanguagesForAllCompetitors(bundleId);
+    const { changes: metadataChanges } = await this.detectAllMetadataChanges(bundleId, competitorAppIds);
+    const { products: monetizationProducts } = await this.scrapeMonetizationForAllCompetitors(
+      bundleId,
+      competitorAppIds,
+    );
+    const { apps: languagesScraped } = await this.scrapeLanguagesForAllCompetitors(bundleId, competitorAppIds);
 
     logger.info(
       `Competitor intel complete: ${reviewsScraped} reviews, ${appsSummarized} summaries, ${metadataChanges} changes, ${monetizationProducts} monetization products, ${languagesScraped} apps with languages scraped`,
