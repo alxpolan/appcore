@@ -83,6 +83,7 @@ export interface WorkerFrameitResult {
   ok: boolean;
   framedImages: Array<{ filename: string; data: string }>;
   unframedImages?: Array<{ filename: string; data: string }>;
+  fontUsed?: string;
   error?: string;
 }
 

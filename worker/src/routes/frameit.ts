@@ -62,6 +62,14 @@ const WIDE_LATIN_FONTS = [
   "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
   "/System/Library/Fonts/Supplemental/Arial.ttf",
   "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+  "/Library/Fonts/Arial Bold.ttf",
+  "/Library/Fonts/Arial.ttf",
+  "/Library/Fonts/Arial Unicode.ttf",
+  "/System/Library/Fonts/Supplemental/Tahoma Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Tahoma.ttf",
+  "/System/Library/Fonts/Supplemental/Verdana Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Verdana.ttf",
+  "/System/Library/Fonts/Helvetica.ttc",
 ];
 
 const FONT_CANDIDATES: FontCandidate[] = [
@@ -179,6 +187,14 @@ function pickFrameitFont(text: string): string {
     if (!candidate.test.test(text)) continue;
     const found = candidate.paths.find((fontPath) => fs.existsSync(fontPath));
     if (found) return found;
+  }
+
+  // The bundled Arial Rounded only covers Latin-1: with it, ľ/ť/Greek silently
+  // drop out of the rendered title. Any text beyond Latin-1 that reached this
+  // point still needs a wide font.
+  if (/[Ā-￿]/u.test(text)) {
+    const wide = WIDE_LATIN_FONTS.find((fontPath) => fs.existsSync(fontPath));
+    if (wide) return wide;
   }
 
   return BUNDLED_FRAMEIT_FONT;
@@ -464,7 +480,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       tmpDirNoBg ? processFramedFiles(tmpDirNoBg, noBgFiles) : Promise.resolve([]),
     ]);
 
-    res.json({ ok: true, framedImages, unframedImages });
+    res.json({ ok: true, framedImages, unframedImages, fontUsed: fontSourcePath });
   } catch (err) {
     res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   } finally {

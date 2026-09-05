@@ -607,13 +607,12 @@ async function frameScreenshots(
             ...bgOptions,
           },
           unframedDir,
+          log,
         );
       } else {
         const allEntries = await fs.promises.readdir(srcDir);
         const files = allEntries.filter((f) => /\.(png)$/i.test(f));
 
-        // One call for the whole locale: each screenshot carries its own subline via
-        // `titles`, which costs one fastlane boot instead of one per image.
         const titles: Record<string, string> = {};
         for (const filename of files) {
           const base = filename.replace(/\.[^.]+$/, "");
@@ -630,6 +629,7 @@ async function frameScreenshots(
             titles,
           },
           unframedDir,
+          log,
         );
 
         log(`[framing] ${locale}: ${files.length} image(s) → ${outputPaths.length} path(s)`);

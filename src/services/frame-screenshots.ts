@@ -36,6 +36,7 @@ export async function frameWithFastlane(
   outputDir: string,
   options: FrameOptions,
   unframedOutputDir?: string,
+  log?: (msg: string) => void,
 ): Promise<string[]> {
   const srcFiles = fs
     .readdirSync(inputDir)
@@ -86,6 +87,8 @@ export async function frameWithFastlane(
   if (!result.ok) {
     throw new Error(`Worker frameit failed: ${result.error ?? "unknown error"}`);
   }
+
+  log?.(`[framing] Title font: ${result.fontUsed ?? "not reported (worker is running old code - update it)"}`);
 
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPaths: string[] = [];
