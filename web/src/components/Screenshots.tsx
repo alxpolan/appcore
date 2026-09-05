@@ -8,8 +8,10 @@ import {
   Frame,
   GitBranch,
   Languages,
+  Lock,
   MonitorSmartphone,
   Play,
+  Unlock,
   Upload,
   Wand2,
   X,
@@ -59,6 +61,8 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
   const { data: link, refetch: refetchLink } = useApi<AppRepoLink>(`/github/app-repo/${app.id}`, [app.id], true);
   const [reloadToken, setReloadToken] = useState(0);
   const [triggering, setTriggering] = useState(false);
+  const [locked, setLocked] = useState(app.screenshotsLocked);
+  const [togglingLock, setTogglingLock] = useState(false);
 
   const handleTrigger = async () => {
     setTriggering(true);
@@ -73,6 +77,20 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
     }
   };
 
+  const toggleLock = async () => {
+    const next = !locked;
+    setTogglingLock(true);
+    try {
+      await apiPatch(`/apps/${app.id}`, { screenshotsLocked: next });
+      setLocked(next);
+      addToast(next ? "Screenshots locked" : "Screenshots unlocked", "success");
+    } catch (err: any) {
+      addToast(`Failed to update lock: ${err.message}`, "error");
+    } finally {
+      setTogglingLock(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
@@ -83,10 +101,35 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
           </p>
         </div>
         {link?.linked && (
-          <button className={btnPrimary} onClick={handleTrigger} disabled={triggering}>
-            {triggering ? <div className="spinner !w-3.5 !h-3.5" /> : <Camera className="w-4 h-4" />}
-            {triggering ? "Starting…" : "Generate Screenshots"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleLock}
+              disabled={togglingLock}
+              title={
+                locked
+                  ? "Screenshots are locked — pushes won't trigger new runs. Click to unlock."
+                  : "Lock to keep the current screenshots — pushes won't trigger new runs."
+              }
+              className={`inline-flex items-center gap-1.5 px-3 py-[9px] rounded-full border text-[13px] font-semibold transition-all disabled:opacity-50 ${
+                locked
+                  ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30"
+                  : `${borderDefault} bg-white dark:bg-[#1c2028] ${textSecondary} hover:border-gray-300 dark:hover:border-[#3a4050]`
+              }`}
+            >
+              {togglingLock ? (
+                <div className="spinner !w-3.5 !h-3.5" />
+              ) : locked ? (
+                <Lock className="w-3.5 h-3.5" />
+              ) : (
+                <Unlock className="w-3.5 h-3.5" />
+              )}
+              {locked ? "Locked" : "Lock"}
+            </button>
+            <button className={btnPrimary} onClick={handleTrigger} disabled={triggering}>
+              {triggering ? <div className="spinner !w-3.5 !h-3.5" /> : <Camera className="w-4 h-4" />}
+              {triggering ? "Starting…" : "Generate Screenshots"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -106,9 +149,15 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
             onJobFinished={() => setReloadToken((t) => t + 1)}
           />
           <p className={`text-[12px] ${textMuted}`}>
-            Runs also start automatically on every push to{" "}
-            <span className="font-mono">{link.branch ?? "the linked branch"}</span>. Repo, signing and pipeline settings
-            live in{" "}
+            {locked ? (
+              <>Screenshots are locked, so pushes won't trigger new runs until you unlock them.</>
+            ) : (
+              <>
+                Runs also start automatically on every push to{" "}
+                <span className="font-mono">{link.branch ?? "the linked branch"}</span>.
+              </>
+            )}{" "}
+            Repo, signing and pipeline settings live in{" "}
             <Link to="/app-settings" className="underline underline-offset-2 hover:text-[#C4001E]">
               App Settings
             </Link>

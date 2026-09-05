@@ -91,6 +91,7 @@ appsRouter.get("/", async (req, res) => {
         trackId: a.trackId?.toString() ?? null,
         country: a.country,
         isOwnApp: a.isOwnApp,
+        screenshotsLocked: a.screenshotsLocked,
         title: a.currentTitle,
         subtitle: a.currentSubtitle,
         keywords: a.currentKeywords,
@@ -658,15 +659,27 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
 
 appsRouter.patch("/:id", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {
-    const { displayName } = req.body as { displayName?: string | null };
-    const trimmed = typeof displayName === "string" ? displayName.trim() : displayName;
+    const { displayName, screenshotsLocked } = req.body as {
+      displayName?: string | null;
+      screenshotsLocked?: boolean;
+    };
+
+    const data: { displayName?: string | null; screenshotsLocked?: boolean } = {};
+    if (displayName !== undefined) {
+      const trimmed = typeof displayName === "string" ? displayName.trim() : displayName;
+      data.displayName = trimmed || null;
+    }
+    
+    if (typeof screenshotsLocked === "boolean") {
+      data.screenshotsLocked = screenshotsLocked;
+    }
 
     const app = await prisma.app.update({
       where: { id: req.bundleApp!.id },
-      data: { displayName: trimmed || null },
+      data,
     });
 
-    res.json({ id: app.id, displayName: app.displayName });
+    res.json({ id: app.id, displayName: app.displayName, screenshotsLocked: app.screenshotsLocked });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

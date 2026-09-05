@@ -109,6 +109,7 @@ export interface AppItem {
   name: string;
   displayName: string | null;
   isOwnApp: boolean;
+  screenshotsLocked: boolean;
   rating: number | null;
   ratingsCount: number | null;
   iconUrl: string | null;

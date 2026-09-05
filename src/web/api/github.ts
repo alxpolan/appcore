@@ -762,26 +762,32 @@ githubRouter.post("/webhook", async (req: Request, res: Response) => {
       return;
     }
 
-    const job = await prisma.screenshotJob.create({
-      data: {
-        appId: app.id,
-        commitSha,
-        commitMessage,
-        branch,
-        pusher,
-        status: "PENDING",
-      },
-    });
+    let jobId: string | undefined;
+    if (app.screenshotsLocked) {
+      logger.info(`Skipping screenshot generation for ${repoFullName}: screenshots are locked`);
+    } else {
+      const job = await prisma.screenshotJob.create({
+        data: {
+          appId: app.id,
+          commitSha,
+          commitMessage,
+          branch,
+          pusher,
+          status: "PENDING",
+        },
+      });
+      jobId = job.id;
+
+      runScreenshotGeneration(job.id).catch((err) =>
+        logger.error(`Screenshot generation failed for job ${job.id}: ${err.message}`),
+      );
+    }
 
     const settings = app.teamId
       ? await prisma.teamSettings.findUnique({
           where: { teamId: app.teamId },
         })
       : null;
-
-    runScreenshotGeneration(job.id).catch((err) =>
-      logger.error(`Screenshot generation failed for job ${job.id}: ${err.message}`),
-    );
 
     if (settings?.githubAccessToken) {
       runBuildJob(app.id, {
@@ -794,7 +800,7 @@ githubRouter.post("/webhook", async (req: Request, res: Response) => {
       }).catch((err) => logger.error(`Binary build failed for app ${app.id}: ${err.message}`));
     }
 
-    res.json({ ok: true, jobId: job.id });
+    res.json({ ok: true, jobId, screenshotsLocked: app.screenshotsLocked });
   } catch (err: any) {
     logger.error(`Webhook handler error: ${err.message}`);
     res.status(500).json({ error: err.message });

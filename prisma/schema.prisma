@@ -196,6 +196,7 @@ model App {
   githubIosDir               String?
   githubFramework            String?
   githubBranch               String?
+  screenshotsLocked          Boolean                   @default(false)
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?
