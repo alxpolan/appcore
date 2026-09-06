@@ -715,6 +715,7 @@ model BuildJob {
   status      JobStatus @default(PENDING)
   logs        String?
   errors      String?
+  errorSummary String?
   ipaPath     String?
   version     String?
   buildNumber String?

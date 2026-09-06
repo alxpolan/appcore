@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, GitBranch } from "lucide-react";
+import { Check, ChevronDown, GitBranch, Sparkles } from "lucide-react";
 import { useApi, apiPost, apiPut, authHeaders } from "../hooks/useApi";
 import {
   badgeOutline,
@@ -969,13 +969,27 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
 
       {expanded && (
         <div className={`border-t ${borderDefault} bg-[#fafbfc] dark:bg-[#161920] px-4 py-3`}>
+          {job.errorSummary && (
+            <div className="mb-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wide mb-1">
+                <Sparkles className="w-3 h-3" /> What went wrong
+              </div>
+              <p className="text-[13px] text-red-700 dark:text-red-300 leading-relaxed whitespace-pre-wrap">
+                {job.errorSummary}
+              </p>
+            </div>
+          )}
           {job.errors.length > 0 && (
-            <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200">
-              <div className="text-[11px] font-medium text-red-700 uppercase tracking-wide mb-1">Errors</div>
-              <pre className="text-[12px] text-red-600 whitespace-pre-wrap break-all font-mono">
+            <details className="mb-3">
+              <summary
+                className={`cursor-pointer text-[11px] font-medium uppercase tracking-wide ${textSecondary} mb-1`}
+              >
+                Raw errors ({job.errors.length})
+              </summary>
+              <pre className="mt-1.5 p-3 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 text-[12px] text-red-600 dark:text-red-400 whitespace-pre-wrap break-all font-mono">
                 {job.errors.join("\n")}
               </pre>
-            </div>
+            </details>
           )}
           <LogsBlock logs={logs} loading={logsLoading} error={logsError} />
         </div>

@@ -5,6 +5,7 @@ import { logger, prisma } from "../config";
 import { workerClient } from "./worker-client";
 import { postCommitStatus } from "./github";
 import { parseProvisioningProfiles } from "./utils/provisioning-profiles";
+import { summarizeBuildError } from "./utils/build-error-summary";
 
 const BUILDS_BASE_DIR = path.join(os.homedir(), "appcore", "builds");
 
@@ -168,12 +169,15 @@ export async function runBuildJob(
     }
 
     const succeeded = result.ok && result.ipaBuilt;
+    const errorSummary = succeeded ? null : await summarizeBuildError(result.logs ?? [], result.errors ?? []);
+
     await prisma.buildJob.update({
       where: { id: buildJob.id },
       data: {
         status: succeeded ? "COMPLETED" : "FAILED",
         logs: JSON.stringify(result.logs ?? []),
         errors: JSON.stringify(result.errors ?? []),
+        errorSummary,
         ipaPath,
         version: versionString ?? null,
         buildNumber: result.buildNumber ?? null,
@@ -194,12 +198,14 @@ export async function runBuildJob(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[build:${appId}] Binary build error: ${msg}`);
+    const errorSummary = await summarizeBuildError([], [msg]);
 
     await prisma.buildJob.update({
       where: { id: buildJob.id },
       data: {
         status: "FAILED",
         errors: JSON.stringify([msg]),
+        errorSummary,
         completedAt: new Date(),
       },
     });

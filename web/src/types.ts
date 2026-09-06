@@ -390,6 +390,7 @@ export interface BuildJob {
   status: string;
   logs: string[];
   errors: string[];
+  errorSummary: string | null;
   ipaPath: string | null;
   version: string | null;
   buildNumber: string | null;
