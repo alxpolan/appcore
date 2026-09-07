@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { LayoutGrid, List, MoreHorizontal, Plus, Radar, Sparkles, Users } from "lucide-react";
+import { LayoutGrid, List, MoreHorizontal, Plus, Radar, Sparkles, Trash2, Users } from "lucide-react";
 import { useApi, apiPost, apiDelete, getActiveBundleId } from "../../hooks/useApi";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -27,6 +27,8 @@ export default function Competitors({ addToast }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   useClickOutside(
     moreRef,
@@ -74,6 +76,36 @@ export default function Competitors({ addToast }: Props) {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkDelete = async (ownAppId: string) => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Remove ${selectedIds.size} competitor${selectedIds.size === 1 ? "" : "s"}?`)) return;
+
+    setBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const outcomes = await Promise.allSettled(
+        ids.map((id) => apiDelete(`/apps/${ownAppId}/competitors/${id}`)),
+      );
+      const removed = outcomes.filter((o) => o.status === "fulfilled").length;
+      const failed = outcomes.length - removed;
+      if (removed > 0) addToast(`${removed} competitor${removed === 1 ? "" : "s"} removed`, "info");
+      if (failed > 0) addToast(`${failed} competitor${failed === 1 ? "" : "s"} could not be removed`, "error");
+      setSelectedIds(new Set());
+      refetch();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   if (loading)
     return (
       <div className="flex items-center justify-center py-20 gap-3 text-gray-400 dark:text-[#5c6478]">
@@ -84,6 +116,10 @@ export default function Competitors({ addToast }: Props) {
   const apps = data || [];
   const ownApp = apps.find((a) => a.isOwnApp);
   const competitors = apps.filter((a) => !a.isOwnApp);
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => (prev.size === competitors.length ? new Set() : new Set(competitors.map((c) => c.id))));
+  };
 
   return (
     <div>
@@ -162,7 +198,32 @@ export default function Competitors({ addToast }: Props) {
 
       {ownApp && <OwnAppCard app={ownApp} />}
 
-      <div className={`text-xs font-medium uppercase tracking-wide ${textMuted} mb-3`}>Competitor Apps</div>
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <span className={`text-xs font-medium uppercase tracking-wide ${textMuted}`}>Competitor Apps</span>
+        {competitors.length > 0 && (
+          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={selectedIds.size > 0 && selectedIds.size === competitors.length}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < competitors.length;
+              }}
+              onChange={toggleSelectAll}
+            />
+            <span className={`text-xs ${textMuted}`}>{selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}</span>
+          </label>
+        )}
+        {selectedIds.size > 0 && ownApp && (
+          <button
+            onClick={() => bulkDelete(ownApp.id)}
+            disabled={bulkDeleting || !canWrite}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {bulkDeleting ? <div className="spinner !w-3 !h-3" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {bulkDeleting ? "Removing…" : "Delete selected"}
+          </button>
+        )}
+      </div>
       {competitors.length === 0 ? (
         <div className="py-16 text-center">
           <div className="flex justify-center mb-3 opacity-20">
@@ -177,6 +238,9 @@ export default function Competitors({ addToast }: Props) {
           ownAppId={ownApp?.id}
           onRemove={ownApp ? (competitorId) => removeCompetitor(ownApp.id, competitorId) : undefined}
           onRowClick={(id) => navigate(`/competitors/${id}`)}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -187,6 +251,8 @@ export default function Competitors({ addToast }: Props) {
               ownAppId={ownApp?.id}
               onRemove={ownApp ? (competitorId) => removeCompetitor(ownApp.id, competitorId) : undefined}
               onClick={() => navigate(`/competitors/${c.id}`)}
+              selected={selectedIds.has(c.id)}
+              onToggleSelect={() => toggleSelect(c.id)}
             />
           ))}
         </div>

@@ -8,15 +8,27 @@ interface Props {
   ownAppId?: string;
   onRemove?: (competitorId: string) => void;
   onClick?: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export default function CompetitorCard({ competitor: c, ownAppId, onRemove, onClick }: Props) {
+export default function CompetitorCard({ competitor: c, ownAppId, onRemove, onClick, selected, onToggleSelect }: Props) {
   return (
     <div
-      className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 flex items-center gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] cursor-pointer hover:border-[#D94412]/40 transition-colors`}
+      className={`bg-white dark:bg-[#1c2028] border ${
+        selected ? "border-[#D94412]" : borderDefault
+      } rounded-2xl p-5 flex items-center gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] cursor-pointer hover:border-[#D94412]/40 transition-colors`}
       onClick={onClick}
     >
-      {" "}
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onClick={(e) => e.stopPropagation()}
+          onChange={onToggleSelect}
+          className="shrink-0 w-4 h-4"
+        />
+      )}
       <AppIcon url={c.iconUrl} name={c.name} />
       <div className="min-w-0 flex-1">
         <div className={`text-sm font-semibold ${textPrimary} truncate`}>{c.name}</div>

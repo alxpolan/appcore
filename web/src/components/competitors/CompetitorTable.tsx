@@ -26,6 +26,9 @@ interface Props {
   ownAppId?: string;
   onRemove?: (competitorId: string) => void;
   onRowClick: (id: string) => void;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
@@ -37,7 +40,15 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   );
 }
 
-export default function CompetitorTable({ competitors, ownAppId, onRemove, onRowClick }: Props) {
+export default function CompetitorTable({
+  competitors,
+  ownAppId,
+  onRemove,
+  onRowClick,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: Props) {
   const [sortBy, setSortBy] = useState<SortKey>("ratingsCount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [visibleCols, setVisibleCols] = useState<Record<ColumnKey, boolean>>(DEFAULT_VISIBLE_COLUMNS);
@@ -80,7 +91,8 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
     </th>
   );
 
-  const COL_WEIGHTS: Record<ColumnKey | "name" | "actions", number> = {
+  const COL_WEIGHTS: Record<ColumnKey | "name" | "actions" | "select", number> = {
+    select: 4,
     name: 22,
     bundleId: 14,
     rating: 8,
@@ -90,13 +102,18 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
     competitorCount: 10,
     actions: 6,
   };
-  const visibleKeys: (ColumnKey | "name" | "actions")[] = [
+  const visibleKeys: (ColumnKey | "name" | "actions" | "select")[] = [
+    ...(onToggleSelect ? (["select"] as const) : []),
     "name",
     ...TOGGLEABLE_COLUMNS.filter((c) => visibleCols[c.key]).map((c) => c.key),
     "actions",
   ];
   const totalWeight = visibleKeys.reduce((sum, k) => sum + COL_WEIGHTS[k], 0);
-  const widthOf = (k: ColumnKey | "name" | "actions") => `${((COL_WEIGHTS[k] / totalWeight) * 100).toFixed(2)}%`;
+  const widthOf = (k: ColumnKey | "name" | "actions" | "select") =>
+    `${((COL_WEIGHTS[k] / totalWeight) * 100).toFixed(2)}%`;
+
+  const allSelected = !!onToggleSelect && competitors.length > 0 && competitors.every((c) => selectedIds?.has(c.id));
+  const someSelected = !!selectedIds && selectedIds.size > 0;
 
   return (
     <div>
@@ -138,6 +155,18 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
           </colgroup>
           <thead>
             <tr>
+              {onToggleSelect && (
+                <th className={TH}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected && !allSelected;
+                    }}
+                    onChange={() => onToggleSelectAll?.()}
+                  />
+                </th>
+              )}
               {col("name", "App")}
               {visibleCols.bundleId && <th className={TH}>Bundle ID</th>}
               {visibleCols.rating && col("rating", "Rating")}
@@ -155,6 +184,15 @@ export default function CompetitorTable({ competitors, ownAppId, onRemove, onRow
                 onClick={() => onRowClick(c.id)}
                 className="cursor-pointer hover:bg-gray-50/60 dark:hover:bg-white/[0.03]"
               >
+                {onToggleSelect && (
+                  <td className={TD} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedIds?.has(c.id)}
+                      onChange={() => onToggleSelect(c.id)}
+                    />
+                  </td>
+                )}
                 <td className={TD}>
                   <span className="inline-flex items-center gap-2.5 min-w-0">
                     {c.iconUrl ? (
