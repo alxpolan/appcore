@@ -811,7 +811,7 @@ githubRouter.post("/webhook", async (req: Request, res: Response) => {
 githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request, res: Response) => {
   try {
     const jobId = req.params.jobId as string;
-    const { url } = req.body as { url?: string };
+    const { url, allLocales } = req.body as { url?: string; allLocales?: boolean };
 
     if (!url) {
       res.status(400).json({ error: "url is required" });
@@ -825,10 +825,18 @@ githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request
     }
 
     const framedByLocale = job.framedByLocale as Record<string, string[]>;
+    const basename = (u: string) => decodeURIComponent(u.split("/").pop() ?? u);
+    const targetBasename = basename(url);
+
+    const removedUrls: string[] = [];
     const updated: Record<string, string[]> = {};
 
     for (const [locale, urls] of Object.entries(framedByLocale)) {
-      const filtered = urls.filter((u) => u !== url);
+      const filtered = urls.filter((u) => {
+        const matches = allLocales ? basename(u) === targetBasename : u === url;
+        if (matches) removedUrls.push(u);
+        return !matches;
+      });
       if (filtered.length > 0) updated[locale] = filtered;
     }
 
@@ -837,16 +845,18 @@ githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request
       data: { framedByLocale: updated as any },
     });
 
-    try {
-      const screenshotsBase = path.join(process.cwd(), "screenshots");
-      const rel = url.replace(/^\/screenshots\//, "");
-      const filePath = path.join(screenshotsBase, rel);
+    const screenshotsBase = path.join(process.cwd(), "screenshots");
+    for (const removedUrl of removedUrls) {
+      try {
+        const rel = removedUrl.replace(/^\/screenshots\//, "");
+        const filePath = path.join(screenshotsBase, rel);
 
-      if (filePath.startsWith(screenshotsBase) && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+        if (filePath.startsWith(screenshotsBase) && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err: any) {
+        logger.warn(`Failed to delete screenshot file: ${err.message}`);
       }
-    } catch (err: any) {
-      logger.warn(`Failed to delete screenshot file: ${err.message}`);
     }
 
     res.json({ ok: true });

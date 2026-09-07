@@ -396,6 +396,8 @@ function RunResults({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pendingReorder, setPendingReorder] = useState<{ locale: string; urls: string[] } | null>(null);
   const [savingReorder, setSavingReorder] = useState<"one" | "all" | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ jobId: string; url: string } | null>(null);
+  const [savingDelete, setSavingDelete] = useState<"one" | "all" | null>(null);
 
   useEffect(() => {
     if (!previewUrl) return;
@@ -414,14 +416,11 @@ function RunResults({
 
   if (locales.length === 0) return null;
 
-  const deleteScreenshot = async (jobId: string, url: string) => {
-    if (!canWrite) return;
-    if (!confirm("Remove this screenshot?")) return;
-
+  const performDelete = async (jobId: string, url: string, allLocales: boolean) => {
     setDeleting(url);
     try {
-      await apiDelete(`/github/screenshots/framed/${jobId}`, { url });
-      addToast("Screenshot removed", "success");
+      await apiDelete(`/github/screenshots/framed/${jobId}`, { url, allLocales });
+      addToast(allLocales ? "Screenshot removed from all languages" : "Screenshot removed", "success");
       setOrderOverride({});
       onChanged();
     } catch (err: any) {
@@ -430,6 +429,29 @@ function RunResults({
       setDeleting(null);
     }
   };
+
+  const deleteScreenshot = (jobId: string, url: string) => {
+    if (!canWrite) return;
+    if (locales.length > 1) {
+      setPendingDelete({ jobId, url });
+      return;
+    }
+    if (!confirm("Remove this screenshot?")) return;
+    performDelete(jobId, url, false);
+  };
+
+  const confirmDelete = async (applyToAll: boolean) => {
+    if (!pendingDelete) return;
+    setSavingDelete(applyToAll ? "all" : "one");
+    try {
+      await performDelete(pendingDelete.jobId, pendingDelete.url, applyToAll);
+    } finally {
+      setSavingDelete(null);
+      setPendingDelete(null);
+    }
+  };
+
+  const cancelDelete = () => setPendingDelete(null);
 
   const persistOrder = async (jobId: string, locale: string, urls: string[]) => {
     if (!canWrite) return;
@@ -718,6 +740,22 @@ function RunResults({
               </button>
               <button className={btnPrimary} onClick={() => confirmReorder(true)} disabled={!!savingReorder}>
                 {savingReorder === "all" ? "Applying…" : "All locales"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && effectiveLocale && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4" onClick={cancelDelete}>
+          <div className={`${cardCls} w-full max-w-md`} onClick={(e) => e.stopPropagation()}>
+            <p className={`text-[15px] font-semibold ${textPrimary} mb-4`}>Remove from all locales?</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button className={btnSecondary} onClick={() => confirmDelete(false)} disabled={!!savingDelete}>
+                {savingDelete === "one" ? "Removing…" : `Only ${getLocaleName(effectiveLocale)}`}
+              </button>
+              <button className={btnPrimary} onClick={() => confirmDelete(true)} disabled={!!savingDelete}>
+                {savingDelete === "all" ? "Removing…" : "All locales"}
               </button>
             </div>
           </div>
