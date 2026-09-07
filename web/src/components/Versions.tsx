@@ -13,7 +13,7 @@ import {
   textSecondary,
   textareaCls,
 } from "../styles";
-import type { VersionsData, VersionLocalization, VersionLocalizationSummary } from "../types";
+import type { VersionsData, VersionLocalization, VersionLocalizationSummary, BuildJob } from "../types";
 import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
 import { getDeviceLabel, thumbUrl, DEVICES, type FramedJob } from "../utils/screenshotUtils";
 import { useClickOutside } from "../hooks/useClickOutside";
@@ -39,10 +39,12 @@ import {
   Minus,
   Wand2,
   Copy,
+  Hammer,
+  Camera,
 } from "lucide-react";
 
 type PhaseState = "pending" | "running" | "done" | "skipped" | "failed";
-type SubmitKind = "metadata" | "review" | "binary";
+type SubmitKind = "metadata" | "review" | "binary" | "screenshots";
 
 interface PhaseProgress {
   state: PhaseState;
@@ -151,6 +153,14 @@ function SubmissionProgress({ kind, phases }: { kind: SubmitKind; phases: Submis
     return (
       <div className="flex">
         <PhaseStep label="Binary Upload" phase={phases.binary} icon={Package} />
+      </div>
+    );
+  }
+
+  if (kind === "screenshots") {
+    return (
+      <div className="flex">
+        <PhaseStep label="Screenshots Upload" phase={phases.screenshots} icon={ImageIcon} />
       </div>
     );
   }
@@ -351,6 +361,7 @@ function ActionButton({
   onSubmitForReview,
   onPushMetadata,
   onUploadBinary,
+  onPushScreenshots,
   onRefetch,
   onSync,
 }: {
@@ -360,6 +371,7 @@ function ActionButton({
   onSubmitForReview: () => void;
   onPushMetadata: () => void;
   onUploadBinary: () => void;
+  onPushScreenshots: () => void;
   onRefetch: () => void;
   onSync: () => void;
 }) {
@@ -420,6 +432,16 @@ function ActionButton({
             >
               <Upload className={`w-4 h-4 ${textSecondary}`} />
               Upload Binary
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                onPushScreenshots();
+              }}
+              className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left`}
+            >
+              <Camera className={`w-4 h-4 ${textSecondary}`} />
+              Push Screenshots
             </button>
             <button
               onClick={() => {
@@ -487,6 +509,16 @@ function ActionButton({
           >
             <Upload className={`w-4 h-4 ${textSecondary}`} />
             Upload Binary
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onPushScreenshots();
+            }}
+            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left`}
+          >
+            <Camera className={`w-4 h-4 ${textSecondary}`} />
+            Push Screenshots
           </button>
           <button
             onClick={() => {
@@ -944,6 +976,126 @@ function InlineEditField({
           }`}
         >
           {value || <span className="text-[#c8cdd3] dark:text-[#3a4050] italic">Empty</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SelectableScreenshotJob {
+  id: string;
+  commitSha: string | null;
+  commitMessage: string | null;
+  branch: string | null;
+  createdAt: string;
+}
+
+function BuildScreenshotSelector({
+  appId,
+  addToast,
+}: {
+  appId: string;
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}) {
+  const { canWrite } = usePermissions();
+  const { data: builds } = useApi<BuildJob[]>(`/github/builds/${appId}`, [appId], true);
+  const { data: screenshotData } = useApi<{ jobs: SelectableScreenshotJob[] }>(
+    `/github/screenshots/framed-history/${appId}`,
+    [appId],
+    true,
+  );
+  const {
+    data: selection,
+    refetch: refetchSelection,
+  } = useApi<{ selectedBuildJobId: string | null; selectedScreenshotJobId: string | null }>(
+    `/apps/${appId}/build-screenshot-selection`,
+    [appId],
+    true,
+  );
+  const [savingBuild, setSavingBuild] = useState(false);
+  const [savingScreenshots, setSavingScreenshots] = useState(false);
+
+  const completedBuilds = (builds ?? []).filter((b) => b.status === "COMPLETED" && b.ipaPath);
+  const screenshotJobs = screenshotData?.jobs ?? [];
+
+  if (completedBuilds.length === 0 && screenshotJobs.length === 0) return null;
+
+  const buildLabel = (b: BuildJob) =>
+    `${b.version ? `v${b.version}` : "Build"}${b.buildNumber ? ` (${b.buildNumber})` : ""} · ${
+      b.commitSha ? b.commitSha.slice(0, 7) : (b.branch ?? "")
+    } · ${new Date(b.createdAt).toLocaleDateString()}`;
+
+  const screenshotLabel = (j: SelectableScreenshotJob) =>
+    `${j.commitMessage || (j.commitSha ? j.commitSha.slice(0, 7) : "Run")}${j.branch ? ` · ${j.branch}` : ""} · ${new Date(
+      j.createdAt,
+    ).toLocaleDateString()}`;
+
+  const selectBuild = async (id: string) => {
+    setSavingBuild(true);
+    try {
+      await apiPatch(`/apps/${appId}`, { selectedBuildJobId: id || null });
+      addToast(id ? "Build connected" : "Reverted to latest build", "success");
+      refetchSelection();
+    } catch (err: any) {
+      addToast(`Failed to update: ${err.message}`, "error");
+    } finally {
+      setSavingBuild(false);
+    }
+  };
+
+  const selectScreenshots = async (id: string) => {
+    setSavingScreenshots(true);
+    try {
+      await apiPatch(`/apps/${appId}`, { selectedScreenshotJobId: id || null });
+      addToast(id ? "Screenshot run connected" : "Reverted to latest screenshot run", "success");
+      refetchSelection();
+    } catch (err: any) {
+      addToast(`Failed to update: ${err.message}`, "error");
+    } finally {
+      setSavingScreenshots(false);
+    }
+  };
+
+  return (
+    <div className={`${cardCls} mb-5 grid sm:grid-cols-2 gap-4`}>
+      {completedBuilds.length > 0 && (
+        <div>
+          <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${textPrimary} mb-1.5`}>
+            <Hammer className="w-3.5 h-3.5" /> Connected Build
+          </div>
+          <select
+            className={inputCls}
+            disabled={!canWrite || savingBuild}
+            value={selection?.selectedBuildJobId ?? ""}
+            onChange={(e) => selectBuild(e.target.value)}
+          >
+            <option value="">Latest build (auto)</option>
+            {completedBuilds.map((b) => (
+              <option key={b.id} value={b.id}>
+                {buildLabel(b)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {screenshotJobs.length > 0 && (
+        <div>
+          <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${textPrimary} mb-1.5`}>
+            <Camera className="w-3.5 h-3.5" /> Connected Screenshots
+          </div>
+          <select
+            className={inputCls}
+            disabled={!canWrite || savingScreenshots}
+            value={selection?.selectedScreenshotJobId ?? ""}
+            onChange={(e) => selectScreenshots(e.target.value)}
+          >
+            <option value="">Latest run (auto)</option>
+            {screenshotJobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {screenshotLabel(j)}
+              </option>
+            ))}
+          </select>
         </div>
       )}
     </div>
@@ -1719,7 +1871,7 @@ export default function Versions({ addToast }: Props) {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [submitStatus?.logs?.length]);
 
-  const runSubmission = async (kind: "metadata" | "review" | "binary") => {
+  const runSubmission = async (kind: SubmitKind) => {
     if (!canWrite) {
       addToast("Viewer role cannot perform this action", "error");
       return;
@@ -1735,7 +1887,9 @@ export default function Versions({ addToast }: Props) {
           ? "Metadata push started"
           : kind === "binary"
             ? "Binary upload started"
-            : "Submit for review started";
+            : kind === "screenshots"
+              ? "Screenshot upload started"
+              : "Submit for review started";
       addToast(res.message || fallback, "success");
       startPolling();
     } catch (e: any) {
@@ -2038,6 +2192,7 @@ export default function Versions({ addToast }: Props) {
               onSubmitForReview={() => runSubmission("review")}
               onPushMetadata={() => runSubmission("metadata")}
               onUploadBinary={() => runSubmission("binary")}
+              onPushScreenshots={() => runSubmission("screenshots")}
               onRefetch={refetch}
               onSync={syncFromAppStore}
             />
@@ -2063,7 +2218,9 @@ export default function Versions({ addToast }: Props) {
                       ? "Submit for Review"
                       : submitKind === "metadata"
                         ? "Push Metadata"
-                        : "Upload Binary";
+                        : submitKind === "screenshots"
+                          ? "Push Screenshots"
+                          : "Upload Binary";
                   return (
                     <>
                       <span className={`w-2 h-2 rounded-full shrink-0 ${c.dot}`} />
@@ -2113,6 +2270,8 @@ export default function Versions({ addToast }: Props) {
             )}
           </div>
         )}
+
+        <BuildScreenshotSelector appId={data.appId} addToast={addToast} />
 
         <LatestBuildCard bundleId={data.bundleId} appName={data.appName} />
 

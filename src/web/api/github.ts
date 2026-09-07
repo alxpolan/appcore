@@ -931,12 +931,26 @@ githubRouter.get("/screenshots/latest-framed/:appId", requireAuth, async (req: R
       return;
     }
 
-    const jobs = await prisma.screenshotJob.findMany({
-      where: { appId: internalAppId, status: "COMPLETED" },
-      orderBy: { createdAt: "desc" },
-      take: 20,
+    const app = await prisma.app.findUnique({
+      where: { id: internalAppId },
+      select: { selectedScreenshotJobId: true },
     });
-    const job = jobs.find((j) => j.framedByLocale != null) ?? null;
+
+    const selected = app?.selectedScreenshotJobId
+      ? await prisma.screenshotJob.findFirst({
+          where: { id: app.selectedScreenshotJobId, appId: internalAppId, status: "COMPLETED" },
+        })
+      : null;
+
+    let job = selected;
+    if (!job) {
+      const jobs = await prisma.screenshotJob.findMany({
+        where: { appId: internalAppId, status: "COMPLETED" },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+      job = jobs.find((j) => j.framedByLocale != null) ?? null;
+    }
 
     if (!job || !job.framedByLocale) {
       res.json({ job: null });

@@ -83,6 +83,33 @@ submissionsRouter.post("/binary", ...requireBundleAccess("body"), async (req, re
   }
 });
 
+submissionsRouter.post("/screenshots", ...requireBundleAccess("body"), async (req, res) => {
+  try {
+    const settings = await getEffectiveSettings(req.user!.userId);
+    const bundleId = req.bundleApp!.bundleId;
+
+    const { FastlaneService } = await import("../../services/fastlane");
+    const fl = new FastlaneService(bundleId, settings);
+
+    res.json({
+      ok: true,
+      message: "Screenshot upload started. Check status for progress.",
+    });
+
+    fl.submit("screenshots")
+      .then(async (result) => {
+        if (result.ok) {
+          logger.info(`Fastlane screenshot upload completed (job ${result.jobId})`);
+        } else {
+          logger.error(`Fastlane screenshot upload failed (job ${result.jobId})`, result.errors);
+        }
+      })
+      .catch((err) => logger.error("Fastlane screenshot upload error", err));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
 submissionsRouter.post("/review", ...requireBundleAccess("body"), async (req, res) => {
   try {
     const settings = await getEffectiveSettings(req.user!.userId);

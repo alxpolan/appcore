@@ -197,6 +197,8 @@ model App {
   githubFramework            String?
   githubBranch               String?
   screenshotsLocked          Boolean                   @default(false)
+  selectedBuildJobId         String?
+  selectedScreenshotJobId    String?
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?

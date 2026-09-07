@@ -657,29 +657,82 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
   }
 });
 
+appsRouter.get("/:id/build-screenshot-selection", requireAuth, appAccess("params", "id"), async (req, res) => {
+  try {
+    const app = await prisma.app.findUnique({
+      where: { id: req.bundleApp!.id },
+      select: { selectedBuildJobId: true, selectedScreenshotJobId: true },
+    });
+    res.json(app ?? { selectedBuildJobId: null, selectedScreenshotJobId: null });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 appsRouter.patch("/:id", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {
-    const { displayName, screenshotsLocked } = req.body as {
+    const { displayName, screenshotsLocked, selectedBuildJobId, selectedScreenshotJobId } = req.body as {
       displayName?: string | null;
       screenshotsLocked?: boolean;
+      selectedBuildJobId?: string | null;
+      selectedScreenshotJobId?: string | null;
     };
+    const appId = req.bundleApp!.id;
 
-    const data: { displayName?: string | null; screenshotsLocked?: boolean } = {};
+    const data: {
+      displayName?: string | null;
+      screenshotsLocked?: boolean;
+      selectedBuildJobId?: string | null;
+      selectedScreenshotJobId?: string | null;
+    } = {};
+
     if (displayName !== undefined) {
       const trimmed = typeof displayName === "string" ? displayName.trim() : displayName;
       data.displayName = trimmed || null;
     }
-    
+
     if (typeof screenshotsLocked === "boolean") {
       data.screenshotsLocked = screenshotsLocked;
     }
 
+    if (selectedBuildJobId !== undefined) {
+      if (selectedBuildJobId === null) {
+        data.selectedBuildJobId = null;
+      } else {
+        const job = await prisma.buildJob.findFirst({ where: { id: selectedBuildJobId, appId } });
+        if (!job) {
+          res.status(400).json({ error: "Build not found for this app" });
+          return;
+        }
+        data.selectedBuildJobId = selectedBuildJobId;
+      }
+    }
+
+    if (selectedScreenshotJobId !== undefined) {
+      if (selectedScreenshotJobId === null) {
+        data.selectedScreenshotJobId = null;
+      } else {
+        const job = await prisma.screenshotJob.findFirst({ where: { id: selectedScreenshotJobId, appId } });
+        if (!job) {
+          res.status(400).json({ error: "Screenshot run not found for this app" });
+          return;
+        }
+        data.selectedScreenshotJobId = selectedScreenshotJobId;
+      }
+    }
+
     const app = await prisma.app.update({
-      where: { id: req.bundleApp!.id },
+      where: { id: appId },
       data,
     });
 
-    res.json({ id: app.id, displayName: app.displayName, screenshotsLocked: app.screenshotsLocked });
+    res.json({
+      id: app.id,
+      displayName: app.displayName,
+      screenshotsLocked: app.screenshotsLocked,
+      selectedBuildJobId: app.selectedBuildJobId,
+      selectedScreenshotJobId: app.selectedScreenshotJobId,
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

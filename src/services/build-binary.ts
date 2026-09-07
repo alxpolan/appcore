@@ -135,10 +135,9 @@ export async function runBuildJob(
       await fs.promises.writeFile(historyIpa, ipaBuffer);
 
       if (result.appStoreInfoBase64) {
-        await fs.promises.writeFile(
-          path.join(buildsDir, "latest.appstoreinfo.plist"),
-          Buffer.from(result.appStoreInfoBase64, "base64"),
-        );
+        const infoBuffer = Buffer.from(result.appStoreInfoBase64, "base64");
+        await fs.promises.writeFile(path.join(buildsDir, "latest.appstoreinfo.plist"), infoBuffer);
+        await fs.promises.writeFile(historyIpa.replace(/\.ipa$/, ".appstoreinfo.plist"), infoBuffer);
       }
 
       await fs.promises.writeFile(
@@ -158,7 +157,7 @@ export async function runBuildJob(
         ),
       );
 
-      ipaPath = destIpa;
+      ipaPath = historyIpa;
       logger.info(
         `[build:${appId}] Binary saved to ${destIpa} (${((result.sizeBytes ?? ipaBuffer.length) / 1024 / 1024).toFixed(1)} MB)`,
       );

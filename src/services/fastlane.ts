@@ -41,7 +41,7 @@ export interface SubmissionResult {
   errors: string[];
 }
 
-type SubmitAction = "metadata" | "submit_for_review" | "binary";
+type SubmitAction = "metadata" | "submit_for_review" | "binary" | "screenshots";
 
 interface LocaleEntry {
   name: string;
@@ -80,8 +80,8 @@ interface ActiveSubmission {
 
 function initialPhases(action: SubmitAction): SubmissionPhases {
   return {
-    binary: { state: "pending", current: 0, total: 1 },
-    metadata: { state: action === "binary" ? "skipped" : "pending", current: 0, total: 0 },
+    binary: { state: action === "screenshots" ? "skipped" : "pending", current: 0, total: 1 },
+    metadata: { state: action === "binary" || action === "screenshots" ? "skipped" : "pending", current: 0, total: 0 },
     screenshots: { state: action === "binary" ? "skipped" : "pending", current: 0, total: 0 },
   };
 }
@@ -284,6 +284,15 @@ export class FastlaneService {
         });
         submission.phases.binary.state = binaryResult.errors.length > 0 ? "failed" : "done";
         submission.phases.binary.current = submission.phases.binary.state === "done" ? 1 : 0;
+      } else if (action === "screenshots") {
+        submission.status = "running";
+        submission.phases.screenshots.state = "running";
+        const screenshotsResult = await this.runScreenshotsUpload({
+          phases: submission.phases,
+          onLog: (line) => submission.logs.push(line),
+          onError: (line) => submission.errors.push(line),
+        });
+        submission.phases.screenshots.state = screenshotsResult.errors.length > 0 ? "failed" : "done";
       } else {
         submission.logs.push("Step 1: Uploading binary...");
         submission.status = "running";
@@ -367,15 +376,31 @@ export class FastlaneService {
       const appId = await this.resolveAppId();
       if (!appId) return null;
 
-      const job = await prisma.screenshotJob.findFirst({
-        where: {
-          appId,
-          status: "COMPLETED",
-          framedByLocale: { not: Prisma.AnyNull },
-        },
-        orderBy: { completedAt: "desc" },
-        select: { framedByLocale: true },
-      });
+      const app = await prisma.app.findUnique({ where: { id: appId }, select: { selectedScreenshotJobId: true } });
+
+      const selected = app?.selectedScreenshotJobId
+        ? await prisma.screenshotJob.findFirst({
+            where: {
+              id: app.selectedScreenshotJobId,
+              appId,
+              status: "COMPLETED",
+              framedByLocale: { not: Prisma.AnyNull },
+            },
+            select: { framedByLocale: true },
+          })
+        : null;
+
+      const job =
+        selected ??
+        (await prisma.screenshotJob.findFirst({
+          where: {
+            appId,
+            status: "COMPLETED",
+            framedByLocale: { not: Prisma.AnyNull },
+          },
+          orderBy: { completedAt: "desc" },
+          select: { framedByLocale: true },
+        }));
       if (!job?.framedByLocale) return null;
 
       const framedByLocale = job.framedByLocale as Record<string, string[]>;
@@ -383,12 +408,15 @@ export class FastlaneService {
 
       for (const [locale, urls] of Object.entries(framedByLocale)) {
         const images: Array<{ filename: string; absPath: string }> = [];
+
         for (const url of urls) {
           const absPath = path.join(process.cwd(), url);
+
           if (fs.existsSync(absPath)) {
             images.push({ filename: path.basename(absPath), absPath });
           }
         }
+
         if (images.length > 0) screenshots[locale] = images;
       }
 
@@ -404,17 +432,52 @@ export class FastlaneService {
       const appId = await this.resolveAppId();
       if (!appId) return null;
 
-      const buildJob = await prisma.buildJob.findFirst({
-        where: { appId, status: "COMPLETED", ipaPath: { not: null } },
-        orderBy: { completedAt: "desc" },
-        select: { ipaPath: true },
-      });
+      const app = await prisma.app.findUnique({ where: { id: appId }, select: { selectedBuildJobId: true } });
+
+      const selected = app?.selectedBuildJobId
+        ? await prisma.buildJob.findFirst({
+            where: { id: app.selectedBuildJobId, appId, status: "COMPLETED", ipaPath: { not: null } },
+            select: { ipaPath: true },
+          })
+        : null;
+
+      const buildJob =
+        selected ??
+        (await prisma.buildJob.findFirst({
+          where: { appId, status: "COMPLETED", ipaPath: { not: null } },
+          orderBy: { completedAt: "desc" },
+          select: { ipaPath: true },
+        }));
       if (!buildJob?.ipaPath) return null;
 
       return fs.existsSync(buildJob.ipaPath) ? buildJob.ipaPath : null;
     } catch (err) {
       logger.warn("[Fastlane] Could not load latest IPA path:", err);
       return null;
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** ASC occasionally returns a transient "500: unexpected server error" — retry those with backoff. */
+  private async withAscRetry<T>(label: string, onLog: (line: string) => void, fn: () => Promise<T>): Promise<T> {
+    const retryDelaysMs = [5000, 15000, 30000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransientServerError = /ASC 5\d\d:/.test(msg);
+        if (!isTransientServerError || attempt >= retryDelaysMs.length) throw err;
+
+        const delay = retryDelaysMs[attempt];
+        onLog(
+          `[Screenshots] ${label} failed (${msg}). Retrying in ${delay / 1000}s… (attempt ${attempt + 2}/${retryDelaysMs.length + 1})`,
+        );
+        await this.sleep(delay);
+      }
     }
   }
 
@@ -463,8 +526,14 @@ export class FastlaneService {
         `[Screenshots] ${locale}: ${images.length} image(s)${isFallback ? ` (fallback from ${fallbackLocale})` : ""}`,
       );
 
-      const existingSets = await this.asc.listScreenshotSets(localizationId);
-      await Promise.all(existingSets.map((s) => this.asc.deleteScreenshotSet(s.id)));
+      const existingSets = await this.withAscRetry(`${locale}: list screenshot sets`, onLog, () =>
+        this.asc.listScreenshotSets(localizationId),
+      );
+      await Promise.all(
+        existingSets.map((s) =>
+          this.withAscRetry(`${locale}: delete screenshot set`, onLog, () => this.asc.deleteScreenshotSet(s.id)),
+        ),
+      );
 
       if (existingSets.length > 0) {
         onLog(`[Screenshots] ${locale}: removed ${existingSets.length} existing set(s)`);
@@ -487,7 +556,9 @@ export class FastlaneService {
 
       for (const [displayType, imgs] of byDisplayType) {
         onLog(`[Screenshots] ${locale}: creating set for ${displayType} (${imgs.length} image(s))...`);
-        const set = await this.asc.createScreenshotSet(localizationId, displayType);
+        const set = await this.withAscRetry(`${locale}: create screenshot set`, onLog, () =>
+          this.asc.createScreenshotSet(localizationId, displayType),
+        );
         onLog(`[Screenshots] ${locale}: set created (${set.id})`);
 
         for (const img of imgs) {
@@ -495,13 +566,16 @@ export class FastlaneService {
           const md5 = createHash("md5").update(fileData).digest("hex");
 
           onLog(`[Screenshots] ${locale}: reserving slot for ${img.filename} (${fileData.length} bytes)...`);
-          const reserved = await this.asc.reserveScreenshot(set.id, img.filename, fileData.length);
+          const reserved = await this.withAscRetry(`${locale}: reserve ${img.filename}`, onLog, () =>
+            this.asc.reserveScreenshot(set.id, img.filename, fileData.length),
+          );
           onLog(`[Screenshots] ${locale}: uploading ${reserved.attributes.uploadOperations.length} chunk(s)...`);
 
           for (let i = 0; i < reserved.attributes.uploadOperations.length; i++) {
             const op = reserved.attributes.uploadOperations[i];
             const chunk = Buffer.from(fileData.subarray(op.offset, op.offset + op.length));
             const headers = Object.fromEntries(op.requestHeaders.map((h) => [h.name, h.value]));
+            
             onLog(
               `[Screenshots] ${locale}: chunk ${i + 1}/${reserved.attributes.uploadOperations.length} → ${op.method} (${chunk.length} bytes)`,
             );
@@ -509,7 +583,9 @@ export class FastlaneService {
           }
 
           onLog(`[Screenshots] ${locale}: committing ${img.filename}...`);
-          await this.asc.commitScreenshot(reserved.id, md5);
+          await this.withAscRetry(`${locale}: commit ${img.filename}`, onLog, () =>
+            this.asc.commitScreenshot(reserved.id, md5),
+          );
           onLog(`[Screenshots] ${locale}: done ${img.filename} (${displayType})`);
           onScreenshotDone?.();
           logRateLimit();
@@ -628,8 +704,7 @@ export class FastlaneService {
       if (screenshotPaths && Object.keys(screenshotPaths).length > 0) {
         pushLog("Uploading screenshots via App Store Connect API...");
         const targetLocales = Object.keys(localeData);
-        const fallbackLocale =
-          FALLBACK_LOCALES.find((l) => screenshotPaths[l]) ?? Object.keys(screenshotPaths)[0];
+        const fallbackLocale = FALLBACK_LOCALES.find((l) => screenshotPaths[l]) ?? Object.keys(screenshotPaths)[0];
         const fallbackCount = fallbackLocale ? (screenshotPaths[fallbackLocale]?.length ?? 0) : 0;
         let totalScreenshots = 0;
         for (const loc of targetLocales) {
@@ -699,7 +774,7 @@ export class FastlaneService {
       setTimeout(() => ipaDownloadTokens.delete(token), 10 * 60 * 1000).unref();
 
       const ipaUrl = `${env.SERVER_INTERNAL_URL}/internal/ipa/${token}`;
-      const appStoreInfoPath = path.join(path.dirname(ipaPath), "latest.appstoreinfo.plist");
+      const appStoreInfoPath = ipaPath.replace(/\.ipa$/, ".appstoreinfo.plist");
       let appStoreInfoUrl: string | undefined;
 
       if (fs.existsSync(appStoreInfoPath)) {
@@ -723,6 +798,49 @@ export class FastlaneService {
       );
 
       for (const line of result.errors) pushError(line);
+
+      return { logs, errors };
+    } catch (err: any) {
+      const cause = err?.cause?.message ?? err?.cause?.code ?? "";
+      pushError(`${err instanceof Error ? err.message : String(err)}${cause ? ` — cause: ${cause}` : ""}`);
+      return { logs, errors };
+    }
+  }
+
+  private async runScreenshotsUpload(opts: {
+    phases: SubmissionPhases;
+    onLog?: (line: string) => void;
+    onError?: (line: string) => void;
+  }): Promise<{ logs: string[]; errors: string[] }> {
+    const { phases, onLog, onError } = opts;
+    const logs: string[] = [];
+    const errors: string[] = [];
+
+    const pushLog = (line: string) => {
+      logs.push(line);
+      onLog?.(line);
+    };
+
+    const pushError = (line: string) => {
+      errors.push(line);
+      onError?.(line);
+    };
+
+    try {
+      const screenshotPaths = await this.loadFramedScreenshotPaths();
+      if (!screenshotPaths || Object.keys(screenshotPaths).length === 0) {
+        throw new Error("No framed screenshots found. Generate screenshots first.");
+      }
+
+      const locales = Object.keys(screenshotPaths);
+      const total = locales.reduce((sum, loc) => sum + (screenshotPaths[loc]?.length ?? 0), 0);
+      phases.screenshots.total = total;
+      phases.screenshots.current = 0;
+
+      pushLog(`Uploading screenshots for ${locales.length} locale(s): ${locales.join(", ")}`);
+      await this.uploadScreenshotsViaASC(screenshotPaths, locales, pushLog, () => {
+        phases.screenshots.current += 1;
+      });
 
       return { logs, errors };
     } catch (err: any) {
