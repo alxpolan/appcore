@@ -13,19 +13,19 @@ export const cardCls =
   "bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]";
 
 export const btnPrimary =
-  "inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 
 export const btnPrimSm =
-  "inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-medium bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-medium bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 
 export const btnSecondary =
-  "inline-flex items-center gap-1.5 px-3 py-[7px] rounded-xl border border-[#eef0f3] dark:border-[#2a2f3d] bg-transparent text-[#111827] dark:text-[#e8eaf0] text-[13px] font-medium transition-all hover:border-[#C4001E] hover:text-[#C4001E] disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex items-center gap-1.5 px-3 py-[7px] rounded-xl border border-[#eef0f3] dark:border-[#2a2f3d] bg-transparent text-[#111827] dark:text-[#e8eaf0] text-[13px] font-medium transition-all hover:border-[#595DD2] hover:text-[#595DD2] disabled:opacity-50 disabled:cursor-not-allowed";
 
 export const btnSecSm =
   "inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded-xl text-xs font-medium border border-[#eef0f3] dark:border-[#2a2f3d] bg-white dark:bg-[#1c2028] text-[#111827] dark:text-[#e8eaf0] hover:bg-gray-50 dark:hover:bg-[#252b38] transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap";
 
 export const inputCls =
-  "w-full px-3.5 py-[9px] rounded-xl border border-[#eef0f3] dark:border-[#2a2f3d] bg-white dark:bg-[#1c2028] text-[#111827] dark:text-[#e8eaf0] text-[13px] outline-none transition-colors focus:border-[#C4001E] font-[inherit] placeholder:text-[#9ca3af] dark:placeholder:text-[#5c6478]";
+  "w-full px-3.5 py-[9px] rounded-xl border border-[#eef0f3] dark:border-[#2a2f3d] bg-white dark:bg-[#1c2028] text-[#111827] dark:text-[#e8eaf0] text-[13px] outline-none transition-colors focus:border-[#595DD2] font-[inherit] placeholder:text-[#9ca3af] dark:placeholder:text-[#5c6478]";
 
 export const textareaCls = `${inputCls} resize-y font-mono text-xs`;
 

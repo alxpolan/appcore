@@ -143,7 +143,7 @@ export default function Agents({ addToast }: Props) {
             onClick={handleToggle}
             disabled={toggling || !config}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-              config?.mcpEnabled ? "bg-[#D94412]" : "bg-gray-200 dark:bg-[#2a2f3d]"
+              config?.mcpEnabled ? "bg-[#595DD2]" : "bg-gray-200 dark:bg-[#2a2f3d]"
             }`}
           >
             <span
@@ -163,7 +163,7 @@ export default function Agents({ addToast }: Props) {
             <li>
               Enter the MCP Server URL:{" "}
               <code
-                className={`font-mono ${textPrimary} cursor-pointer hover:text-[#D94412]`}
+                className={`font-mono ${textPrimary} cursor-pointer hover:text-[#595DD2]`}
                 onClick={() => copyToClipboard(mcpUrl)}
                 title="Click to copy"
               >
@@ -207,7 +207,7 @@ export default function Agents({ addToast }: Props) {
                         <code className={`text-[11px] font-mono ${textMuted}`}>{client.clientId}</code>
                         <button
                           onClick={() => copyToClipboard(client.clientId)}
-                          className={`text-[10px] ${textMuted} hover:text-[#D94412] transition-colors`}
+                          className={`text-[10px] ${textMuted} hover:text-[#595DD2] transition-colors`}
                           title="Copy Client ID"
                         >
                           ⎘
@@ -244,7 +244,7 @@ export default function Agents({ addToast }: Props) {
               key={tool.name}
               className={`flex items-start gap-3 p-3 bg-[#f8f9fb] dark:bg-[#252b38] rounded-xl border ${borderDefault}`}
             >
-              <code className="text-[12px] font-mono font-semibold text-[#D94412] shrink-0 mt-0.5">{tool.name}</code>
+              <code className="text-[12px] font-mono font-semibold text-[#595DD2] shrink-0 mt-0.5">{tool.name}</code>
               <span className="text-xs text-gray-500 dark:text-[#8b93a5] mt-0.5">{tool.desc}</span>
             </div>
           ))}

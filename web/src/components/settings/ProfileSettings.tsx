@@ -47,7 +47,7 @@ export default function ProfileSettings({ user, onUserUpdate, addToast }: Props)
 
       <div className={`${cardCls} mb-6`}>
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-full bg-[#C4001E] flex items-center justify-center text-white text-xl font-bold shrink-0">
+          <div className="w-14 h-14 rounded-full bg-[#595DD2] flex items-center justify-center text-white text-xl font-bold shrink-0">
             {(user.name || user.email || "U")
               .split(" ")
               .map((w) => w[0])

@@ -14,10 +14,10 @@ body {
   --shell-bg: color-mix(in srgb, var(--app-accent) 5%, var(--shell-base));
   --sidebar-bg: var(--shell-bg);
   --content-bg: #f8f9fb;
-  --accent: #c4001e;
-  --accent-hover: #a8001a;
-  --accent-orange: #d94412;
-  --accent-gradient: linear-gradient(135deg, #d94412, #c4001e);
+  --accent: #595dd2;
+  --accent-hover: #484cbe;
+  --accent-orange: #595dd2;
+  --accent-gradient: linear-gradient(135deg, #6e72e4, #595dd2);
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;

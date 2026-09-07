@@ -83,13 +83,13 @@ function DisplayNameSection({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={app.name}
-          className={`flex-1 rounded-xl px-3.5 py-[9px] text-[13px] border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} focus:outline-none focus:ring-2 focus:ring-[#C4001E]/20`}
+          className={`flex-1 rounded-xl px-3.5 py-[9px] text-[13px] border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} focus:outline-none focus:ring-2 focus:ring-[#595DD2]/20`}
           disabled={saving}
         />
         <button
           onClick={handleSave}
           disabled={!dirty || saving}
-          className="px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-[#C4001E] text-white hover:bg-[#a8001a] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-[#595DD2] text-white hover:bg-[#484cbe] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? "Saving…" : "Save"}
         </button>

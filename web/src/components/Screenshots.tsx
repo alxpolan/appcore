@@ -158,7 +158,7 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
               </>
             )}{" "}
             Repo, signing and pipeline settings live in{" "}
-            <Link to="/app-settings" className="underline underline-offset-2 hover:text-[#C4001E]">
+            <Link to="/app-settings" className="underline underline-offset-2 hover:text-[#595DD2]">
               App Settings
             </Link>
             .
@@ -201,7 +201,7 @@ function StudioIntro({ app, addToast, onLinked }: { app: AppItem; addToast: Prop
     <>
       <div className={`${cardCls} mb-5`}>
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D94412] to-[#C4001E] flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6E72E4] to-[#595DD2] flex items-center justify-center shrink-0">
             <Camera className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -216,7 +216,7 @@ function StudioIntro({ app, addToast, onLinked }: { app: AppItem; addToast: Prop
         <div className="grid sm:grid-cols-3 gap-3 mt-5">
           {INTRO_STEPS.map((step) => (
             <div key={step.title} className={`border ${borderDefault} rounded-xl p-4 bg-[#fafbfc] dark:bg-[#252b38]`}>
-              <step.icon className="w-5 h-5 text-[#C4001E] mb-2" />
+              <step.icon className="w-5 h-5 text-[#595DD2] mb-2" />
               <div className={`text-[13px] font-semibold ${textPrimary} mb-1`}>{step.title}</div>
               <div className={`text-[12px] ${textSecondary} leading-relaxed`}>{step.desc}</div>
             </div>
@@ -621,7 +621,7 @@ function RunResults({
                       }}
                       className={`relative shrink-0 group/img cursor-grab active:cursor-grabbing transition-all ${
                         isDragging ? "opacity-40" : ""
-                      } ${isDropTarget ? "ring-2 ring-[#D94412] ring-offset-2 rounded-xl" : ""}`}
+                      } ${isDropTarget ? "ring-2 ring-[#595DD2] ring-offset-2 rounded-xl" : ""}`}
                     >
                       <button
                         type="button"

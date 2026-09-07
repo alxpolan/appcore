@@ -19,7 +19,7 @@ export default function FilterBar({
   return (
     <div className="flex items-center gap-3 flex-wrap mb-5">
       <select
-        className={`px-3 py-1.5 border ${borderDefault} rounded-xl bg-white dark:bg-[#1c2028] text-sm ${textPrimary} outline-none cursor-pointer focus:border-[#D94412] transition-colors`}
+        className={`px-3 py-1.5 border ${borderDefault} rounded-xl bg-white dark:bg-[#1c2028] text-sm ${textPrimary} outline-none cursor-pointer focus:border-[#595DD2] transition-colors`}
         value={statusFilter}
         onChange={(e) => setStatusFilter(e.target.value)}
       >
@@ -30,7 +30,7 @@ export default function FilterBar({
         <option value="REJECTED">Rejected</option>
       </select>
       <select
-        className={`px-3 py-1.5 border ${borderDefault} rounded-xl bg-white dark:bg-[#1c2028] text-sm ${textPrimary} outline-none cursor-pointer focus:border-[#D94412] transition-colors`}
+        className={`px-3 py-1.5 border ${borderDefault} rounded-xl bg-white dark:bg-[#1c2028] text-sm ${textPrimary} outline-none cursor-pointer focus:border-[#595DD2] transition-colors`}
         value={typeFilter}
         onChange={(e) => setTypeFilter(e.target.value)}
       >

@@ -164,7 +164,7 @@ export default function SigningSection({ appId, addToast }: Props) {
               <div>
                 <label className={`block text-xs font-medium ${textSecondary} mb-1.5`}>Certificate (.p12)</label>
                 <div
-                  className={`flex items-center gap-3 px-3.5 py-[9px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] cursor-pointer hover:border-[#D94412] transition-colors`}
+                  className={`flex items-center gap-3 px-3.5 py-[9px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] cursor-pointer hover:border-[#595DD2] transition-colors`}
                   onClick={() => p12Ref.current?.click()}
                 >
                   <Paperclip className="w-4 h-4 text-[#9ca3af] flex-shrink-0" />
@@ -197,7 +197,7 @@ export default function SigningSection({ appId, addToast }: Props) {
                   Provisioning Profiles (.mobileprovision)
                 </label>
                 <div
-                  className={`flex items-center gap-3 px-3.5 py-[9px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] cursor-pointer hover:border-[#D94412] transition-colors`}
+                  className={`flex items-center gap-3 px-3.5 py-[9px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] cursor-pointer hover:border-[#595DD2] transition-colors`}
                   onClick={() => profileRef.current?.click()}
                 >
                   <FileText className="w-4 h-4 text-[#9ca3af] flex-shrink-0" />

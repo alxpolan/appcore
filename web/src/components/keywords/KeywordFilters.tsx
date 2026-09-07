@@ -90,7 +90,7 @@ function RangeRow({
   onMin: (v: string) => void;
   onMax: (v: string) => void;
 }) {
-  const inputCls = `w-full px-2 py-1 rounded-md border ${borderDefault} bg-white dark:bg-[#1c2028] text-[12px] ${textPrimary} outline-none focus:border-[#C4001E] tabular-nums`;
+  const inputCls = `w-full px-2 py-1 rounded-md border ${borderDefault} bg-white dark:bg-[#1c2028] text-[12px] ${textPrimary} outline-none focus:border-[#595DD2] tabular-nums`;
   return (
     <div>
       <div className={`text-[11px] font-medium ${textSecondary} mb-1.5`}>{label}</div>

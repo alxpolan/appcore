@@ -369,7 +369,7 @@ export default function RankingHistoryChart({
                   </div>
                   <button
                     onClick={() => setHidden(allShown ? new Set(series.map((s) => s.name)) : new Set())}
-                    className={`inline-flex items-center gap-1 text-[11px] font-medium ${textMuted} transition-colors hover:text-[#C4001E]`}
+                    className={`inline-flex items-center gap-1 text-[11px] font-medium ${textMuted} transition-colors hover:text-[#595DD2]`}
                   >
                     {allShown ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                     {allShown ? "Hide all" : "Show all"}
@@ -459,7 +459,7 @@ export default function RankingHistoryChart({
                               <button
                                 onClick={() => addCompetitor(c.bundleId, c.name)}
                                 disabled={isAdding || !canWrite || !history.ownAppId}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded-lg text-[12px] font-semibold border-[#D94412] bg-[#D94412] text-white hover:border-[#c80b24] hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded-lg text-[12px] font-semibold border-[#595DD2] bg-[#595DD2] text-white hover:border-[#484CBE] hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {isAdding ? (
                                   <>

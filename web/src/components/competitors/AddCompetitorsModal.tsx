@@ -133,7 +133,7 @@ export default function AddCompetitorsModal({ open, onClose, ownAppId, onAdded, 
             REL {c.relevance}
           </span>
         )}
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#D94412] group-hover:bg-[#D94412]/10">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#595DD2] group-hover:bg-[#595DD2]/10">
           <Plus className="w-4 h-4" />
         </span>
       </span>
@@ -198,7 +198,7 @@ export default function AddCompetitorsModal({ open, onClose, ownAppId, onAdded, 
               {!suggestionsLoading && visibleSuggestions.length > 0 && (
                 <div className="mb-1">
                   <div className={`flex items-center gap-1.5 px-3 pt-2 pb-1.5 text-[10px] uppercase tracking-wider font-semibold ${textMuted}`}>
-                    <Sparkles className="w-3 h-3 text-[#D94412]" />
+                    <Sparkles className="w-3 h-3 text-[#595DD2]" />
                     Suggested by AI
                   </div>
                   {visibleSuggestions.map((s) => row(s, { showRelevance: true }))}

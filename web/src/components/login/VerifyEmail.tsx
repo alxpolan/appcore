@@ -93,7 +93,7 @@ export default function VerifyEmail({ onAuth }: { onAuth: (u: AuthUser) => void 
             </div>
 
             {resendState === "sent" ? (
-              <div className="bg-[#fef2f3] dark:bg-[#2a1f23] border border-[#D94412]/20 rounded-xl px-4 py-3 text-center">
+              <div className="bg-[#eef0fd] dark:bg-[#23253f] border border-[#595DD2]/20 rounded-xl px-4 py-3 text-center">
                 <p className={`text-sm ${textPrimary}`}>
                   If an account exists for that email, a fresh confirmation link is on its way.
                 </p>

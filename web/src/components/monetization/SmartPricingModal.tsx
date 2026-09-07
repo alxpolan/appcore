@@ -181,7 +181,7 @@ export default function SmartPricingModal({
         <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className={`flex items-center gap-1.5 text-base font-semibold ${textPrimary}`}>
-              <Sparkles className="w-4 h-4 text-[#C4001E]" /> Smart Pricing
+              <Sparkles className="w-4 h-4 text-[#595DD2]" /> Smart Pricing
             </h2>
             <p className={`text-xs ${textMuted} mt-0.5`}>
               Suggests a price per territory from your US base price, adjusted by a purchasing-power multiplier. Nothing

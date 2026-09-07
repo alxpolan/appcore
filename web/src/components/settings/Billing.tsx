@@ -97,7 +97,7 @@ export default function Billing({ addToast }: Props) {
         <div className={cardCls}>
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-xl border ${borderDefault} flex items-center justify-center shrink-0`}>
-              <CreditCard className="w-6 h-6 text-[#C4001E]" />
+              <CreditCard className="w-6 h-6 text-[#595DD2]" />
             </div>
             <div className="min-w-0">
               <div className={`text-[15px] font-semibold ${textPrimary} flex items-center gap-2`}>
@@ -177,14 +177,14 @@ function PlanCard({ title, price, cadence, features, ctaLabel, onClick, disabled
     <div
       className={`rounded-2xl border p-5 flex flex-col gap-3 ${
         highlight
-          ? "border-[#C4001E]/30 bg-gradient-to-br from-[#C4001E]/[0.04] to-transparent"
+          ? "border-[#595DD2]/30 bg-gradient-to-br from-[#595DD2]/[0.04] to-transparent"
           : `${borderDefault} bg-white dark:bg-[#1c2028]`
       }`}
     >
       <div className="flex items-center justify-between">
         <div className={`text-sm font-semibold ${textPrimary}`}>{title}</div>
         {highlight && (
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C4001E]">Save 17%</span>
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-[#595DD2]">Save 17%</span>
         )}
       </div>
       <div className="flex items-baseline gap-1">

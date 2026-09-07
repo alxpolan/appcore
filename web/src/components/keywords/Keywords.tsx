@@ -416,7 +416,7 @@ export default function Keywords({ addToast, isPro }: Props) {
             onClick={() => setViewMode("list")}
             aria-pressed={viewMode === "list"}
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${viewMode === "list"
-              ? "bg-[#D94412] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+              ? "bg-[#595DD2] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
               : `${textMuted} hover:${textSecondary.replace(/^text-/, "text-")}`
               }`}
           >
@@ -426,7 +426,7 @@ export default function Keywords({ addToast, isPro }: Props) {
             onClick={() => setViewMode("matrix")}
             aria-pressed={viewMode === "matrix"}
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${viewMode === "matrix"
-              ? "bg-[#D94412] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+              ? "bg-[#595DD2] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
               : `${textMuted}`
               }`}
           >
@@ -445,14 +445,14 @@ export default function Keywords({ addToast, isPro }: Props) {
             writeTip ?? limitTip ?? (suggestionCount > 0 ? `${suggestionCount} new AI suggestions` : "Add keywords")
           }
           className={`relative inline-flex items-center gap-1.5 pl-3 pr-3.5 py-[7px] rounded-full border text-[13px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${atLimit
-            ? "border-[#D94412]/40 bg-[#D94412]/[0.06] text-[#D94412] hover:bg-[#D94412]/10"
-            : "border-[#D94412] bg-[#D94412] text-white hover:border-[#c80b24] hover:bg-[#c80b24]"
+            ? "border-[#595DD2]/40 bg-[#595DD2]/[0.06] text-[#595DD2] hover:bg-[#595DD2]/10"
+            : "border-[#595DD2] bg-[#595DD2] text-white hover:border-[#484CBE] hover:bg-[#484CBE]"
             }`}
         >
           {atLimit ? <Lock className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           {atLimit ? "Upgrade to add more" : "Add keywords"}
           {!atLimit && suggestionCount > 0 && (
-            <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#D94412] text-[10px] font-bold tabular-nums ring-2 ring-white dark:ring-[#0f1117]">
+            <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#595DD2] text-[10px] font-bold tabular-nums ring-2 ring-white dark:ring-[#0f1117]">
               {suggestionCount}
             </span>
           )}
@@ -613,7 +613,7 @@ export default function Keywords({ addToast, isPro }: Props) {
           {sorted.length !== 1 ? "s" : ""} tracked
         </span>
         {remaining !== null && (
-          <span className={`tabular-nums ${atLimit ? "text-[#D94412] font-medium" : ""}`}>
+          <span className={`tabular-nums ${atLimit ? "text-[#595DD2] font-medium" : ""}`}>
             · Free plan {keywords.length}/{FREE_KEYWORDS_PER_APP}
             {atLimit ? " · limit reached" : ""}
           </span>

@@ -288,7 +288,7 @@ function LocalizationsPanel({ productId, addToast }: { productId: string; addToa
         <span className={`text-[13px] font-semibold ${textPrimary}`}>Localizations</span>
         <button
           onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+          className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
         >
           <Paperclip className="w-3.5 h-3.5" /> Add
         </button>
@@ -367,7 +367,7 @@ function LocalizationsPanel({ productId, addToast }: { productId: string; addToa
                           setEditName(loc.name);
                           setEditDesc(loc.description ?? "");
                         }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -602,13 +602,13 @@ function PricingPanel({ productId, addToast }: { productId: string; addToast: Pr
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowSmart(true)}
-            className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+            className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
           >
             <Sparkles className="w-3.5 h-3.5" /> Smart Pricing
           </button>
           <button
             onClick={openAdd}
-            className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+            className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
           >
             <Plus className="w-3.5 h-3.5" /> Set Price
           </button>
@@ -723,7 +723,7 @@ function PricingPanel({ productId, addToast }: { productId: string; addToast: Pr
                   <td className={`${TD} text-right`}>
                     <button
                       onClick={() => startEditPrice(p)}
-                      className="p-1.5 opacity-0 group-hover:opacity-100 rounded-lg text-gray-400 hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                      className="p-1.5 opacity-0 group-hover:opacity-100 rounded-lg text-gray-400 hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
@@ -825,7 +825,7 @@ function ReviewPanel({ product, onReviewNoteUpdated, addToast }: ReviewPanelProp
               setNoteText(product.reviewNote ?? "");
               setEditing(true);
             }}
-            className="text-[12px] text-[#C4001E] hover:underline"
+            className="text-[12px] text-[#595DD2] hover:underline"
           >
             {product.reviewNote ? "Edit" : "Add"}
           </button>
@@ -973,7 +973,7 @@ function DetailView({ product, bundleId, onBack, onUpdated, onDeleted, addToast 
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#C4001E] transition-all shrink-0`}
+            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#595DD2] transition-all shrink-0`}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -982,7 +982,7 @@ function DetailView({ product, bundleId, onBack, onUpdated, onDeleted, addToast 
             {!editing && (
               <button
                 onClick={() => setEditing(true)}
-                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
+                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
               >
                 <Pencil className="w-4 h-4" />
               </button>
@@ -1209,9 +1209,9 @@ export default function MonetizationProducts({ addToast }: Props) {
 
       {products && products.length === 0 && !showNewForm && (
         <div className={`${cardCls} flex flex-col items-center justify-center py-16 gap-4 text-center`}>
-          <div className="w-12 h-12 rounded-2xl bg-[#fef2f3] dark:bg-[#2a1f23] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#eef0fd] dark:bg-[#23253f] flex items-center justify-center">
             <svg
-              className="w-6 h-6 text-[#C4001E]"
+              className="w-6 h-6 text-[#595DD2]"
               fill="none"
               stroke="currentColor"
               strokeWidth={1.5}

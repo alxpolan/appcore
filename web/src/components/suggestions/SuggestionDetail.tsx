@@ -164,7 +164,7 @@ export default function SuggestionDetail({ suggestion: s, index, total, acting, 
             </>
           )}
           <button
-            className={`inline-flex items-center gap-2 pl-3.5 pr-3 py-[8px] rounded-xl text-[13px] font-medium border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+            className={`inline-flex items-center gap-2 pl-3.5 pr-3 py-[8px] rounded-xl text-[13px] font-medium border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
             disabled={acting === s.id || !canWrite}
             title={tip}
             onClick={() => onAction(s.id, "apply")}

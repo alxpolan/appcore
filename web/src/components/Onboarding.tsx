@@ -47,7 +47,7 @@ interface Props {
  *         <div
  *           className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
  *             step >= 1
- *               ? "bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white"
+ *               ? "bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white"
  *               : "bg-[#eef0f3] dark:bg-[#2a2f3d] text-[#9ca3af]"
  *           }`}
  *         >
@@ -62,7 +62,7 @@ interface Props {
  *         <div
  *           className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
  *             step >= 2
- *               ? "bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white"
+ *               ? "bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white"
  *               : "bg-[#eef0f3] dark:bg-[#2a2f3d] text-[#9ca3af]"
  *           }`}
  *         >
@@ -218,7 +218,7 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
         <div
           className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
             step >= 1
-              ? "bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white"
+              ? "bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white"
               : "bg-[#eef0f3] dark:bg-[#2a2f3d] text-[#9ca3af]"
           }`}
         >
@@ -231,7 +231,7 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
         <div
           className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
             step >= 2
-              ? "bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white"
+              ? "bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white"
               : "bg-[#eef0f3] dark:bg-[#2a2f3d] text-[#9ca3af]"
           }`}
         >
@@ -249,7 +249,7 @@ function AppAvatar({ url, name, size = "md" }: { url?: string | null; name: stri
     <img src={url} alt="" className={`${cls} object-cover shrink-0`} />
   ) : (
     <div
-      className={`${cls} bg-gradient-to-br from-[#D94412] to-[#C4001E] flex items-center justify-center text-white font-bold shrink-0`}
+      className={`${cls} bg-gradient-to-br from-[#6E72E4] to-[#595DD2] flex items-center justify-center text-white font-bold shrink-0`}
     >
       {name.charAt(0).toUpperCase()}
     </div>
@@ -438,8 +438,8 @@ function ScanScreen({
       <div className={`bg-white dark:bg-[#1c2028] rounded-2xl shadow-xl border ${borderDefault} p-8`}>
         <div className="flex flex-col items-center text-center">
           <div className="relative w-16 h-16 flex items-center justify-center mb-5">
-            <span className="absolute inset-0 rounded-2xl bg-[#C4001E]/20 animate-ping" />
-            <span className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[#D94412] to-[#C4001E] flex items-center justify-center">
+            <span className="absolute inset-0 rounded-2xl bg-[#595DD2]/20 animate-ping" />
+            <span className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6E72E4] to-[#595DD2] flex items-center justify-center">
               <Search className="w-7 h-7 text-white" />
             </span>
           </div>
@@ -448,7 +448,7 @@ function ScanScreen({
 
           <div className="w-full h-2 rounded-full bg-[#eef0f3] dark:bg-[#2a2f3d] mt-6 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#D94412] to-[#C4001E] transition-[width] duration-200"
+              className="h-full rounded-full bg-gradient-to-r from-[#6E72E4] to-[#595DD2] transition-[width] duration-200"
               style={{ width: pct + "%" }}
             />
           </div>
@@ -468,14 +468,14 @@ function ScanScreen({
                       done
                         ? "bg-emerald-500 text-white"
                         : active
-                          ? "border-2 border-[#C4001E]"
+                          ? "border-2 border-[#595DD2]"
                           : "border-2 border-[#eef0f3] dark:border-[#2a2f3d]"
                     }`}
                   >
                     {done ? (
                       <Check className="w-3 h-3" />
                     ) : active ? (
-                      <span className="w-2 h-2 rounded-full bg-[#C4001E] animate-pulse" />
+                      <span className="w-2 h-2 rounded-full bg-[#595DD2] animate-pulse" />
                     ) : null}
                   </span>
                   {s}
@@ -517,8 +517,8 @@ function ResultsScreen({ data, onContinue }: { data: ScanData; onContinue: () =>
         </div>
 
         {aiSummary && (
-          <div className="flex items-start gap-2.5 mb-5 px-4 py-3 rounded-xl bg-gradient-to-br from-[#D94412]/[0.06] to-[#C4001E]/[0.06] border border-[#D94412]/15">
-            <Sparkles className="w-4 h-4 text-[#C4001E] shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2.5 mb-5 px-4 py-3 rounded-xl bg-gradient-to-br from-[#595DD2]/[0.06] to-[#595DD2]/[0.06] border border-[#595DD2]/15">
+            <Sparkles className="w-4 h-4 text-[#595DD2] shrink-0 mt-0.5" />
             <div className="min-w-0">
               <div className={`text-[11px] font-semibold uppercase tracking-wide ${textMuted}`}>AI review</div>
               <p className={`text-[13px] ${textSecondary} leading-snug mt-0.5`}>{aiSummary}</p>
@@ -535,7 +535,7 @@ function ResultsScreen({ data, onContinue }: { data: ScanData; onContinue: () =>
                 key={f.key}
                 className={`flex items-start gap-3.5 px-4 py-3 bg-[#f7f8fa] dark:bg-[#252b38] rounded-xl border ${borderDefault}`}
               >
-                <div className="w-9 h-9 rounded-lg bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] flex items-center justify-center text-[#C4001E] shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] flex items-center justify-center text-[#595DD2] shrink-0">
                   <Icon className="w-[18px] h-[18px]" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -550,10 +550,10 @@ function ResultsScreen({ data, onContinue }: { data: ScanData; onContinue: () =>
                   </div>
                   <div className={`text-[12.5px] ${textSecondary} leading-snug mt-0.5`}>{f.desc}</div>
                   {f.suggestion && (
-                    <div className="mt-2 flex items-start gap-1.5 text-[12px] bg-[#C4001E]/[0.05] rounded-lg px-2.5 py-1.5">
-                      <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#C4001E]" />
+                    <div className="mt-2 flex items-start gap-1.5 text-[12px] bg-[#595DD2]/[0.05] rounded-lg px-2.5 py-1.5">
+                      <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#595DD2]" />
                       <span className={textSecondary}>
-                        <span className="font-semibold text-[#C4001E] dark:text-orange-300">Try:</span> {f.suggestion}
+                        <span className="font-semibold text-[#595DD2] dark:text-orange-300">Try:</span> {f.suggestion}
                       </span>
                     </div>
                   )}
@@ -730,7 +730,7 @@ export default function Onboarding({ onComplete }: Props) {
                         setImportError(null);
                         setSelected(app);
                       }}
-                      className={`flex items-center justify-between gap-3 px-4 py-3 bg-[#f7f8fa] dark:bg-[#252b38] rounded-xl border ${borderDefault} hover:border-[#D94412]/50 transition-colors text-left`}
+                      className={`flex items-center justify-between gap-3 px-4 py-3 bg-[#f7f8fa] dark:bg-[#252b38] rounded-xl border ${borderDefault} hover:border-[#595DD2]/50 transition-colors text-left`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <AppAvatar url={app.iconUrl} name={app.name} />

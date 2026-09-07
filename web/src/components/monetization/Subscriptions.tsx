@@ -179,7 +179,7 @@ function SubForm({ initial, onSave, onCancel, saving, title, lockProductId }: Su
           type="checkbox"
           checked={form.familySharable}
           onChange={(e) => set("familySharable", e.target.checked)}
-          className="w-4 h-4 accent-[#C4001E]"
+          className="w-4 h-4 accent-[#595DD2]"
         />
         <label htmlFor="familySharable" className="text-[12px] text-[#374151] dark:text-[#c4cad8]">
           Family sharing enabled
@@ -325,7 +325,7 @@ function LocalizationsPanel({ subscriptionId, addToast }: { subscriptionId: stri
         <span className={`text-[13px] font-semibold ${textPrimary}`}>Localizations</span>
         <button
           onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+          className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
         >
           <Paperclip className="w-3.5 h-3.5" /> Add
         </button>
@@ -404,7 +404,7 @@ function LocalizationsPanel({ subscriptionId, addToast }: { subscriptionId: stri
                           setEditName(loc.name);
                           setEditDesc(loc.description ?? "");
                         }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -589,7 +589,7 @@ function GroupLocalizationsPanel({ groupId, addToast }: { groupId: string; addTo
         <span className={`text-[13px] font-semibold ${textPrimary}`}>Group Localizations</span>
         <button
           onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+          className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
         >
           <Paperclip className="w-3.5 h-3.5" /> Add
         </button>
@@ -668,7 +668,7 @@ function GroupLocalizationsPanel({ groupId, addToast }: { groupId: string; addTo
                           setEditName(loc.name);
                           setEditCustomAppName(loc.customAppName ?? "");
                         }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -921,13 +921,13 @@ function PricingPanel({ subscriptionId, addToast }: { subscriptionId: string; ad
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowSmart(true)}
-            className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+            className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
           >
             <Sparkles className="w-3.5 h-3.5" /> Smart Pricing
           </button>
           <button
             onClick={openAdd}
-            className="inline-flex items-center gap-1 text-[12px] text-[#C4001E] hover:opacity-80 transition-opacity font-medium"
+            className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
           >
             <Plus className="w-3.5 h-3.5" /> Add Territory
           </button>
@@ -1043,7 +1043,7 @@ function PricingPanel({ subscriptionId, addToast }: { subscriptionId: string; ad
                     <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => startEditPrice(p)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -1233,7 +1233,7 @@ function ReviewPanel({ subscriptionId, reviewNote, onReviewNoteUpdated, addToast
                 setNoteText(reviewNote ?? "");
                 setEditingNote(true);
               }}
-              className="text-[12px] text-[#C4001E] hover:underline"
+              className="text-[12px] text-[#595DD2] hover:underline"
             >
               {reviewNote ? "Edit" : "Add"}
             </button>
@@ -1282,7 +1282,7 @@ function ReviewPanel({ subscriptionId, reviewNote, onReviewNoteUpdated, addToast
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingScreenshot}
-              className="text-[12px] text-[#C4001E] hover:underline disabled:opacity-50"
+              className="text-[12px] text-[#595DD2] hover:underline disabled:opacity-50"
             >
               {uploadingScreenshot ? "Uploading…" : "Upload"}
             </button>
@@ -1337,7 +1337,7 @@ function ReviewPanel({ subscriptionId, reviewNote, onReviewNoteUpdated, addToast
         ) : (
           <div
             onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center justify-center w-48 h-28 rounded-xl border-2 border-dashed border-[#d1d5db] dark:border-[#2a2f3d] ${textMuted} hover:border-[#C4001E] hover:text-[#C4001E] transition-colors cursor-pointer`}
+            className={`flex flex-col items-center justify-center w-48 h-28 rounded-xl border-2 border-dashed border-[#d1d5db] dark:border-[#2a2f3d] ${textMuted} hover:border-[#595DD2] hover:text-[#595DD2] transition-colors cursor-pointer`}
           >
             {uploadingScreenshot ? (
               <div className="spinner !w-5 !h-5" />
@@ -1476,7 +1476,7 @@ function DetailView({ sub, group, bundleId, onBack, onUpdated, onDeleted, addToa
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#C4001E] transition-all shrink-0`}
+            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#595DD2] transition-all shrink-0`}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -1485,7 +1485,7 @@ function DetailView({ sub, group, bundleId, onBack, onUpdated, onDeleted, addToa
             {!editing && (
               <button
                 onClick={() => setEditing(true)}
-                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
+                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
               >
                 <Pencil className="w-4 h-4" />
               </button>
@@ -1747,7 +1747,7 @@ function GroupTable({
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setShowNewSub(true)}
-              className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#C4001E] hover:opacity-80 transition-opacity"
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#595DD2] hover:opacity-80 transition-opacity"
             >
               <Plus className="w-4 h-4" /> New
             </button>
@@ -2036,9 +2036,9 @@ export default function MonetizationSubscriptions({ addToast }: Props) {
 
       {groups && groups.length === 0 && (
         <div className={`${cardCls} flex flex-col items-center justify-center py-16 gap-4 text-center`}>
-          <div className="w-12 h-12 rounded-2xl bg-[#fef2f3] dark:bg-[#2a1f23] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#eef0fd] dark:bg-[#23253f] flex items-center justify-center">
             <svg
-              className="w-6 h-6 text-[#C4001E]"
+              className="w-6 h-6 text-[#595DD2]"
               fill="none"
               stroke="currentColor"
               strokeWidth={1.5}

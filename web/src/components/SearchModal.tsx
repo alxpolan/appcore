@@ -249,7 +249,7 @@ export default function SearchModal({ open, onClose }: Props) {
                         isActive ? "bg-[#f3f4f6] dark:bg-[#252b38]" : "hover:bg-[#f9fafb] dark:hover:bg-[#252b38]"
                       }`}
                     >
-                      <span className={`shrink-0 ${isActive ? "text-[#D94412]" : textMuted}`}>
+                      <span className={`shrink-0 ${isActive ? "text-[#595DD2]" : textMuted}`}>
                         <ItemIcon type={item.icon} />
                       </span>
                       <span className="flex-1 min-w-0">

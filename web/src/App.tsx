@@ -163,7 +163,7 @@ function AppAvatar({
   return url ? (
     <img src={url} alt="" className={`${px} ${cls}`} />
   ) : (
-    <div className={`${px} ${cls} ${accent ? "bg-[#C4001E]" : "bg-[#c8cdd3]"} text-sm`}>
+    <div className={`${px} ${cls} ${accent ? "bg-[#595DD2]" : "bg-[#c8cdd3]"} text-sm`}>
       {name.charAt(0).toUpperCase()}
     </div>
   );
@@ -293,14 +293,14 @@ function AppSwitcher({
               <button
                 key={a.id}
                 onClick={() => handleSelect(a)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors text-left ${a.bundleId === activeBundleResolved ? "bg-[#fef2f3] dark:bg-[#2a1f23]" : ""}`}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors text-left ${a.bundleId === activeBundleResolved ? "bg-[#eef0fd] dark:bg-[#23253f]" : ""}`}
               >
                 <AppAvatar url={a.iconUrl} name={a.displayName ?? a.name} size={7} accent />
                 <span className="min-w-0 text-[13px] font-medium text-[#1a1a2e] dark:text-[#e8eaf0] truncate">
                   {a.displayName ?? a.name}
                 </span>
                 {a.bundleId === activeBundleResolved && (
-                  <Check className="w-3.5 h-3.5 shrink-0 text-[#C4001E] ml-auto" />
+                  <Check className="w-3.5 h-3.5 shrink-0 text-[#595DD2] ml-auto" />
                 )}
               </button>
             ))}
@@ -377,7 +377,7 @@ function AppSwitcher({
                           type="button"
                           disabled={importing === app.ascId}
                           onClick={() => importApp(app)}
-                          className={`shrink-0 px-3 py-1.5 rounded-xl border ${borderDefault} bg-transparent ${textPrimary} text-xs font-medium hover:border-[#C4001E] hover:text-[#C4001E] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+                          className={`shrink-0 px-3 py-1.5 rounded-xl border ${borderDefault} bg-transparent ${textPrimary} text-xs font-medium hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
                           {importing === app.ascId ? "Importing…" : "Import"}
                         </button>
@@ -467,7 +467,7 @@ function HeaderProfileMenu({
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors text-[#374151] dark:text-white/80 text-sm font-medium"
       >
-        <div className="w-6 h-6 rounded-full bg-[#C4001E] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+        <div className="w-6 h-6 rounded-full bg-[#595DD2] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
           {initials}
         </div>
         <span className="max-w-[120px] truncate">{displayName}</span>
@@ -523,7 +523,7 @@ function HeaderProfileMenu({
               setOpen(false);
               onLogout();
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-[#2a1f23] transition-colors text-[13px] text-red-500 font-medium"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-[#23253f] transition-colors text-[13px] text-red-500 font-medium"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             Sign out
@@ -785,7 +785,7 @@ function VersionsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive
         <button
           onClick={openNewForm}
           title="New version"
-          className={`p-[7px] rounded-lg ${textMuted} hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
+          className={`p-[7px] rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -804,12 +804,12 @@ function VersionsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive
               if (e.key === "Escape") setShowNewForm(false);
             }}
             placeholder="e.g. 2.1.0"
-            className={`w-full px-3 py-[7px] text-[13px] rounded-lg border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#C4001E]`}
+            className={`w-full px-3 py-[7px] text-[13px] rounded-lg border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
           />
           <select
             value={newReleaseType}
             onChange={(e) => setNewReleaseType(e.target.value as "MANUAL" | "AFTER_APPROVAL")}
-            className={`w-full px-3 py-[7px] text-[13px] rounded-lg border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#C4001E]`}
+            className={`w-full px-3 py-[7px] text-[13px] rounded-lg border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
           >
             <option value="MANUAL">Manual Release</option>
             <option value="AFTER_APPROVAL">After Approval</option>
@@ -818,7 +818,7 @@ function VersionsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive
             <button
               onClick={handleCreate}
               disabled={creating || !newVersionStr.trim()}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-[6px] rounded-lg text-[12px] font-semibold bg-[#C4001E] text-white hover:bg-[#A8001A] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-[6px] rounded-lg text-[12px] font-semibold bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creating ? (
                 <>

@@ -444,7 +444,7 @@ export default function Analytics({ addToast }: Props) {
         <div className="flex items-center justify-end mb-2">
           <Link
             to="/analytics/downloads"
-            className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+            className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors`}
           >
             Day-by-day table <ArrowRight className="w-3 h-3" />
           </Link>
@@ -480,7 +480,7 @@ export default function Analytics({ addToast }: Props) {
               )}
               <Link
                 to="/analytics/countries"
-                className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+                className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors`}
               >
                 All <ArrowRight className="w-3 h-3" />
               </Link>
@@ -563,7 +563,7 @@ export default function Analytics({ addToast }: Props) {
             <div className={`text-[16px] font-semibold ${textPrimary}`}>Rating Distribution</div>
             <Link
               to="/analytics/reviews"
-              className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+              className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors`}
             >
               All reviews <ArrowRight className="w-3 h-3" />
             </Link>
@@ -663,7 +663,7 @@ export default function Analytics({ addToast }: Props) {
           </div>
           <Link
             to="/analytics/financial"
-            className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+            className={`flex items-center gap-1 text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors`}
           >
             Financial <ArrowRight className="w-3 h-3" />
           </Link>
@@ -752,14 +752,14 @@ export default function Analytics({ addToast }: Props) {
                 type="date"
                 value={customStart}
                 onChange={(e) => setCustomStart(e.target.value)}
-                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
               />
               <span className={`${textMuted} text-[12px]`}>–</span>
               <input
                 type="date"
                 value={customEnd}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+                className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
               />
             </div>
           )}
@@ -774,7 +774,7 @@ export default function Analytics({ addToast }: Props) {
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="inline-flex items-center gap-1.5 px-3.5 h-[38px] rounded-xl text-[12px] font-medium bg-[#D94412] text-white hover:bg-[#c80b24] disabled:opacity-60 transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 px-3.5 h-[38px] rounded-xl text-[12px] font-medium bg-[#595DD2] text-white hover:bg-[#484CBE] disabled:opacity-60 transition-colors shrink-0"
             >
               {syncing ? (
                 <>

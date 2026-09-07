@@ -224,7 +224,7 @@ class NotificationService {
       const wordmark = loadWordmark();
       const header = wordmark
         ? `<img src="cid:${WORDMARK_CID}" alt="Marteso" width="120" style="height:auto;display:block;margin-bottom:24px;border:0;outline:none;text-decoration:none;" />`
-        : `<div style="font-size:24px;font-weight:800;color:#D94412;margin-bottom:24px;letter-spacing:-0.3px;">Marteso</div>`;
+        : `<div style="font-size:24px;font-weight:800;color:#595DD2;margin-bottom:24px;letter-spacing:-0.3px;">Marteso</div>`;
 
       const html = `<!DOCTYPE html>
       <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -235,7 +235,7 @@ class NotificationService {
       <div style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px;">${content.body}</div>
       ${
         content.cta
-          ? `<a href="${content.cta.url}" style="display:inline-block;background:#D94412;color:white;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:12px;margin-top:8px;">${content.cta.label}</a>`
+          ? `<a href="${content.cta.url}" style="display:inline-block;background:#595DD2;color:white;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:12px;margin-top:8px;">${content.cta.label}</a>`
           : ""
       }
       <p style="color:#9ca3af;font-size:12px;margin-top:24px;line-height:1.5;">${

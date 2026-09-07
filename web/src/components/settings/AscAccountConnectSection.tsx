@@ -45,7 +45,7 @@ export default function AscAccountConnectSection({ data, refetch, addToast }: Pr
     >
       <div className="flex items-center gap-2 mb-1">
         <h2 className={`text-[18px] font-semibold ${textPrimary}`}>App Store Connect</h2>
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-[#D94412] bg-[#D94412]/10 px-2 py-0.5 rounded-full">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-[#595DD2] bg-[#595DD2]/10 px-2 py-0.5 rounded-full">
           Recommended
         </span>
       </div>
@@ -80,7 +80,7 @@ export default function AscAccountConnectSection({ data, refetch, addToast }: Pr
             <button
               onClick={handleRequest}
               disabled={requesting}
-              className="mt-2 text-[12px] font-medium text-[#D94412] hover:underline disabled:opacity-60"
+              className="mt-2 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
             >
               {requesting ? "Sending…" : "Let us know again"}
             </button>

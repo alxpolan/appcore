@@ -385,7 +385,7 @@ export default function AnalyticsCountryDetail({ addToast }: Props) {
               <div className="px-5 py-3 text-center">
                 <Link
                   to="/analytics/reviews"
-                  className={`text-[12px] ${textMuted} hover:text-[#D94412] transition-colors`}
+                  className={`text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors`}
                 >
                   +{reviews.length - 30} more reviews
                 </Link>

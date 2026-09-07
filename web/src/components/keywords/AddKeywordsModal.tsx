@@ -201,7 +201,7 @@ export default function AddKeywordsModal({
         {remaining !== null && (
           <div
             className={`mx-5 mb-2 px-3 py-2 rounded-lg text-[12px] ${remaining - staged.length <= 0
-              ? "bg-[#D94412]/10 text-[#D94412]"
+              ? "bg-[#595DD2]/10 text-[#595DD2]"
               : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
               }`}
           >
@@ -227,7 +227,7 @@ export default function AddKeywordsModal({
               <button
                 onClick={handleSubmitQuery}
                 title="Stage keyword"
-                className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[#D94412] hover:bg-[#D94412]/10 transition-colors"
+                className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[#595DD2] hover:bg-[#595DD2]/10 transition-colors"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -250,7 +250,7 @@ export default function AddKeywordsModal({
                 >
                   —
                 </span>
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#D94412] group-hover:bg-[#D94412]/10">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#595DD2] group-hover:bg-[#595DD2]/10">
                   <Plus className="w-4 h-4" />
                 </span>
               </span>
@@ -262,7 +262,7 @@ export default function AddKeywordsModal({
               <div
                 className={`flex items-center gap-1.5 px-3 pt-2 pb-1.5 text-[10px] uppercase tracking-wider font-semibold ${textMuted}`}
               >
-                <Sparkles className="w-3 h-3 text-[#D94412]" />
+                <Sparkles className="w-3 h-3 text-[#595DD2]" />
                 Suggested by AI
               </div>
               {visibleSuggestions.map((s) => {
@@ -294,7 +294,7 @@ export default function AddKeywordsModal({
                       <button
                         onClick={() => stageTerm(s.term)}
                         title="Stage keyword"
-                        className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#D94412] hover:bg-[#D94412]/10"
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[#595DD2] hover:bg-[#595DD2]/10"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -401,7 +401,7 @@ export default function AddKeywordsModal({
               type="button"
               onClick={submit}
               disabled={adding || staged.length === 0 || !canWrite}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium border-[#D94412] bg-[#D94412] text-white hover:border-[#c80b24] hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium border-[#595DD2] bg-[#595DD2] text-white hover:border-[#484CBE] hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {adding ? (
                 <>

@@ -94,8 +94,8 @@ interface Props {
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return (
     <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#D94412]" : "text-current"}`} />
-      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#D94412]" : "text-current"}`} />
+      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
+      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
     </span>
   );
 }
@@ -289,7 +289,7 @@ export default function KeywordTable({
                 className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <span className="truncate">{g.name}</span>
-                {k.groupId === g.id && <Check className="w-3.5 h-3.5 text-[#D94412] shrink-0" strokeWidth={3} />}
+                {k.groupId === g.id && <Check className="w-3.5 h-3.5 text-[#595DD2] shrink-0" strokeWidth={3} />}
               </button>
             ))}
             {k.groupId && (
@@ -349,7 +349,7 @@ export default function KeywordTable({
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                     if (e.key === "Escape") setEditingGroup(null);
                   }}
-                  className={`text-[14px] font-semibold ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2 py-0.5 outline-none focus:border-[#D94412]`}
+                  className={`text-[14px] font-semibold ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2 py-0.5 outline-none focus:border-[#595DD2]`}
                 />
               ) : (
                 <span className={`text-[14px] font-semibold ${textPrimary} truncate`}>{name}</span>
@@ -462,7 +462,7 @@ export default function KeywordTable({
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                     if (e.key === "Escape") onCancelCreate();
                   }}
-                  className={`text-[13px] ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2.5 py-1 outline-none focus:border-[#D94412] w-56`}
+                  className={`text-[13px] ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2.5 py-1 outline-none focus:border-[#595DD2] w-56`}
                 />
               </td>
             </tr>

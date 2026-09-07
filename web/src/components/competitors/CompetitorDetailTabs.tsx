@@ -409,7 +409,7 @@ function StealKeywords({
   return (
     <div className="mb-5 rounded-xl border border-[#eef0f3] dark:border-[#2a2f3d] bg-[#fafbfc] dark:bg-[#1c2028] p-4">
       <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="w-3.5 h-3.5 text-[#D94412]" />
+        <Sparkles className="w-3.5 h-3.5 text-[#595DD2]" />
         <span className={`text-[13px] font-semibold ${textPrimary}`}>Keywords to steal from {competitorName}</span>
       </div>
       <p className={`text-[12px] ${textMuted} mb-3`}>
@@ -424,7 +424,7 @@ function StealKeywords({
               key={term}
               onClick={() => addKeyword(term)}
               disabled={adding === term}
-              className={`inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-full border ${borderDefault} bg-white dark:bg-[#161920] text-[12px] font-medium ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all disabled:opacity-50`}
+              className={`inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-full border ${borderDefault} bg-white dark:bg-[#161920] text-[12px] font-medium ${textPrimary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50`}
             >
               {adding === term ? <div className="spinner !w-3 !h-3" /> : <Plus className="w-3 h-3" />}
               {term}

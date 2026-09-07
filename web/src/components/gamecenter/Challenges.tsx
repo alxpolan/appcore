@@ -395,7 +395,7 @@ function DetailView({ chal, bundleId, onBack, onUpdated, onDeleted, addToast }: 
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#C4001E] transition-all shrink-0`}
+            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#595DD2] transition-all shrink-0`}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -404,7 +404,7 @@ function DetailView({ chal, bundleId, onBack, onUpdated, onDeleted, addToast }: 
             {!editing && (
               <button
                 onClick={() => setEditing(true)}
-                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
+                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
               >
                 <Pencil className="w-4 h-4" />
               </button>

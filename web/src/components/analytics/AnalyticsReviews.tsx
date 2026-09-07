@@ -59,7 +59,7 @@ export default function AnalyticsReviews({ addToast }: Props) {
                   <span className={`text-[13px] ${textPrimary} w-3 text-right shrink-0`}>{star}</span>
                   <div className="flex-1 h-2 bg-[#f3f4f6] dark:bg-[#252b38] rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${isActive ? "bg-[#D94412]" : "bg-amber-400"}`}
+                      className={`h-full rounded-full transition-all ${isActive ? "bg-[#595DD2]" : "bg-amber-400"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -72,7 +72,7 @@ export default function AnalyticsReviews({ addToast }: Props) {
             })}
           </div>
           {minRating !== null && (
-            <button onClick={() => setMinRating(null)} className="mt-3 text-[11px] text-[#D94412] hover:underline">
+            <button onClick={() => setMinRating(null)} className="mt-3 text-[11px] text-[#595DD2] hover:underline">
               Clear filter
             </button>
           )}

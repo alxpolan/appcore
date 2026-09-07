@@ -157,7 +157,7 @@ export default function ImportKeywordsModal({
         {remaining !== null && (
           <div
             className={`mx-5 mb-2 px-3 py-2 rounded-lg text-[12px] ${remaining <= 0
-                ? "bg-[#D94412]/10 text-[#D94412]"
+                ? "bg-[#595DD2]/10 text-[#595DD2]"
                 : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
               }`}
           >
@@ -243,7 +243,7 @@ export default function ImportKeywordsModal({
               type="button"
               onClick={submit}
               disabled={importing || parsed.length === 0 || !canWrite}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium border-[#D94412] bg-[#D94412] text-white hover:border-[#c80b24] hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium border-[#595DD2] bg-[#595DD2] text-white hover:border-[#484CBE] hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {importing ? (
                 <>

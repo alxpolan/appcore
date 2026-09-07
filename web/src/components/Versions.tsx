@@ -387,7 +387,7 @@ function ActionButton({
         <button
           onClick={onSubmitForReview}
           disabled={busy}
-          className="inline-flex items-center gap-2 pl-4 pr-3 py-[9px] rounded-l-xl text-[13px] font-semibold bg-[#D94412] text-white hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 pl-4 pr-3 py-[9px] rounded-l-xl text-[13px] font-semibold bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting === "review" ? (
             <>
@@ -400,11 +400,11 @@ function ActionButton({
             </>
           )}
         </button>
-        <div className="w-px bg-[#c80b24] opacity-40" />
+        <div className="w-px bg-[#484CBE] opacity-40" />
         <button
           onClick={() => setOpen((v) => !v)}
           disabled={busy}
-          className="px-2.5 rounded-r-xl bg-[#D94412] text-white hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-2.5 rounded-r-xl bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="More actions"
         >
           <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -474,7 +474,7 @@ function ActionButton({
       <button
         onClick={onPushMetadata}
         disabled={busy}
-        className={`inline-flex items-center gap-2 pl-3.5 pr-3 py-[8px] rounded-l-xl text-[13px] font-medium border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={`inline-flex items-center gap-2 pl-3.5 pr-3 py-[8px] rounded-l-xl text-[13px] font-medium border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         {submitting === "metadata" ? (
           <>
@@ -491,7 +491,7 @@ function ActionButton({
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className={`px-2.5 rounded-r-xl border border-l-0 ${borderDefault} bg-white dark:bg-[#1c2028] ${textSecondary} hover:border-[#D94412] hover:text-[#D94412] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={`px-2.5 rounded-r-xl border border-l-0 ${borderDefault} bg-white dark:bg-[#1c2028] ${textSecondary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
         aria-label="More actions"
       >
         <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -634,7 +634,7 @@ function EditableField({
               onClick={() => onApplyAll(field.key, value)}
               disabled={propagating}
               title="Copy this value to every other language"
-              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] text-[#9ca3af] font-medium hover:text-[#D94412] disabled:opacity-100"
+              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] text-[#9ca3af] font-medium hover:text-[#595DD2] disabled:opacity-100"
             >
               {propagating ? <div className="spinner !w-3 !h-3" /> : <Copy className="w-3 h-3" />}
               All languages
@@ -643,7 +643,7 @@ function EditableField({
           {!editing && isEditable && (
             <button
               onClick={() => setEditing(true)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] text-[#D94412] font-medium hover:underline"
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] text-[#595DD2] font-medium hover:underline"
             >
               Edit
             </button>
@@ -677,7 +677,7 @@ function EditableField({
             <button
               onClick={handleSave}
               disabled={saving || isOverLimit}
-              className="inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-semibold bg-[#D94412] text-white hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-semibold bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? (
                 <>
@@ -818,7 +818,7 @@ function KeywordBudgetAnalyzer({
           <button
             onClick={handleOptimize}
             disabled={applying}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#D94412] text-white hover:bg-[#c80b24] transition-all disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50"
           >
             {applying ? (
               <>
@@ -917,7 +917,7 @@ function InlineEditField({
         {!editing && isEditable && (
           <button
             onClick={() => setEditing(true)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] text-[#D94412] font-medium hover:underline"
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] text-[#595DD2] font-medium hover:underline"
           >
             Edit
           </button>
@@ -945,7 +945,7 @@ function InlineEditField({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-semibold bg-[#D94412] text-white hover:bg-[#c80b24] transition-all disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-[6px] rounded-xl text-xs font-semibold bg-[#595DD2] text-white hover:bg-[#484CBE] transition-all disabled:opacity-50"
             >
               {saving ? (
                 <>
@@ -1248,7 +1248,7 @@ function ScreenshotsPanel({
             <div className={`text-[14px] font-bold ${textPrimary}`}>Screenshots</div>
             <Link
               to="/screenshots"
-              className="text-[11px] font-medium text-[#C4001E] hover:underline underline-offset-2"
+              className="text-[11px] font-medium text-[#595DD2] hover:underline underline-offset-2"
             >
               Manage in Screenshots
             </Link>
@@ -1572,7 +1572,7 @@ function ReviewerInfoPanel({
         <button
           onClick={handleSync}
           disabled={syncing}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${borderDefault} bg-transparent text-[12px] ${textSecondary} hover:border-[#D94412] hover:text-[#D94412] transition-all disabled:opacity-50`}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${borderDefault} bg-transparent text-[12px] ${textSecondary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all disabled:opacity-50`}
         >
           <RefreshCcw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
           Sync from ASC
@@ -1635,7 +1635,7 @@ function ReviewerInfoPanel({
               type="checkbox"
               checked={form.reviewerDemoAccountRequired}
               onChange={(e) => set("reviewerDemoAccountRequired", e.target.checked)}
-              className="w-4 h-4 rounded accent-[#D94412] dark:[color-scheme:dark]"
+              className="w-4 h-4 rounded accent-[#595DD2] dark:[color-scheme:dark]"
             />
             <span className={`text-[13px] ${textPrimary}`}>Login required (Demo Account)</span>
           </label>
@@ -1677,7 +1677,7 @@ function ReviewerInfoPanel({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-gradient-to-br from-[#D94412] to-[#C4001E] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
@@ -2154,7 +2154,7 @@ export default function Versions({ addToast }: Props) {
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400 dark:text-[#5c6478]">
         <AlertCircle className="w-8 h-8 text-red-300" />
         <p className="text-sm">{error}</p>
-        <button onClick={refetch} className="text-[#D94412] text-sm font-medium hover:underline">
+        <button onClick={refetch} className="text-[#595DD2] text-sm font-medium hover:underline">
           Retry
         </button>
       </div>
@@ -2330,7 +2330,7 @@ export default function Versions({ addToast }: Props) {
                                 className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm ${
                                   loc.locale === activeLocale
                                     ? "bg-white/20 hover:bg-white/40 text-white"
-                                    : "bg-[#f3f4f6] dark:bg-[#2a2f3d] hover:bg-red-100 dark:hover:bg-red-900/30 text-[#9ca3af] hover:text-[#D94412]"
+                                    : "bg-[#f3f4f6] dark:bg-[#2a2f3d] hover:bg-red-100 dark:hover:bg-red-900/30 text-[#9ca3af] hover:text-[#595DD2]"
                                 }`}
                                 title="Remove language"
                               >
@@ -2350,7 +2350,7 @@ export default function Versions({ addToast }: Props) {
                       <button
                         onClick={() => setShowAddLocale((v) => !v)}
                         disabled={addingLocale}
-                        className={`flex items-center gap-1.5 px-3 py-[7px] rounded-xl border border-dashed border-[#d1d5db] dark:border-[#3a4050] ${textSecondary} hover:border-[#D94412] hover:text-[#D94412] transition-all text-[13px] font-medium whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`flex items-center gap-1.5 px-3 py-[7px] rounded-xl border border-dashed border-[#d1d5db] dark:border-[#3a4050] ${textSecondary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all text-[13px] font-medium whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         {addingLocale ? <div className="spinner !w-3.5 !h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                         Add Language
@@ -2476,7 +2476,7 @@ export default function Versions({ addToast }: Props) {
                         href="https://appstoreconnect.apple.com"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`text-[11px] ${textMuted} hover:text-[#D94412] transition-colors`}
+                        className={`text-[11px] ${textMuted} hover:text-[#595DD2] transition-colors`}
                       >
                         Edit in ASC ↗
                       </a>

@@ -14,10 +14,10 @@ export default function SuggestionCard({ suggestion: s, selected, onClick, isLas
     <button
       onClick={onClick}
       className={`w-full text-left px-4 py-3.5 transition-colors relative cursor-pointer ${
-        selected ? "bg-[#fef5f5] dark:bg-[#2a1f23]" : "hover:bg-[#fafbfc] dark:hover:bg-[#252b38]"
+        selected ? "bg-[#f1f2fd] dark:bg-[#23253f]" : "hover:bg-[#fafbfc] dark:hover:bg-[#252b38]"
       } ${!isLast ? `border-b ${borderDefault}` : ""}`}
     >
-      {selected && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#C4001E] rounded-r-sm" />}
+      {selected && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#595DD2] rounded-r-sm" />}
       <p className={`text-[13px] ${textPrimary} line-clamp-2 leading-snug mb-2`}>{s.suggestedValue}</p>
       {s.confidenceScore != null && (
         <div className="flex items-center gap-2 mb-1.5">

@@ -35,8 +35,8 @@ function countrySeriesColor(series: string[], code: string): string {
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return (
     <span className={`inline-flex flex-col ml-0.5 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-3 h-3 -mb-1 ${active && dir === "asc" ? "text-[#D94412]" : "text-current"}`} />
-      <ChevronDown className={`w-3 h-3 -mt-1 ${active && dir === "desc" ? "text-[#D94412]" : "text-current"}`} />
+      <ChevronUp className={`w-3 h-3 -mb-1 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
+      <ChevronDown className={`w-3 h-3 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
     </span>
   );
 }
@@ -389,7 +389,7 @@ export default function AnalyticsCountries({ addToast }: Props) {
             }
             className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
               showTrend
-                ? "bg-[#D94412] text-white"
+                ? "bg-[#595DD2] text-white"
                 : "bg-[#f3f4f6] dark:bg-[#252b38] ${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]"
             } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
@@ -516,14 +516,14 @@ export default function AnalyticsCountries({ addToast }: Props) {
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
             />
             <span className={`${textMuted} text-[12px]`}>–</span>
             <input
               type="date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#D94412]`}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
             />
           </div>
         )}

@@ -145,7 +145,7 @@ export default function Suggestions({ addToast }: Props) {
         <div className={`flex items-center gap-2 px-3 py-2.5 border-b ${borderDefault} shrink-0`}>
           <div className="relative flex-1">
             <select
-              className={`w-full appearance-none pl-2.5 pr-7 py-1.5 text-[12px] border ${borderDefault} rounded-lg bg-white dark:bg-[#1c2028] ${textPrimary} outline-none cursor-pointer focus:border-[#C4001E] transition-colors`}
+              className={`w-full appearance-none pl-2.5 pr-7 py-1.5 text-[12px] border ${borderDefault} rounded-lg bg-white dark:bg-[#1c2028] ${textPrimary} outline-none cursor-pointer focus:border-[#595DD2] transition-colors`}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -160,7 +160,7 @@ export default function Suggestions({ addToast }: Props) {
           </div>
           <div className="relative flex-1">
             <select
-              className={`w-full appearance-none pl-2.5 pr-7 py-1.5 text-[12px] border ${borderDefault} rounded-lg bg-white dark:bg-[#1c2028] ${textPrimary} outline-none cursor-pointer focus:border-[#C4001E] transition-colors`}
+              className={`w-full appearance-none pl-2.5 pr-7 py-1.5 text-[12px] border ${borderDefault} rounded-lg bg-white dark:bg-[#1c2028] ${textPrimary} outline-none cursor-pointer focus:border-[#595DD2] transition-colors`}
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >

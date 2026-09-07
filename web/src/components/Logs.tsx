@@ -718,7 +718,7 @@ function RunProgress({
       </div>
       <div className="h-1.5 rounded-full bg-gray-200/70 dark:bg-[#1c2028] overflow-hidden">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-[#D94412] to-[#C4001E] transition-[width] duration-1000 ease-linear"
+          className="h-full rounded-full bg-gradient-to-r from-[#6E72E4] to-[#595DD2] transition-[width] duration-1000 ease-linear"
           style={{ width: `${pct}%` }}
         />
       </div>

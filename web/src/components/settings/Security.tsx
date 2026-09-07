@@ -194,7 +194,7 @@ export default function Security({ addToast }: Props) {
       <div className={`${cardCls} mb-6`}>
         <div className="flex items-center gap-3 mb-5">
           <div className={`w-10 h-10 rounded-xl border ${borderDefault} flex items-center justify-center shrink-0`}>
-            <KeyRound className="w-5 h-5 text-[#C4001E]" />
+            <KeyRound className="w-5 h-5 text-[#595DD2]" />
           </div>
           <div className="flex-1 min-w-0">
             <div className={`text-[15px] font-semibold ${textPrimary}`}>Passkeys</div>
@@ -293,7 +293,7 @@ export default function Security({ addToast }: Props) {
       <div className={cardCls}>
         <div className="flex items-center gap-3 mb-5">
           <div className={`w-10 h-10 rounded-xl border ${borderDefault} flex items-center justify-center shrink-0`}>
-            <Lock className="w-5 h-5 text-[#C4001E]" />
+            <Lock className="w-5 h-5 text-[#595DD2]" />
           </div>
           <div className="min-w-0">
             <div className={`text-[15px] font-semibold ${textPrimary}`}>

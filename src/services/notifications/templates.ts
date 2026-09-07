@@ -26,7 +26,7 @@ export async function teamInvite({
     to,
     subject: `Du wurdest zu ${teamName} auf marteso eingeladen`,
     title: "Du wurdest eingeladen",
-    body: `<strong style="color:#1a1a2e;">${inviterName}</strong> hat dich eingeladen, dem Team <strong style="color:#1a1a2e;">${teamName}</strong> als <strong style="color:#D94412;">${roleLabel[role] ?? role}</strong> beizutreten.`,
+    body: `<strong style="color:#1a1a2e;">${inviterName}</strong> hat dich eingeladen, dem Team <strong style="color:#1a1a2e;">${teamName}</strong> als <strong style="color:#595DD2;">${roleLabel[role] ?? role}</strong> beizutreten.`,
     cta: { label: "Einladung annehmen", url: inviteUrl },
     footer:
       "Dieser Link läuft in 7 Tagen ab. Falls du diese Einladung nicht erwartet hast, kannst du diese E-Mail ignorieren.",
@@ -99,7 +99,7 @@ export async function premiumGranted({
     replyTo: "alex@marteso.com",
     subject: "You've been granted Marteso Pro",
     title: "Pro unlocked",
-    body: `Good news! Your team <strong style="color:#1a1a2e;">${teamName}</strong> has been automatically granted <strong style="color:#D94412;">Pro</strong> access. ${expiryText}`,
+    body: `Good news! Your team <strong style="color:#1a1a2e;">${teamName}</strong> has been automatically granted <strong style="color:#595DD2;">Pro</strong> access. ${expiryText}`,
     cta: { label: "Open Marteso", url: env.APP_URL },
     footer: "Enjoy all Pro features. If you have any questions, just reply to this email.",
   });

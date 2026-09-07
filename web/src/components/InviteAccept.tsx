@@ -116,11 +116,11 @@ export default function InviteAccept({ onAuth }: { onAuth: (u: AuthUser) => void
       <div className="max-w-sm w-full">
         <img src="/logo-wordmark.svg" alt="Marteso" className="h-[30px] w-auto mb-8 mx-auto" />
 
-        <div className="mb-4 p-4 bg-[#fef2f3] dark:bg-[#2a1f23] border border-[#D94412]/20 rounded-xl text-center">
+        <div className="mb-4 p-4 bg-[#eef0fd] dark:bg-[#23253f] border border-[#595DD2]/20 rounded-xl text-center">
           <p className="text-sm font-semibold text-[#1a1a2e] dark:text-[#e8eaf0]">You've been invited</p>
           <p className="text-sm text-gray-600 dark:text-[#8b93a5] mt-0.5">
-            to join team <strong className="text-[#D94412]">{invite.teamName}</strong> as{" "}
-            <strong className="text-[#D94412]">{ROLE_LABELS[invite.role] ?? invite.role}</strong>
+            to join team <strong className="text-[#595DD2]">{invite.teamName}</strong> as{" "}
+            <strong className="text-[#595DD2]">{ROLE_LABELS[invite.role] ?? invite.role}</strong>
           </p>
         </div>
 
@@ -147,7 +147,7 @@ export default function InviteAccept({ onAuth }: { onAuth: (u: AuthUser) => void
                 placeholder="Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412]`}
+                className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
               />
             )}
             <input
@@ -156,7 +156,7 @@ export default function InviteAccept({ onAuth }: { onAuth: (u: AuthUser) => void
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412]`}
+              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
             />
             <input
               type="password"
@@ -165,13 +165,13 @@ export default function InviteAccept({ onAuth }: { onAuth: (u: AuthUser) => void
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412]`}
+              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
             />
-            {error && <p className="text-xs text-[#D94412]">{error}</p>}
+            {error && <p className="text-xs text-[#595DD2]">{error}</p>}
             <button
               type="submit"
               disabled={submitting}
-              className="mt-1 py-2.5 rounded-xl bg-[#D94412] text-white text-sm font-semibold hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-1 py-2.5 rounded-xl bg-[#595DD2] text-white text-sm font-semibold hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? "…" : mode === "signup" ? "Sign up & Join" : "Sign in & Join"}
             </button>

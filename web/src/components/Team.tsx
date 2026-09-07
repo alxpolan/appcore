@@ -20,7 +20,7 @@ const ROLE_LABELS: Record<TeamRole, string> = {
 };
 
 const ROLE_COLORS: Record<TeamRole, string> = {
-  OWNER: "bg-[#fef2f3] text-[#D94412] dark:bg-[#2a1f23] dark:text-[#f87171]",
+  OWNER: "bg-[#eef0fd] text-[#595DD2] dark:bg-[#23253f] dark:text-[#9b9ee9]",
   ADMIN: "bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400",
   MEMBER: "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
   VIEWER: "bg-gray-100 text-gray-500 dark:bg-[#252b38] dark:text-[#8b93a5]",
@@ -314,12 +314,12 @@ export default function Team({
                   if (e.key === "Escape") setEditingName(false);
                 }}
                 autoFocus
-                className="text-xl font-bold px-3 py-1 rounded-lg border border-[#D94412] bg-white dark:bg-[#1c2028] text-[#1a1a2e] dark:text-[#e8eaf0] focus:outline-none"
+                className="text-xl font-bold px-3 py-1 rounded-lg border border-[#595DD2] bg-white dark:bg-[#1c2028] text-[#1a1a2e] dark:text-[#e8eaf0] focus:outline-none"
               />
               <button
                 onClick={handleSaveName}
                 disabled={savingName}
-                className="px-3 py-1 rounded-lg bg-[#D94412] text-white text-xs font-semibold hover:bg-[#c80b24] transition-all disabled:opacity-50"
+                className="px-3 py-1 rounded-lg bg-[#595DD2] text-white text-xs font-semibold hover:bg-[#484CBE] transition-all disabled:opacity-50"
               >
                 {savingName ? "…" : "Save"}
               </button>
@@ -357,7 +357,7 @@ export default function Team({
               setShowInvite(true);
               setInviteError(null);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#D94412] text-white text-sm font-semibold hover:bg-[#c80b24] transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#595DD2] text-white text-sm font-semibold hover:bg-[#484CBE] transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Invite Member
@@ -395,12 +395,12 @@ export default function Team({
                 setInviteError(null);
               }}
               required
-              className={`flex-1 px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412] transition-colors`}
+              className={`flex-1 px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2] transition-colors`}
             />
             <select
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as TeamRole)}
-              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412] transition-colors`}
+              className={`px-3 py-2.5 text-sm rounded-xl border border-[#e5e7eb] dark:border-[#2a2f3d] bg-[#f7f8fa] dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2] transition-colors`}
             >
               <option value="VIEWER">Viewer</option>
               <option value="MEMBER">Member</option>
@@ -410,12 +410,12 @@ export default function Team({
             <button
               type="submit"
               disabled={inviting || !inviteEmail.trim()}
-              className="px-5 py-2.5 rounded-xl bg-[#D94412] text-white text-sm font-semibold hover:bg-[#c80b24] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 rounded-xl bg-[#595DD2] text-white text-sm font-semibold hover:bg-[#484CBE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {inviting ? "…" : "Send invite"}
             </button>
           </div>
-          {inviteError && <p className="text-xs text-[#D94412]">{inviteError}</p>}
+          {inviteError && <p className="text-xs text-[#595DD2]">{inviteError}</p>}
         </form>
       )}
 
@@ -453,7 +453,7 @@ export default function Team({
                   <tr className="align-middle">
                     <td className="px-5 py-4 align-middle">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#D94412] to-[#c80b24] flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#6E72E4] to-[#595DD2] flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
                           {(m.name ?? m.email).charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -478,7 +478,7 @@ export default function Team({
                           <select
                             value={editRole}
                             onChange={(e) => setEditRole(e.target.value as TeamRole)}
-                            className={`px-2 py-1.5 text-xs rounded-lg border border-[#e5e7eb] dark:border-[#2a2f3d] bg-white dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#D94412]`}
+                            className={`px-2 py-1.5 text-xs rounded-lg border border-[#e5e7eb] dark:border-[#2a2f3d] bg-white dark:bg-[#252b38] ${textPrimary} focus:outline-none focus:border-[#595DD2]`}
                           >
                             <option value="VIEWER">Viewer</option>
                             <option value="MEMBER">Member</option>
@@ -487,7 +487,7 @@ export default function Team({
                           </select>
                           <button
                             onClick={() => handleUpdateRole(m.id)}
-                            className="px-2 py-1.5 rounded-lg bg-[#D94412] text-white text-xs font-semibold hover:bg-[#c80b24] transition-all"
+                            className="px-2 py-1.5 rounded-lg bg-[#595DD2] text-white text-xs font-semibold hover:bg-[#484CBE] transition-all"
                           >
                             Save
                           </button>
@@ -534,7 +534,7 @@ export default function Team({
                                 onClick={() =>
                                   appAccessMemberId === m.id ? setAppAccessMemberId(null) : handleOpenAppAccess(m.id)
                                 }
-                                className={`p-1.5 rounded-lg transition-all ${appAccessMemberId === m.id ? "text-[#D94412] bg-[#fef2f3] dark:bg-[#2a1f23]" : "text-gray-400 dark:text-[#5c6478] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] hover:bg-gray-100 dark:hover:bg-[#252b38]"}`}
+                                className={`p-1.5 rounded-lg transition-all ${appAccessMemberId === m.id ? "text-[#595DD2] bg-[#eef0fd] dark:bg-[#23253f]" : "text-gray-400 dark:text-[#5c6478] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] hover:bg-gray-100 dark:hover:bg-[#252b38]"}`}
                                 title="Manage app access"
                               >
                                 <LayoutGrid className="w-3.5 h-3.5" />
@@ -542,7 +542,7 @@ export default function Team({
                             )}
                             <button
                               onClick={() => handleRemove(m.id, m.email)}
-                              className="p-1.5 rounded-lg text-gray-400 dark:text-[#5c6478] hover:text-red-500 hover:bg-red-50 dark:hover:bg-[#2a1f23] transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 dark:text-[#5c6478] hover:text-red-500 hover:bg-red-50 dark:hover:bg-[#23253f] transition-all"
                               title="Remove member"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -605,7 +605,7 @@ export default function Team({
                                         setSelectedAppIds((prev) => prev.filter((id) => id !== app.id));
                                       }
                                     }}
-                                    className="accent-[#D94412] w-3.5 h-3.5 shrink-0"
+                                    className="accent-[#595DD2] w-3.5 h-3.5 shrink-0"
                                   />
                                 </label>
                               ))}
@@ -630,7 +630,7 @@ export default function Team({
                               <button
                                 onClick={() => handleSaveAppAccess(m.id)}
                                 disabled={savingAppAccess}
-                                className="px-3.5 py-1.5 rounded-lg bg-[#D94412] text-white text-xs font-semibold hover:bg-[#c80b24] transition-all disabled:opacity-50"
+                                className="px-3.5 py-1.5 rounded-lg bg-[#595DD2] text-white text-xs font-semibold hover:bg-[#484CBE] transition-all disabled:opacity-50"
                               >
                                 {savingAppAccess ? "…" : "Save"}
                               </button>
@@ -674,7 +674,7 @@ export default function Team({
                 {canManage && (
                   <button
                     onClick={() => handleRevokeInvite(inv.id, inv.email)}
-                    className="p-1.5 rounded-lg text-gray-400 dark:text-[#5c6478] hover:text-red-500 hover:bg-red-50 dark:hover:bg-[#2a1f23] transition-all shrink-0"
+                    className="p-1.5 rounded-lg text-gray-400 dark:text-[#5c6478] hover:text-red-500 hover:bg-red-50 dark:hover:bg-[#23253f] transition-all shrink-0"
                     title="Revoke invitation"
                   >
                     <X className="w-3.5 h-3.5" />

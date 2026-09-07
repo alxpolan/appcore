@@ -35,7 +35,7 @@ export default function DownloadsChart({ data }: Props) {
               onClick={() => setRange(r.days)}
               className={`px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors ${
                 range === r.days
-                  ? "bg-[#D94412] text-white"
+                  ? "bg-[#595DD2] text-white"
                   : "bg-[#f3f4f6] dark:bg-[#252b38] ${textSecondary} hover:bg-[#e5e7eb] dark:hover:bg-[#2a2f3d]"
               }`}
             >

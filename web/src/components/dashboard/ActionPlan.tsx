@@ -109,8 +109,8 @@ export default function ActionPlan({
           </div>
 
           {scan.aiSummary && (
-            <div className="flex items-start gap-2.5 mb-3 px-3.5 py-2.5 rounded-xl bg-gradient-to-br from-[#D94412]/[0.06] to-[#C4001E]/[0.06] border border-[#D94412]/15">
-              <Sparkles className="w-3.5 h-3.5 text-[#C4001E] shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 mb-3 px-3.5 py-2.5 rounded-xl bg-gradient-to-br from-[#595DD2]/[0.06] to-[#595DD2]/[0.06] border border-[#595DD2]/15">
+              <Sparkles className="w-3.5 h-3.5 text-[#595DD2] shrink-0 mt-0.5" />
               <p className={`text-[12.5px] ${textSecondary} leading-snug`}>{scan.aiSummary}</p>
             </div>
           )}
@@ -133,7 +133,7 @@ export default function ActionPlan({
                       i > 0 ? `border-t ${borderDefault}` : ""
                     }`}
                   >
-                    <Icon className="w-[18px] h-[18px] text-[#C4001E] shrink-0 mt-0.5" />
+                    <Icon className="w-[18px] h-[18px] text-[#595DD2] shrink-0 mt-0.5" />
                     <div className="min-w-0 w-full flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[13.5px] font-semibold ${textPrimary}`}>{f.title}</span>
@@ -145,10 +145,10 @@ export default function ActionPlan({
                       </div>
                       <div className={`text-[12.5px] ${textSecondary} leading-snug mt-0.5`}>{f.desc}</div>
                       {f.suggestion && (
-                        <div className="mt-2 flex items-start gap-1.5 text-[12px] bg-[#C4001E]/[0.05] rounded-lg px-2.5 py-1.5">
-                          <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#C4001E]" />
+                        <div className="mt-2 flex items-start gap-1.5 text-[12px] bg-[#595DD2]/[0.05] rounded-lg px-2.5 py-1.5">
+                          <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#595DD2]" />
                           <span className={textSecondary}>
-                            <span className="font-semibold text-[#C4001E] dark:text-orange-300">Try:</span>{" "}
+                            <span className="font-semibold text-[#595DD2] dark:text-orange-300">Try:</span>{" "}
                             {f.suggestion}
                           </span>
                         </div>
@@ -156,7 +156,7 @@ export default function ActionPlan({
                     </div>
                     <Link
                       to={cta.to}
-                      className={`w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#D94412] hover:text-[#D94412] transition-all`}
+                      className={`w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border ${borderDefault} bg-white dark:bg-[#1c2028] ${textPrimary} hover:border-[#595DD2] hover:text-[#595DD2] transition-all`}
                     >
                       {cta.label}
                       <ArrowRight className="w-3.5 h-3.5" />

@@ -246,7 +246,7 @@ export default function Login({ onAuth, mode = "login" }: Props) {
         <div className={`w-[400px] bg-white dark:bg-[#1c2028] rounded-2xl shadow-xl border ${borderDefault} p-10`}>
           <div className="flex flex-col items-center text-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-full bg-[#fff0f2] dark:bg-[#2a1520] flex items-center justify-center">
-              <KeyRound className="text-[#D94412]" size={24} />
+              <KeyRound className="text-[#595DD2]" size={24} />
             </div>
             <h2 className={`text-lg font-semibold ${textPrimary}`}>Confirm your email</h2>
             <p className="text-sm text-[#6b7280] dark:text-[#8b9ab0] leading-relaxed">
@@ -289,7 +289,7 @@ export default function Login({ onAuth, mode = "login" }: Props) {
         <div className={`w-[400px] bg-white dark:bg-[#1c2028] rounded-2xl shadow-xl border ${borderDefault} p-10`}>
           <div className="flex flex-col items-center text-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-full bg-[#fff0f2] dark:bg-[#2a1520] flex items-center justify-center">
-              <PasskeyIcon className="text-[#D94412]" size={24} />
+              <PasskeyIcon className="text-[#595DD2]" size={24} />
             </div>
             <h2 className={`text-lg font-semibold ${textPrimary}`}>Add a Passkey?</h2>
             <p className="text-sm text-[#6b7280] dark:text-[#8b9ab0] leading-relaxed">
@@ -428,7 +428,7 @@ export default function Login({ onAuth, mode = "login" }: Props) {
             <>
               No account yet?{" "}
               <button
-                className="text-[#D94412] font-medium hover:underline"
+                className="text-[#595DD2] font-medium hover:underline"
                 onClick={() => {
                   setError(null);
                   navigate("/signup");
@@ -441,7 +441,7 @@ export default function Login({ onAuth, mode = "login" }: Props) {
             <>
               Already have an account?{" "}
               <button
-                className="text-[#D94412] font-medium hover:underline"
+                className="text-[#595DD2] font-medium hover:underline"
                 onClick={() => {
                   setError(null);
                   navigate("/login");

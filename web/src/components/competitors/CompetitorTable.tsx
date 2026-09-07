@@ -34,8 +34,8 @@ interface Props {
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return (
     <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#D94412]" : "text-current"}`} />
-      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#D94412]" : "text-current"}`} />
+      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
+      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
     </span>
   );
 }

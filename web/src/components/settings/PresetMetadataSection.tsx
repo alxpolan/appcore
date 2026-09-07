@@ -81,7 +81,7 @@ export default function PresetMetadataSection({ form, inputCls, onChange }: Prop
               type="checkbox"
               checked={form.reviewerDemoAccountRequired ?? false}
               onChange={(e) => handleDemoRequired(e.target.checked)}
-              className="w-4 h-4 rounded accent-[#D94412]"
+              className="w-4 h-4 rounded accent-[#595DD2]"
             />
             <span className={`text-[13px] ${textPrimary}`}>Login required (Demo Account)</span>
           </label>

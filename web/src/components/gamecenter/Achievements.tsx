@@ -108,7 +108,7 @@ function AchForm({ initial, onSave, onCancel, saving, title, lockVendorId }: Ach
               type="checkbox"
               checked={form.showBeforeEarned}
               onChange={(e) => set("showBeforeEarned", e.target.checked)}
-              className="w-3.5 h-3.5 accent-[#C4001E]"
+              className="w-3.5 h-3.5 accent-[#595DD2]"
             />
             <span className={`text-[12px] ${textSecondary}`}>Show before earned</span>
           </label>
@@ -117,7 +117,7 @@ function AchForm({ initial, onSave, onCancel, saving, title, lockVendorId }: Ach
               type="checkbox"
               checked={form.repeatable}
               onChange={(e) => set("repeatable", e.target.checked)}
-              className="w-3.5 h-3.5 accent-[#C4001E]"
+              className="w-3.5 h-3.5 accent-[#595DD2]"
             />
             <span className={`text-[12px] ${textSecondary}`}>Repeatable</span>
           </label>
@@ -551,7 +551,7 @@ function DetailView({ ach, bundleId, onBack, onUpdated, onDeleted, addToast }: D
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#C4001E] transition-all shrink-0`}
+            className={`p-2 rounded-xl border ${borderDefault} ${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0] hover:border-[#595DD2] transition-all shrink-0`}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -560,7 +560,7 @@ function DetailView({ ach, bundleId, onBack, onUpdated, onDeleted, addToast }: D
             {!editing && (
               <button
                 onClick={() => setEditing(true)}
-                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#C4001E] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
+                className={`p-1.5 rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all`}
               >
                 <Pencil className="w-4 h-4" />
               </button>
