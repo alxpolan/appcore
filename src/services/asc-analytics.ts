@@ -408,6 +408,28 @@ export interface AnalyticsSyncResult {
   error?: string;
 }
 
+export interface TrialPotential {
+  reportDate: string | null;
+  trialCount: number;
+  potentialProceedsUsd: number | null;
+  unpricedTrials: number;
+}
+
+const TRIAL_COLUMNS = [
+  "Active Free Trial Introductory Offer Subscriptions",
+  "Active Free Trial Promotional Offer Subscriptions",
+  "Free Trial Offer Code Subscriptions",
+  "Free Trial Win-Back Offers",
+];
+
+function activeFreeTrials(row: Record<string, string>): number {
+  // The legacy column was replaced by separate offer columns in version 1_3.
+  if (TRIAL_COLUMNS.some((column) => column in row)) {
+    return TRIAL_COLUMNS.reduce((sum, column) => sum + (parseInt(row[column] ?? "0", 10) || 0), 0);
+  }
+  return parseInt(row["Active Free Trials"] ?? "0", 10) || 0;
+}
+
 export class AscAnalyticsService {
   private readonly settings: EffectiveSettings;
   private readonly BASE = "https://api.appstoreconnect.apple.com/v1";
@@ -449,6 +471,99 @@ export class AscAnalyticsService {
         })
         .catch((err: unknown) => logger.warn("Failed to persist ASC rate limit", err));
     }
+  }
+
+  async fetchTrialPotential(appAppleId: string): Promise<TrialPotential> {
+    if (!this.settings.ascVendorNumber) {
+      return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 };
+    }
+
+    const headers = this.authHeaders();
+    let reportDate: string | null = null;
+    let rows: Record<string, string>[] = [];
+
+    // Apple's daily report is usually available the next day; allow for delayed delivery.
+    for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+      const day = new Date();
+      day.setUTCDate(day.getUTCDate() - daysAgo);
+      const date = fmtDate(day);
+      try {
+        const resp = await axios.get(`${this.BASE}/salesReports`, {
+          headers: { ...headers, Accept: "application/a-gzip" },
+          params: {
+            "filter[frequency]": "DAILY",
+            "filter[reportType]": "SUBSCRIPTION",
+            "filter[reportSubType]": "SUMMARY",
+            "filter[vendorNumber]": this.settings.ascVendorNumber,
+            "filter[reportDate]": date,
+          },
+          responseType: "arraybuffer",
+        });
+        this.logRateLimit(resp.headers);
+        rows = parseTsv(zlib.gunzipSync(Buffer.from(resp.data)).toString("utf-8"));
+        reportDate = date;
+        break;
+      } catch (err: any) {
+        if (err?.response?.status === 404 || err?.response?.status === 400) continue;
+        throw err;
+      }
+    }
+
+    if (!reportDate) return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 };
+
+    const trialsBySubscription = new Map<string, number>();
+    for (const row of rows) {
+      if ((row["App Apple ID"] ?? "").trim() !== appAppleId) continue;
+      const subscriptionId = (row["Subscription Apple ID"] ?? "").trim();
+      const count = activeFreeTrials(row);
+      if (!subscriptionId || count <= 0) continue;
+      trialsBySubscription.set(subscriptionId, (trialsBySubscription.get(subscriptionId) ?? 0) + count);
+    }
+
+    let potentialProceedsUsd = 0;
+    let unpricedTrials = 0;
+    for (const [subscriptionId, count] of trialsBySubscription) {
+      try {
+        const resp = await axios.get(`${this.BASE}/subscriptions/${subscriptionId}/prices`, {
+          headers,
+          params: {
+            "filter[territory]": "USA",
+            include: "subscriptionPricePoint",
+            "fields[subscriptionPrices]": "startDate,subscriptionPricePoint",
+            "fields[subscriptionPricePoints]": "proceeds",
+            limit: 200,
+          },
+        });
+        this.logRateLimit(resp.headers);
+        const points = new Map<string, number>(
+          (resp.data?.included ?? [])
+            .filter((item: any) => item.type === "subscriptionPricePoints")
+            .map((item: any) => [item.id, item.attributes?.proceeds == null ? NaN : Number(item.attributes.proceeds)]),
+        );
+        const today = fmtDate(new Date());
+        const current = (resp.data?.data ?? [])
+          .filter((item: any) => !item.attributes?.startDate || item.attributes.startDate.slice(0, 10) <= today)
+          .sort((a: any, b: any) => (b.attributes?.startDate ?? "").localeCompare(a.attributes?.startDate ?? ""))[0];
+        const pointId = current?.relationships?.subscriptionPricePoint?.data?.id;
+        const proceeds = points.get(pointId);
+        if (proceeds == null || !Number.isFinite(proceeds)) {
+          unpricedTrials += count;
+        } else {
+          potentialProceedsUsd += count * proceeds;
+        }
+      } catch (err: any) {
+        logger.warn(`Fetching USD price for subscription ${subscriptionId}: ${err?.message ?? err}`);
+        unpricedTrials += count;
+      }
+    }
+
+    const trialCount = [...trialsBySubscription.values()].reduce((sum, count) => sum + count, 0);
+    return {
+      reportDate,
+      trialCount,
+      potentialProceedsUsd: unpricedTrials > 0 ? null : Math.round(potentialProceedsUsd * 100) / 100,
+      unpricedTrials,
+    };
   }
 
   async fetchSalesReports(bundleId: string, ascAppId: string, daysBack = 60): Promise<number> {

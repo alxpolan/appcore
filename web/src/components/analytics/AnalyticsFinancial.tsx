@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from "react";
-import { DollarSign, TrendingUp, Users, ShoppingBag } from "lucide-react";
+import { DollarSign, TrendingUp, Users, ShoppingBag, Hourglass } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from "recharts";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
-import type { AnalyticsSummary, DashboardData, DownloadsData, LtvData, PurchaseData } from "../../types";
+import type { AnalyticsSummary, DashboardData, DownloadsData, LtvData, PurchaseData, TrialPotential } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtRevenue, fmtRevenueShort, fmtShortDate } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
@@ -108,6 +108,9 @@ export default function AnalyticsFinancial({ addToast }: Props) {
   const { data: purchases, loading: purchasesLoading } = useApi<PurchaseData[]>(
     `/analytics/purchases?bundleId=${bundleId}&limit=100`,
   );
+  const { data: trialPotential, loading: trialsLoading, error: trialsError } = useApi<TrialPotential>(
+    `/analytics/trial-potential?bundleId=${bundleId}`,
+  );
 
   const { data: dash } = useApi<DashboardData>("/dashboard");
   const hasASC = dash?.config?.hasASC ?? true;
@@ -122,6 +125,17 @@ export default function AnalyticsFinancial({ addToast }: Props) {
   const effPurchases = hasASC ? purchases : demoPurchases;
   const summaryLoading = hasASC && sumLoading;
   const effPurchasesLoading = hasASC && purchasesLoading;
+  const effTrialPotential: TrialPotential | null = hasASC
+    ? trialPotential
+    : { reportDate: new Date().toISOString().slice(0, 10), trialCount: 24, potentialProceedsUsd: 167.76, unpricedTrials: 0 };
+
+  const trialSub = trialsError
+    ? "Trial data unavailable"
+    : !effTrialPotential?.reportDate
+      ? "No subscription report yet"
+      : effTrialPotential.unpricedTrials > 0
+        ? `${fmtNumber(effTrialPotential.trialCount)} active trials · US price unavailable for ${fmtNumber(effTrialPotential.unpricedTrials)}`
+        : `${fmtNumber(effTrialPotential.trialCount)} active trials · if all convert at US prices · as of ${fmtShortDate(effTrialPotential.reportDate)}`;
 
   const revenueByDay = effDownloads?.byDay.map((d) => ({ date: d.date, proceeds: d.proceeds })) ?? [];
   const ltvByDay = effLtv?.byDay ?? [];
@@ -135,7 +149,7 @@ export default function AnalyticsFinancial({ addToast }: Props) {
 
   const financialContent = (
     <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
         <StatCard
           label="Revenue"
           value={summaryLoading ? "—" : fmtRevenue(effSummary?.totalProceeds ?? 0)}
@@ -159,6 +173,12 @@ export default function AnalyticsFinancial({ addToast }: Props) {
           value={fmtRevenue(avgTransactionValue)}
           sub="last 100 transactions"
           icon={<ShoppingBag className="w-4 h-4" />}
+        />
+        <StatCard
+          label="Trial Potential"
+          value={hasASC && (trialsLoading || trialsError) ? "—" : fmtRevenue(effTrialPotential?.potentialProceedsUsd)}
+          sub={trialSub}
+          icon={<Hourglass className="w-4 h-4" />}
         />
       </div>
 

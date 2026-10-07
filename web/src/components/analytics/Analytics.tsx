@@ -272,6 +272,8 @@ export default function Analytics({ addToast }: Props) {
       impressions: 0,
       pageViews: 0,
       sessions: 0,
+      installs: 0,
+      deletions: 0,
     }));
     return [...byDay, ...injected].sort((a, b) => a.date.localeCompare(b.date));
   }, [effDownloads?.byDay, markers]);

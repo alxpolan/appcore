@@ -88,6 +88,13 @@ export interface LtvData {
   currentLtv: number;
 }
 
+export interface TrialPotential {
+  reportDate: string | null;
+  trialCount: number;
+  potentialProceedsUsd: number | null;
+  unpricedTrials: number;
+}
+
 export interface AnalyticsSummary {
   totalDownloads: number;
   totalProceeds: number;

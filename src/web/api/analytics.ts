@@ -3,8 +3,11 @@ import { prisma, logger, getEffectiveSettingsForTeam } from "../../config";
 import { requireAuth, requireBundleAccess } from "../auth";
 import { bossScheduler } from "../../jobs/boss";
 import { QUEUE_NAME as SYNC_ANALYTICS_QUEUE } from "../../jobs/workers/sync-analytics.worker";
+import { AscAnalyticsService, type TrialPotential } from "../../services/asc-analytics";
 
 export const analyticsRouter = Router();
+
+const trialPotentialCache = new Map<string, { expiresAt: number; value: Promise<TrialPotential> }>();
 
 async function getAnchorDate(bundleId: string): Promise<Date> {
   const latest = await prisma.appStoreAnalytics.findFirst({
@@ -478,6 +481,31 @@ analyticsRouter.get("/retention", ...requireBundleAccess("query"), async (req, r
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/analytics/trial-potential ───────────────────────────────────────
+analyticsRouter.get("/trial-potential", ...requireBundleAccess("query"), async (req, res) => {
+  try {
+    const app = req.bundleApp!;
+    if (!app.trackId) {
+      res.json({ reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 });
+      return;
+    }
+
+    const key = `${app.teamId ?? req.user!.teamId}:${app.bundleId}`;
+    let cached = trialPotentialCache.get(key);
+    if (!cached || cached.expiresAt < Date.now()) {
+      const settings = await getEffectiveSettingsForTeam(app.teamId ?? req.user!.teamId);
+      const value = new AscAnalyticsService(settings).fetchTrialPotential(String(app.trackId));
+      cached = { expiresAt: Date.now() + 30 * 60_000, value };
+      trialPotentialCache.set(key, cached);
+      value.catch(() => trialPotentialCache.delete(key));
+    }
+    res.json(await cached.value);
+  } catch (err) {
+    logger.warn(`Trial potential lookup failed: ${String(err)}`);
+    res.status(502).json({ error: "Trial data unavailable" });
   }
 });
 
