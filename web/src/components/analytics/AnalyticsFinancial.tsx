@@ -14,7 +14,7 @@ import {
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import type { AnalyticsSummary, DashboardData, DownloadsData, LtvData, PurchaseData, TrialPotential } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber, fmtRevenue, fmtRevenueShort, fmtShortDate } from "../../utils/formatters";
+import { countryName, fmtNumber, fmtRevenue, fmtRevenueShort, fmtShortDate } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
 import DemoModeFrame from "../DemoModeFrame";
 import AscConnectCard from "../AscConnectCard";
@@ -132,15 +132,22 @@ export default function AnalyticsFinancial({ addToast }: Props) {
   const effPurchasesLoading = hasASC && purchasesLoading;
   const effTrialPotential: TrialPotential | null = hasASC
     ? trialPotential
-    : { reportDate: new Date().toISOString().slice(0, 10), trialCount: 24, potentialProceedsUsd: 167.76, unpricedTrials: 0 };
+    : {
+        reportDate: new Date().toISOString().slice(0, 10),
+        trialCount: 24, potentialProceedsUsd: 164.42, unpricedTrials: 0,
+        countryTotals: [
+          { country: "US", trialCount: 14, proceedsUsd: 97.86 },
+          { country: "DE", trialCount: 10, proceedsUsd: 66.56 },
+        ],
+      };
 
   const trialSub = trialsError
     ? "Trial data unavailable"
     : !effTrialPotential?.reportDate
       ? "No subscription report yet"
       : effTrialPotential.unpricedTrials > 0
-        ? `${fmtNumber(effTrialPotential.trialCount)} active trials · US price unavailable for ${fmtNumber(effTrialPotential.unpricedTrials)}`
-        : `${fmtNumber(effTrialPotential.trialCount)} active trials · if all convert at US prices · as of ${fmtShortDate(effTrialPotential.reportDate)}`;
+        ? `${fmtNumber(effTrialPotential.trialCount)} active trials · country price unavailable for ${fmtNumber(effTrialPotential.unpricedTrials)}`
+        : `${fmtNumber(effTrialPotential.trialCount)} active trials · country proceeds · as of ${fmtShortDate(effTrialPotential.reportDate)}`;
 
   const revenueByDay = effDownloads?.byDay.map((d) => ({ date: d.date, proceeds: d.proceeds })) ?? [];
   const ltvByDay = effLtv?.byDay ?? [];
@@ -186,6 +193,35 @@ export default function AnalyticsFinancial({ addToast }: Props) {
           icon={<Hourglass className="w-4 h-4" />}
         />
       </div>
+
+      {(effTrialPotential?.countryTotals.length ?? 0) > 0 && (
+        <details className={`mb-5 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl px-5 py-4`}>
+          <summary className={`cursor-pointer text-[13px] font-medium ${textSecondary}`}>Trial value by country</summary>
+          <div className={`text-[12px] ${textMuted} mt-2 mb-3`}>
+            First paid period at each country’s current subscription proceeds.
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr>
+                  <th className={`${TH} pl-0`}>Country</th>
+                  <th className={`${TH} text-right`}>Trials</th>
+                  <th className={`${TH} text-right pr-0`}>Proceeds</th>
+                </tr>
+              </thead>
+              <tbody>
+                {effTrialPotential!.countryTotals.map((row) => (
+                  <tr key={row.country}>
+                    <td className={`${TD} pl-0`}>{countryName(row.country)}</td>
+                    <td className={`${TD} text-right`}>{fmtNumber(row.trialCount)}</td>
+                    <td className={`${TD} text-right pr-0`}>{fmtRevenue(row.proceedsUsd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <ChartCard title="Revenue over time" sub="Developer proceeds, by day">

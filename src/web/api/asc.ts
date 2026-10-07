@@ -4,6 +4,11 @@ import { prisma, logger } from "../../config";
 import { ascClientForUser as ascClientForUserOrNull } from "../../services/asc-client";
 import { requireAuth, bundleAccess, loadVersionInBundle, loadVersionLocalizationInBundle } from "../auth";
 import { AppStoreConnectClient } from "../../services/appstore-connect";
+import {
+  fetchSubscriptionPrices,
+  fetchSubscriptionPriceEqualizations,
+  type EqualizedPricePoint,
+} from "../../services/asc-subscription-prices";
 import { LOCALE_MAP } from "../../services/utils/country_lang";
 import { priceMultiplierFor } from "../../services/utils/price-multipliers";
 import { bossScheduler } from "../../jobs/boss";
@@ -1731,41 +1736,6 @@ ascRouter.get(
   }),
 );
 
-async function fetchSubscriptionPrices(asc: AppStoreConnectClient, subscriptionId: string): Promise<any[]> {
-  const { data: resp } = await asc.client.get(`/subscriptions/${subscriptionId}/prices`, {
-    params: {
-      include: "territory,subscriptionPricePoint",
-      "fields[subscriptionPrices]": "startDate,preserved,territory,subscriptionPricePoint",
-      "fields[territories]": "currency",
-      "fields[subscriptionPricePoints]": "customerPrice,proceeds,territory",
-      limit: 200,
-    },
-  });
-  const included: any[] = resp.included ?? [];
-  const terrMap = new Map<string, any>(
-    included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
-  );
-  const ppMap = new Map<string, any>(
-    included.filter((i: any) => i.type === "subscriptionPricePoints").map((pp: any) => [pp.id, pp]),
-  );
-  return (resp.data ?? []).map((p: any) => {
-    const terrId = p.relationships?.territory?.data?.id ?? null;
-    const ppId = p.relationships?.subscriptionPricePoint?.data?.id ?? null;
-    const terr = terrId ? terrMap.get(terrId) : null;
-    const pp = ppId ? ppMap.get(ppId) : null;
-    return {
-      id: p.id,
-      territory: terrId,
-      currency: terr?.attributes?.currency ?? null,
-      customerPrice: pp?.attributes?.customerPrice ?? null,
-      proceeds: pp?.attributes?.proceeds ?? null,
-      pricePointId: ppId,
-      startDate: p.attributes?.startDate ?? null,
-      preserved: p.attributes?.preserved ?? false,
-    };
-  });
-}
-
 ascRouter.get(
   "/subscriptions/:id/prices",
   handle("listSubscriptionPrices", async (req, res) => {
@@ -1825,14 +1795,6 @@ ascRouter.delete(
 // ---- Smart pricing (purchasing-power based suggestions from a USA base price) ----
 
 const SMART_PRICING_BASE_TERRITORY = "USA";
-
-interface EqualizedPricePoint {
-  id: string;
-  customerPrice: string | null;
-  proceeds: string | null;
-  territory: string | null;
-  currency: string | null;
-}
 
 function nearestPricePoint(
   catalog: Array<{ id: string; customerPrice: string | null }>,
@@ -1936,34 +1898,6 @@ async function buildSmartPriceRows(opts: {
   return rows;
 }
 
-async function fetchSubscriptionEqualizations(
-  asc: AppStoreConnectClient,
-  pricePointId: string,
-): Promise<EqualizedPricePoint[]> {
-  const { data: resp } = await asc.client.get(`/subscriptionPricePoints/${pricePointId}/equalizations`, {
-    params: {
-      include: "territory",
-      "fields[subscriptionPricePoints]": "customerPrice,proceeds,territory",
-      "fields[territories]": "currency",
-      limit: 8000,
-    },
-  });
-  const included: any[] = resp.included ?? [];
-  const terrMap = new Map<string, any>(
-    included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
-  );
-  return (resp.data ?? []).map((pp: any) => {
-    const terrId = pp.relationships?.territory?.data?.id ?? null;
-    return {
-      id: pp.id,
-      customerPrice: pp.attributes?.customerPrice ?? null,
-      proceeds: pp.attributes?.proceeds ?? null,
-      territory: terrId,
-      currency: terrId ? (terrMap.get(terrId)?.attributes?.currency ?? null) : null,
-    };
-  });
-}
-
 ascRouter.post(
   "/subscriptions/:id/smart-prices",
   handle("previewSubscriptionSmartPrices", async (req, res) => {
@@ -1999,7 +1933,7 @@ ascRouter.post(
       basePricePointId: baseId,
       baseCatalog,
       currentByTerritory,
-      fetchEqualizations: (pointId) => fetchSubscriptionEqualizations(asc, pointId),
+      fetchEqualizations: (pointId) => fetchSubscriptionPriceEqualizations(asc, pointId),
     });
     res.json({ baseTerritory: SMART_PRICING_BASE_TERRITORY, basePricePointId: baseId, rows });
   }),

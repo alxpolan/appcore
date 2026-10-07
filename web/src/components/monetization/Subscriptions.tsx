@@ -954,6 +954,7 @@ function PricingPanel({ subscriptionId, addToast }: { subscriptionId: string; ad
               <th className={TH}>Currency</th>
               <th className={TH}>Customer Price</th>
               <th className={TH}>Proceeds</th>
+              <th className={TH}>Proceeds (USD)</th>
               <th className={TH} />
             </tr>
           </thead>
@@ -1007,6 +1008,7 @@ function PricingPanel({ subscriptionId, addToast }: { subscriptionId: string; ad
                     <td className={`${TD} ${textSecondary}`}>
                       {selectedEditPP ? `${p.currency ?? ""} ${selectedEditPP.proceeds}` : "—"}
                     </td>
+                    <td className={`${TD} ${textMuted}`}>{p.proceedsUsd != null ? `$${p.proceedsUsd}` : "—"}</td>
                     <td className={`${TD} text-right`}>
                       <div className="flex gap-1 justify-end">
                         <button onClick={cancelEditPrice} className={btnSecSm}>
@@ -1039,6 +1041,7 @@ function PricingPanel({ subscriptionId, addToast }: { subscriptionId: string; ad
                   <td className={`${TD} ${textSecondary}`}>
                     {p.proceeds != null ? `${p.currency ?? ""} ${p.proceeds}` : "—"}
                   </td>
+                  <td className={`${TD} ${textMuted}`}>{p.proceedsUsd != null ? `$${p.proceedsUsd}` : "—"}</td>
                   <td className={`${TD} text-right`}>
                     <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                       <button

@@ -489,7 +489,7 @@ analyticsRouter.get("/trial-potential", ...requireBundleAccess("query"), async (
   try {
     const app = req.bundleApp!;
     if (!app.trackId) {
-      res.json({ reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 });
+      res.json({ reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0, countryTotals: [] });
       return;
     }
 
@@ -497,7 +497,7 @@ analyticsRouter.get("/trial-potential", ...requireBundleAccess("query"), async (
     let cached = trialPotentialCache.get(key);
     if (!cached || cached.expiresAt < Date.now()) {
       const settings = await getEffectiveSettingsForTeam(app.teamId ?? req.user!.teamId);
-      const value = new AscAnalyticsService(settings).fetchTrialPotential(String(app.trackId));
+      const value = new AscAnalyticsService(settings).fetchTrialPotential(String(app.trackId), app.bundleId);
       cached = { expiresAt: Date.now() + 30 * 60_000, value };
       trialPotentialCache.set(key, cached);
       value.then(

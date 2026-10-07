@@ -3,6 +3,9 @@ import axios from "./utils/http";
 import { prisma, logger } from "../config";
 import type { EffectiveSettings } from "../config/userSettings";
 import { generateASCToken } from "./utils/asc-token";
+import { AppStoreConnectClient } from "./appstore-connect";
+import { fetchSubscriptionPrices } from "./asc-subscription-prices";
+import { ALPHA2_TO_ALPHA3 } from "./utils/territory-codes";
 
 function parseTsv(raw: string): Record<string, string>[] {
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -413,6 +416,7 @@ export interface TrialPotential {
   trialCount: number;
   potentialProceedsUsd: number | null;
   unpricedTrials: number;
+  countryTotals: { country: string; trialCount: number; proceedsUsd: number }[];
 }
 
 const TRIAL_COLUMNS = [
@@ -428,6 +432,106 @@ function activeFreeTrials(row: Record<string, string>): number {
     return TRIAL_COLUMNS.reduce((sum, column) => sum + (parseInt(row[column] ?? "0", 10) || 0), 0);
   }
   return parseInt(row["Active Free Trials"] ?? "0", 10) || 0;
+}
+
+// Real-world free trials run from a few days to a few months; this bounds how
+// far back the SUBSCRIPTION_EVENT report is scanned for cancellations whose
+// trial window might still be running today. A trial configured longer than
+// this (rare) won't be caught.
+const MAX_TRIAL_CANCELLATION_BACKFILL_DAYS = 95;
+
+// Parses the "Subscription Offer Duration" column of the Subscription Event
+// report, e.g. "7 Days", "3 Days", "1 Week", "2 Weeks", "1 Month", "1 Year".
+// Apple doesn't restrict this to a fixed enum (confirmed against real data:
+// a 7-day trial reports as "7 Days", not "1 Week"), so parse the count+unit
+// instead of matching a fixed string table.
+function parseOfferDurationDays(duration: string): number | null {
+  const match = duration.trim().match(/^(\d+)\s+(Day|Days|Week|Weeks|Month|Months|Year|Years)$/i);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  if (unit.startsWith("day")) return n;
+  if (unit.startsWith("week")) return n * 7;
+  if (unit.startsWith("month")) return n * 30;
+  if (unit.startsWith("year")) return n * 365;
+  return null;
+}
+
+interface TrialCancellationRow {
+  eventDateStr: string;
+  subscriptionId: string;
+  country: string;
+  originalStartDateStr: string;
+  trialEndDateStr: string;
+  quantity: number;
+}
+
+// A subscriber who turns off auto-renew during a free trial still shows up as
+// an "active" trial in the daily subscription summary report until the trial
+// actually ends, even though we already know they won't convert. This report
+// is the only place that cancellation shows up before the trial lapses.
+function parseTrialCancellationSegment(rows: Record<string, string>[], appAppleId: string): TrialCancellationRow[] {
+  const byKey = new Map<string, TrialCancellationRow>();
+
+  for (const row of rows) {
+    if ((row["App Apple ID"] ?? "").trim() !== appAppleId) continue;
+    if ((row["Event"] ?? "").trim() !== "Cancel") continue;
+    if ((row["Subscription Offer Type"] ?? "").trim() !== "Free Trial") continue;
+
+    const eventDateStr = (row["Event Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDateStr)) continue;
+
+    const originalStartDateStr = (row["Original Start Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(originalStartDateStr)) continue;
+
+    const durationDays = parseOfferDurationDays(row["Subscription Offer Duration"] ?? "");
+    if (!durationDays) continue; // Unrecognized duration - skip rather than guess.
+
+    const subscriptionId = (row["Subscription Apple ID"] ?? "").trim();
+    const country = (row["Country"] ?? "").toUpperCase().trim();
+    const quantity = parseInt(row["Quantity"] ?? "0", 10) || 0;
+    if (!subscriptionId || !country || quantity <= 0) continue;
+
+    const trialEnd = new Date(originalStartDateStr);
+    trialEnd.setUTCDate(trialEnd.getUTCDate() + durationDays);
+    const trialEndDateStr = fmtDate(trialEnd);
+
+    const key = `${subscriptionId}::${country}::${originalStartDateStr}::${eventDateStr}`;
+    const existing = byKey.get(key);
+    if (existing) existing.quantity += quantity;
+    else byKey.set(key, { eventDateStr, subscriptionId, country, originalStartDateStr, trialEndDateStr, quantity });
+  }
+
+  return [...byKey.values()];
+}
+
+async function storeTrialCancellationSegment(bundleId: string, rows: TrialCancellationRow[]): Promise<number> {
+  await Promise.all(
+    rows.map((r) =>
+      prisma.appStoreTrialCancellation.upsert({
+        where: {
+          trialCancelDimensions: {
+            bundleId,
+            subscriptionId: r.subscriptionId,
+            country: r.country,
+            originalStartDate: new Date(r.originalStartDateStr),
+            eventDate: new Date(r.eventDateStr),
+          },
+        },
+        create: {
+          bundleId,
+          subscriptionId: r.subscriptionId,
+          country: r.country,
+          originalStartDate: new Date(r.originalStartDateStr),
+          trialEndDate: new Date(r.trialEndDateStr),
+          eventDate: new Date(r.eventDateStr),
+          quantity: r.quantity,
+        },
+        update: { quantity: r.quantity, trialEndDate: new Date(r.trialEndDateStr) },
+      }),
+    ),
+  );
+  return rows.length;
 }
 
 export class AscAnalyticsService {
@@ -473,9 +577,9 @@ export class AscAnalyticsService {
     }
   }
 
-  async fetchTrialPotential(appAppleId: string): Promise<TrialPotential> {
+  async fetchTrialPotential(appAppleId: string, bundleId: string): Promise<TrialPotential> {
     if (!this.settings.ascVendorNumber) {
-      return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 };
+      return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0, countryTotals: [] };
     }
 
     const headers = this.authHeaders();
@@ -510,60 +614,87 @@ export class AscAnalyticsService {
       }
     }
 
-    if (!reportDate) return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0 };
+    if (!reportDate) return { reportDate: null, trialCount: 0, potentialProceedsUsd: null, unpricedTrials: 0, countryTotals: [] };
 
-    const trialsBySubscription = new Map<string, number>();
+    const trialsBySubscriptionAndCountry = new Map<string, { subscriptionId: string; country: string; territory: string | null; count: number }>();
+    let trialCount = 0;
+    let unpricedTrials = 0;
     for (const row of rows) {
       if ((row["App Apple ID"] ?? "").trim() !== appAppleId) continue;
       const subscriptionId = (row["Subscription Apple ID"] ?? "").trim();
       const count = activeFreeTrials(row);
-      if (!subscriptionId || count <= 0) continue;
-      trialsBySubscription.set(subscriptionId, (trialsBySubscription.get(subscriptionId) ?? 0) + count);
+      if (count <= 0) continue;
+      trialCount += count;
+      const country = (row["Country"] ?? "").trim().toUpperCase();
+      const territory = ALPHA2_TO_ALPHA3[country] ?? null;
+      if (!subscriptionId || !territory) {
+        unpricedTrials += count;
+        continue;
+      }
+      const key = `${subscriptionId}:${territory}`;
+      const current = trialsBySubscriptionAndCountry.get(key);
+      trialsBySubscriptionAndCountry.set(key, { subscriptionId, country, territory, count: (current?.count ?? 0) + count });
     }
 
-    let potentialProceedsUsd = 0;
-    let unpricedTrials = 0;
-    for (const [subscriptionId, count] of trialsBySubscription) {
+    const today = fmtDate(new Date());
+
+    // Subscribers who already turned off auto-renew during their trial still
+    // count as "active" above (they keep access until the trial ends), but we
+    // already know they won't convert - drop them out of the money math.
+    const cancellations = await prisma.appStoreTrialCancellation.findMany({
+      where: { bundleId, trialEndDate: { gte: new Date(today) } },
+      select: { subscriptionId: true, country: true, quantity: true },
+    });
+    const cancelledByKey = new Map<string, number>();
+    for (const c of cancellations) {
+      const key = `${c.subscriptionId}:${c.country}`;
+      cancelledByKey.set(key, (cancelledByKey.get(key) ?? 0) + c.quantity);
+    }
+
+    const asc = new AppStoreConnectClient({
+      issuerId: this.settings.ascIssuerId,
+      keyId: this.settings.ascKeyId,
+      privateKey: this.settings.ascPrivateKey,
+    }, { teamId: this.settings.teamId });
+    const pricesBySubscription = new Map<string, Awaited<ReturnType<typeof fetchSubscriptionPrices>>>();
+    const countryTotals = new Map<string, { country: string; trialCount: number; proceedsUsd: number }>();
+    for (const { subscriptionId, country, territory, count: rawCount } of trialsBySubscriptionAndCountry.values()) {
+      const alreadyOptedOut = cancelledByKey.get(`${subscriptionId}:${country}`) ?? 0;
+      const count = Math.max(0, rawCount - alreadyOptedOut);
+      if (count <= 0) continue; // Known non-converters - skip entirely, don't count as "unpriced" either.
+
       try {
-        const resp = await axios.get(`${this.BASE}/subscriptions/${subscriptionId}/prices`, {
-          headers,
-          params: {
-            "filter[territory]": "USA",
-            include: "subscriptionPricePoint",
-            "fields[subscriptionPrices]": "startDate,subscriptionPricePoint",
-            "fields[subscriptionPricePoints]": "proceeds",
-            limit: 200,
-          },
-        });
-        this.logRateLimit(resp.headers);
-        const points = new Map<string, number>(
-          (resp.data?.included ?? [])
-            .filter((item: any) => item.type === "subscriptionPricePoints")
-            .map((item: any) => [item.id, item.attributes?.proceeds == null ? NaN : Number(item.attributes.proceeds)]),
-        );
-        const today = fmtDate(new Date());
-        const current = (resp.data?.data ?? [])
-          .filter((item: any) => !item.attributes?.startDate || item.attributes.startDate.slice(0, 10) <= today)
-          .sort((a: any, b: any) => (b.attributes?.startDate ?? "").localeCompare(a.attributes?.startDate ?? ""))[0];
-        const pointId = current?.relationships?.subscriptionPricePoint?.data?.id;
-        const proceeds = points.get(pointId);
-        if (proceeds == null || !Number.isFinite(proceeds)) {
+        let prices = pricesBySubscription.get(subscriptionId);
+        if (!prices) {
+          prices = await fetchSubscriptionPrices(asc, subscriptionId);
+          pricesBySubscription.set(subscriptionId, prices);
+        }
+        const current = prices
+          .filter((price) => price.territory === territory && (!price.startDate || price.startDate.slice(0, 10) <= today))
+          .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""))[0];
+        const proceedsUsd = current?.proceedsUsd == null ? NaN : Number(current.proceedsUsd);
+        if (!Number.isFinite(proceedsUsd)) {
           unpricedTrials += count;
         } else {
-          potentialProceedsUsd += count * proceeds;
+          const total = countryTotals.get(country) ?? { country, trialCount: 0, proceedsUsd: 0 };
+          total.trialCount += count;
+          total.proceedsUsd += count * proceedsUsd;
+          countryTotals.set(country, total);
         }
       } catch (err: any) {
-        logger.warn(`Fetching USD price for subscription ${subscriptionId}: ${err?.message ?? err}`);
+        logger.warn(`Fetching prices for subscription ${subscriptionId}: ${err?.message ?? err}`);
         unpricedTrials += count;
       }
     }
 
-    const trialCount = [...trialsBySubscription.values()].reduce((sum, count) => sum + count, 0);
+    const totals = [...countryTotals.values()].sort((a, b) => b.trialCount - a.trialCount || a.country.localeCompare(b.country));
+    const potentialProceedsUsd = totals.reduce((sum, total) => sum + total.proceedsUsd, 0);
     return {
       reportDate,
       trialCount,
       potentialProceedsUsd: unpricedTrials > 0 ? null : Math.round(potentialProceedsUsd * 100) / 100,
       unpricedTrials,
+      countryTotals: totals.map((total) => ({ ...total, proceedsUsd: Math.round(total.proceedsUsd * 100) / 100 })),
     };
   }
 
@@ -674,6 +805,51 @@ export class AscAnalyticsService {
     }
 
     return storedDays;
+  }
+
+  async fetchTrialCancellations(bundleId: string, appAppleId: string, daysBack = 3): Promise<number> {
+    if (!this.settings.ascVendorNumber || !appAppleId) return 0;
+
+    const headers = this.authHeaders();
+    const cappedDaysBack = Math.min(daysBack, MAX_TRIAL_CANCELLATION_BACKFILL_DAYS);
+    let stored = 0;
+
+    for (let i = 1; i <= cappedDaysBack; i++) {
+      const day = new Date();
+      day.setUTCDate(day.getUTCDate() - i);
+      const dateStr = fmtDate(day);
+
+      try {
+        const resp = await axios.get(`${this.BASE}/salesReports`, {
+          headers: { ...headers, Accept: "application/a-gzip" },
+          params: {
+            "filter[frequency]": "DAILY",
+            "filter[reportType]": "SUBSCRIPTION_EVENT",
+            "filter[reportSubType]": "SUMMARY",
+            "filter[version]": "1_3",
+            "filter[vendorNumber]": this.settings.ascVendorNumber,
+            "filter[reportDate]": dateStr,
+          },
+          responseType: "arraybuffer",
+        });
+        this.logRateLimit(resp.headers);
+
+        const raw = zlib.gunzipSync(Buffer.from(resp.data)).toString("utf-8");
+        const rows = parseTsv(raw);
+        const cancelRows = parseTrialCancellationSegment(rows, appAppleId);
+        if (cancelRows.length > 0) {
+          stored += await storeTrialCancellationSegment(bundleId, cancelRows);
+        }
+      } catch (err: any) {
+        if (err?.response?.status === 404 || err?.response?.status === 400) {
+          logger.debug(`No subscription event report for ${dateStr}`);
+          continue;
+        }
+        logger.warn(`Subscription event report fetch failed for ${dateStr}: ${err?.message ?? err}`);
+      }
+    }
+
+    return stored;
   }
 
   private async processAnalyticsRequest(
@@ -1090,8 +1266,19 @@ export class AscAnalyticsService {
         }
       }
 
+      let trialCancellationsFetched = 0;
+      if (ascAppId) {
+        try {
+          const existingCancellations = await prisma.appStoreTrialCancellation.count({ where: { bundleId } });
+          const trialCancelDaysBack = existingCancellations === 0 ? MAX_TRIAL_CANCELLATION_BACKFILL_DAYS : 3;
+          trialCancellationsFetched = await this.fetchTrialCancellations(bundleId, ascAppId, trialCancelDaysBack);
+        } catch (err: any) {
+          logger.warn(`Trial cancellation sync error (non-fatal): ${err?.message ?? err}`);
+        }
+      }
+
       logger.info(
-        `ASC analytics sync done: ${downloadDays} report-days, ${reviewsFetched} reviews, ${engagementRows} engagement rows`,
+        `ASC analytics sync done: ${downloadDays} report-days, ${reviewsFetched} reviews, ${engagementRows} engagement rows, ${trialCancellationsFetched} trial cancellations`,
       );
 
       return { downloadDays, reviewsFetched };
