@@ -34,6 +34,7 @@ import AnalyticsCountries from "./components/analytics/AnalyticsCountries";
 import AnalyticsCountryDetail from "./components/analytics/AnalyticsCountryDetail";
 import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
+import AnalyticsAds from "./components/analytics/AnalyticsAds";
 import Versions from "./components/Versions";
 import Screenshots from "./components/Screenshots";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
@@ -584,6 +585,7 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
     { to: "/analytics/countries", label: "Countries" },
     { to: "/analytics/reviews", label: "Reviews" },
     { to: "/analytics/financial", label: "Financial" },
+    { to: "/analytics/ads", label: "Ads" },
   ];
 
   const handleHeaderClick = () => {
@@ -1452,6 +1454,7 @@ export default function App() {
               <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail addToast={addToast} />} />
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
+              <Route path="/analytics/ads" element={<AnalyticsAds />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />
@@ -1462,7 +1465,7 @@ export default function App() {
               <Route path="/game-center/achievements" element={<GameCenterAchievements addToast={addToast} />} />
               <Route path="/game-center/challenges" element={<GameCenterChallenges addToast={addToast} />} />
               <Route path="/logs" element={<Navigate to="/builds" replace />} />
-              <Route path="/integrations" element={<Integrations />} />
+              <Route path="/integrations" element={<Integrations addToast={addToast} />} />
               <Route path="/app-settings" element={<AppSettings addToast={addToast} />} />
               <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
               <Route
