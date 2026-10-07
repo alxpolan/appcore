@@ -179,6 +179,131 @@ keywordsRouter.get("/", bundleAccess("query", "bundleId"), async (req, res) => {
   }
 });
 
+/**
+ * Rank -> weight curve for the visibility score. Roughly mirrors how attention drops off
+ * down a search result page: being #1 is worth a lot more than being #4, and past the
+ * first ~50 results a ranking is worth nothing. Keywords are then weighted by popularity,
+ * so ranking for a term nobody searches barely moves the score.
+ */
+function rankWeight(rank: number | null): number {
+  if (rank == null || rank < 1 || rank > 50) return 0;
+  if (rank === 1) return 1;
+  if (rank === 2) return 0.85;
+  if (rank === 3) return 0.75;
+  if (rank <= 5) return 0.6;
+  if (rank <= 10) return 0.45;
+  if (rank <= 20) return 0.25;
+  if (rank <= 30) return 0.12;
+  return 0.05;
+}
+
+const DEFAULT_POPULARITY = 5;
+
+keywordsRouter.get("/visibility", bundleAccess("query", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const days = Math.min(Math.max(parseInt(String(req.query.days ?? "90"), 10) || 90, 7), 365);
+
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
+
+    type KwRow = { id: string; term: string; popularity: number | null };
+    type DayRow = { keywordId: string; day: Date; rank: number | null };
+
+    const [keywords, dayRows, seedRows] = await Promise.all([
+      prisma.$queryRaw<KwRow[]>`
+        SELECT DISTINCT k.id, k.term, k.popularity
+        FROM "Keyword" k
+        JOIN "KeywordRanking" kr ON kr."keywordId" = k.id
+        WHERE kr."appId" = ${ownApp.id}
+      `,
+      // Latest rank per keyword per day inside the window.
+      prisma.$queryRaw<DayRow[]>`
+        SELECT DISTINCT ON (kr."keywordId", (kr."trackedAt" AT TIME ZONE 'UTC')::date)
+               kr."keywordId",
+               (kr."trackedAt" AT TIME ZONE 'UTC')::date AS day,
+               kr.rank
+        FROM "KeywordRanking" kr
+        WHERE kr."appId" = ${ownApp.id} AND kr."trackedAt" >= ${since}
+        ORDER BY kr."keywordId", day, kr."trackedAt" DESC
+      `,
+      // Last known rank before the window, so a keyword tracked irregularly still
+      // contributes from day one instead of starting at zero.
+      prisma.$queryRaw<{ keywordId: string; rank: number | null }[]>`
+        SELECT DISTINCT ON (kr."keywordId") kr."keywordId", kr.rank
+        FROM "KeywordRanking" kr
+        WHERE kr."appId" = ${ownApp.id} AND kr."trackedAt" < ${since}
+        ORDER BY kr."keywordId", kr."trackedAt" DESC
+      `,
+    ]);
+
+    if (keywords.length === 0) {
+      res.json({ series: [], trackedKeywords: 0, current: null, previous: null, top10: 0, top50: 0 });
+      return;
+    }
+
+    const popularityById = new Map(keywords.map((k) => [k.id, k.popularity ?? DEFAULT_POPULARITY]));
+
+    const byDay = new Map<string, Map<string, number | null>>();
+    for (const r of dayRows) {
+      const key = new Date(r.day).toISOString().slice(0, 10);
+      const map = byDay.get(key) ?? new Map<string, number | null>();
+      map.set(r.keywordId, r.rank);
+      byDay.set(key, map);
+    }
+
+    // Carry the last known rank forward across days without a tracking run.
+    const carried = new Map<string, number | null>(seedRows.map((r) => [r.keywordId, r.rank]));
+    const series: { date: string; score: number; trackedKeywords: number }[] = [];
+
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setUTCDate(d.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+
+      for (const [keywordId, rank] of byDay.get(key) ?? []) carried.set(keywordId, rank);
+      if (carried.size === 0) continue;
+
+      // Normalise against the keywords known on that day, not against every keyword ever
+      // tracked. Otherwise keywords added mid-window drag down the early days and the
+      // chart shows a rise that is really just the tracking catching up.
+      let weighted = 0;
+      let popularitySum = 0;
+      for (const [keywordId, rank] of carried) {
+        const popularity = popularityById.get(keywordId) ?? DEFAULT_POPULARITY;
+        popularitySum += popularity;
+        weighted += popularity * rankWeight(rank);
+      }
+
+      series.push({
+        date: key,
+        score: popularitySum > 0 ? Math.round((weighted / popularitySum) * 1000) / 10 : 0,
+        trackedKeywords: carried.size,
+      });
+    }
+
+    let top10 = 0;
+    let top50 = 0;
+    for (const rank of carried.values()) {
+      if (rank == null) continue;
+      if (rank <= 10) top10++;
+      if (rank <= 50) top50++;
+    }
+
+    res.json({
+      series,
+      trackedKeywords: keywords.length,
+      current: series.length ? series[series.length - 1].score : null,
+      previous: series.length > 1 ? series[0].score : null,
+      top10,
+      top50,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 keywordsRouter.get("/:id/history", async (req, res) => {
   try {
     const keyword = await prisma.keyword.findUnique({

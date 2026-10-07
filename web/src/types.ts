@@ -19,6 +19,21 @@ export interface CountryData {
   pageViews: number;
 }
 
+export interface VisibilityDayData {
+  date: string;
+  score: number;
+  trackedKeywords: number;
+}
+
+export interface VisibilityData {
+  series: VisibilityDayData[];
+  trackedKeywords: number;
+  current: number | null;
+  previous: number | null;
+  top10: number;
+  top50: number;
+}
+
 export interface DownloadsData {
   byDay: DayData[];
   byCountry: CountryData[];

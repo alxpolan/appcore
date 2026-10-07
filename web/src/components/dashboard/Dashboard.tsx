@@ -4,8 +4,9 @@ import AppInfoCard from "./AppInfoCard";
 import ActionPlan from "./ActionPlan";
 import RecentSuggestionsTable from "./RecentSuggestionsTable";
 import HeardAboutUs from "./HeardAboutUs";
+import VisibilityChart from "./VisibilityChart";
 import DownloadsChart from "../analytics/DownloadsChart";
-import type { AuthUser, DashboardData, DownloadsData } from "../../types";
+import type { AuthUser, DashboardData, DownloadsData, VisibilityData } from "../../types";
 
 export default function Dashboard({
   addToast,
@@ -18,6 +19,7 @@ export default function Dashboard({
 }) {
   const { data, loading, error } = useApi<DashboardData>("/dashboard");
   const { data: downloads } = useApi<DownloadsData>("/analytics/downloads?days=90");
+  const { data: visibility } = useApi<VisibilityData>("/keywords/visibility?days=90");
 
   if (loading)
     return (
@@ -42,6 +44,12 @@ export default function Dashboard({
       {downloads && (
         <div className="mb-5">
           <DownloadsChart data={downloads.byDay} />
+        </div>
+      )}
+
+      {visibility && (
+        <div className="mb-5">
+          <VisibilityChart data={visibility} />
         </div>
       )}
 
