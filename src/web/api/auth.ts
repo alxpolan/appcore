@@ -410,6 +410,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
         email: true,
         name: true,
         role: true,
+        heardAboutUs: true,
         createdAt: true,
         passwordHash: true,
         passkeys: {
@@ -516,6 +517,36 @@ authRouter.patch("/profile", requireAuth, async (req, res) => {
     }
 
     res.json({ id: user.id, email: user.email, name: user.name, role: user.role });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+const HEARD_ABOUT_US_OPTIONS = [
+  "Reddit",
+  "X (Twitter)",
+  "Google search",
+  "ChatGPT / AI assistant",
+  "An email from us",
+  "Friend or colleague",
+  "Other",
+] as const;
+
+authRouter.post("/heard-about-us", requireAuth, async (req, res) => {
+  try {
+    const { source } = req.body as { source?: string };
+
+    if (typeof source !== "string" || !(HEARD_ABOUT_US_OPTIONS as readonly string[]).includes(source)) {
+      res.status(400).json({ error: "Invalid source" });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { heardAboutUs: source, heardAboutUsAt: new Date() },
+    });
+
+    res.json({ heardAboutUs: source });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

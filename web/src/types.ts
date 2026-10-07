@@ -290,6 +290,7 @@ export interface AuthUser {
   plan?: "pro" | "free";
   isDemo?: boolean;
   isFringeloTeam?: boolean;
+  heardAboutUs?: string | null;
 }
 
 export type AppRole = "OWNER" | "EDITOR" | "VIEWER";

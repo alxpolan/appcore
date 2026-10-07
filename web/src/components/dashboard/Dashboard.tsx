@@ -3,13 +3,18 @@ import StatsGrid from "./StatsGrid";
 import AppInfoCard from "./AppInfoCard";
 import ActionPlan from "./ActionPlan";
 import RecentSuggestionsTable from "./RecentSuggestionsTable";
+import HeardAboutUs from "./HeardAboutUs";
 import DownloadsChart from "../analytics/DownloadsChart";
-import type { DashboardData, DownloadsData } from "../../types";
+import type { AuthUser, DashboardData, DownloadsData } from "../../types";
 
 export default function Dashboard({
   addToast,
+  user,
+  onUserUpdate,
 }: {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
+  user: AuthUser;
+  onUserUpdate?: (u: AuthUser) => void;
 }) {
   const { data, loading, error } = useApi<DashboardData>("/dashboard");
   const { data: downloads } = useApi<DownloadsData>("/analytics/downloads?days=90");
@@ -27,6 +32,8 @@ export default function Dashboard({
   return (
     <div>
       {app && <AppInfoCard app={app} />}
+
+      <HeardAboutUs user={user} onUserUpdate={onUserUpdate} />
 
       {app && <ActionPlan hasASC={config.hasASC} addToast={addToast} />}
 

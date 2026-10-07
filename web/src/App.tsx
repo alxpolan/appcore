@@ -1438,7 +1438,10 @@ export default function App() {
             )}
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard addToast={addToast} />} />
+              <Route
+                path="/dashboard"
+                element={<Dashboard addToast={addToast} user={user} onUserUpdate={(u) => setUser(u)} />}
+              />
               <Route path="/suggestions" element={<Suggestions addToast={addToast} />} />
               <Route path="/keywords" element={<Keywords addToast={addToast} isPro={user.plan === "pro"} />} />
               <Route path="/competitors" element={<Competitors addToast={addToast} />} />

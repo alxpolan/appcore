@@ -101,6 +101,8 @@ model User {
   emailVerifiedAt    DateTime?
   tokenVersion       Int                      @default(0)
   role               UserRole                 @default(USER)
+  heardAboutUs       String?
+  heardAboutUsAt     DateTime?
   passkeys           PasskeyCredential[]
   teamMembers        TeamMember[]
   emailVerifications EmailVerificationToken[]
