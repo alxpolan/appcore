@@ -494,6 +494,7 @@ export class AscAnalyticsService {
             "filter[frequency]": "DAILY",
             "filter[reportType]": "SUBSCRIPTION",
             "filter[reportSubType]": "SUMMARY",
+            "filter[version]": "1_3",
             "filter[vendorNumber]": this.settings.ascVendorNumber,
             "filter[reportDate]": date,
           },
@@ -504,7 +505,7 @@ export class AscAnalyticsService {
         reportDate = date;
         break;
       } catch (err: any) {
-        if (err?.response?.status === 404 || err?.response?.status === 400) continue;
+        if (err?.response?.status === 404) continue;
         throw err;
       }
     }

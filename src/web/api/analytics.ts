@@ -500,7 +500,12 @@ analyticsRouter.get("/trial-potential", ...requireBundleAccess("query"), async (
       const value = new AscAnalyticsService(settings).fetchTrialPotential(String(app.trackId));
       cached = { expiresAt: Date.now() + 30 * 60_000, value };
       trialPotentialCache.set(key, cached);
-      value.catch(() => trialPotentialCache.delete(key));
+      value.then(
+        (result) => {
+          if (!result.reportDate || result.unpricedTrials > 0) trialPotentialCache.delete(key);
+        },
+        () => trialPotentialCache.delete(key),
+      );
     }
     res.json(await cached.value);
   } catch (err) {

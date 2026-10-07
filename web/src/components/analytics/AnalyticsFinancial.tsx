@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { DollarSign, TrendingUp, Users, ShoppingBag, Hourglass } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -108,9 +108,14 @@ export default function AnalyticsFinancial({ addToast }: Props) {
   const { data: purchases, loading: purchasesLoading } = useApi<PurchaseData[]>(
     `/analytics/purchases?bundleId=${bundleId}&limit=100`,
   );
-  const { data: trialPotential, loading: trialsLoading, error: trialsError } = useApi<TrialPotential>(
+  const { data: trialPotential, loading: trialsLoading, error: trialsError, refetch: refetchTrialPotential } = useApi<TrialPotential>(
     `/analytics/trial-potential?bundleId=${bundleId}`,
   );
+
+  // A previous empty report may be in the client cache; refresh on each visit.
+  useEffect(() => {
+    refetchTrialPotential();
+  }, [refetchTrialPotential]);
 
   const { data: dash } = useApi<DashboardData>("/dashboard");
   const hasASC = dash?.config?.hasASC ?? true;
