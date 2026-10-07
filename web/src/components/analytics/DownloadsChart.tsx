@@ -36,7 +36,7 @@ export default function DownloadsChart({ data }: Props) {
               className={`px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors ${
                 range === r.days
                   ? "bg-[#595DD2] text-white"
-                  : "bg-[#f3f4f6] dark:bg-[#252b38] ${textSecondary} hover:bg-[#e5e7eb] dark:hover:bg-[#2a2f3d]"
+                  : `bg-[#f3f4f6] dark:bg-[#252b38] ${textSecondary} hover:bg-[#e5e7eb] dark:hover:bg-[#2a2f3d]`
               }`}
             >
               {r.label}
