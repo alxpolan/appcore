@@ -157,6 +157,13 @@ model TeamSettings {
   ascAutoKeyId                String?
   ascAutoPrivateKey           String?
   ascAutoConnectedAt          DateTime?
+  appleAdsOrgId               String?
+  appleAdsOrgName             String?
+  appleAdsClientId            String?
+  appleAdsTeamId              String?
+  appleAdsKeyId               String?
+  appleAdsPrivateKey          String?
+  appleAdsConnectedAt         DateTime?
   mcpEnabled                  Boolean   @default(false)
   githubAccessToken           String?
   githubUsername              String?
@@ -538,6 +545,25 @@ model AppStoreCommercePurchase {
 
   @@unique([bundleId, reportDate, purchaseType, contentName, contentAppleId, paymentMethod, device, platformVersion, sourceType, pageType, appDownloadDate, preOrder, territory], name: "purchaseDimensions")
   @@index([bundleId, reportDate])
+}
+
+// A subscriber who turned off auto-renew during their free trial. Apple still
+// counts them as an "active" trial (they keep access) until the trial's
+// natural end date, so they'd otherwise be counted as a likely conversion in
+// trial-value estimates even though they're already known not to convert.
+model AppStoreTrialCancellation {
+  id                String   @id @default(cuid())
+  bundleId          String
+  subscriptionId    String
+  country           String
+  originalStartDate DateTime
+  trialEndDate      DateTime
+  eventDate         DateTime
+  quantity          Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  @@unique([bundleId, subscriptionId, country, originalStartDate, eventDate], name: "trialCancelDimensions")
+  @@index([bundleId, subscriptionId, country, trialEndDate])
 }
 
 model AppReview {

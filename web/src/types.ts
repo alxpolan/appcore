@@ -93,6 +93,11 @@ export interface TrialPotential {
   trialCount: number;
   potentialProceedsUsd: number | null;
   unpricedTrials: number;
+  countryTotals: {
+    country: string;
+    trialCount: number;
+    proceedsUsd: number;
+  }[];
 }
 
 export interface AnalyticsSummary {
@@ -378,6 +383,40 @@ export interface GitHubStatus {
   connectedAt: string | null;
 }
 
+export interface AppleAdsStatus {
+  connected: boolean;
+  orgId: string | null;
+  orgName: string | null;
+  connectedAt: string | null;
+}
+
+export interface AppleAdsOrgOption {
+  orgId: string;
+  orgName: string;
+}
+
+export interface AppleAdsOrgsResponse {
+  orgs: AppleAdsOrgOption[];
+  selectedOrgId: string | null;
+}
+
+export interface AppleAdsCampaign {
+  id: string;
+  name: string;
+  status: string;
+  servingStatus: string;
+  dailyBudget: number | null;
+  totalBudget: number | null;
+  currency: string | null;
+  countriesOrRegions: string[];
+  startTime: string | null;
+  endTime: string | null;
+  spend: number;
+  impressions: number;
+  taps: number;
+  installs: number;
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;
@@ -630,6 +669,7 @@ export interface SubscriptionPrice {
   currency: string | null;
   customerPrice: string | null;
   proceeds: string | null;
+  proceedsUsd: string | null;
   pricePointId: string | null;
   startDate: string | null;
   preserved: boolean;
