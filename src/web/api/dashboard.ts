@@ -114,6 +114,7 @@ dashboardRouter.get("/", async (req, res) => {
       },
       config: {
         hasASC: !!(settings.ascIssuerId && settings.ascKeyId && settings.ascPrivateKey),
+        hasRevenueCat: !!ownApp?.revenueCatConnectedAt,
         hasSearchAds: !!env.APPLE_ADS_CLIENT_ID,
       },
       recentSuggestions: recentSuggestions.map((s) => ({

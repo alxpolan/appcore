@@ -217,6 +217,10 @@ model App {
   signingProvisioningProfiles String?
   signingTeamId              String?
   snapshotEnvVars            String?
+  revenueCatProjectId        String?
+  revenueCatProjectName      String?
+  revenueCatApiKey           String?
+  revenueCatConnectedAt      DateTime?
   accentColor                String?
   accentColorIconUrl         String?
   supportedLanguages         String[]                  @default([])
@@ -545,6 +549,47 @@ model AppStoreCommercePurchase {
 
   @@unique([bundleId, reportDate, purchaseType, contentName, contentAppleId, paymentMethod, device, platformVersion, sourceType, pageType, appDownloadDate, preOrder, territory], name: "purchaseDimensions")
   @@index([bundleId, reportDate])
+}
+
+model RevenueCatTransaction {
+  id                String   @id @default(cuid())
+  bundleId          String
+  rcId              String
+  customerId        String
+  productId         String
+  store             String
+  environment       String
+  eventType         String
+  periodType        String
+  isTrialConversion Boolean  @default(false)
+  renewalNumber     Int?
+  transactionId     String?
+  country           String?
+  occurredAt        DateTime
+  quantity          Int      @default(1)
+  grossUsd          Float    @default(0)
+  commissionUsd     Float    @default(0)
+  taxUsd            Float    @default(0)
+  proceedsUsd       Float    @default(0)
+  syncedAt          DateTime @default(now())
+
+  @@unique([bundleId, rcId], name: "revenueCatTransactionKey")
+  @@index([bundleId, occurredAt])
+}
+
+model RevenueCatCustomer {
+  id              String   @id @default(cuid())
+  bundleId        String
+  customerId      String
+  platform        String?
+  platformVersion String?
+  appVersion      String?
+  country         String?
+  attributes      Json?
+  appleAttribution Json?
+  syncedAt        DateTime @default(now())
+
+  @@unique([bundleId, customerId], name: "revenueCatCustomerKey")
 }
 
 // A subscriber who turned off auto-renew during their free trial. Apple still

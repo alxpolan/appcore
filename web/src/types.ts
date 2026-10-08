@@ -64,9 +64,33 @@ export interface RetentionData {
   totalSessions: number;
 }
 
+export interface RevenueCatDetail {
+  id: string;
+  customerId: string;
+  productId: string;
+  store: string;
+  environment: string;
+  eventType: string;
+  periodType: string;
+  isTrialConversion: boolean;
+  renewalNumber: number | null;
+  transactionId: string | null;
+  country: string | null;
+  proceedsUsd: number;
+  grossUsd: number;
+  customer: {
+    platform: string | null;
+    platformVersion: string | null;
+    appVersion: string | null;
+    country: string | null;
+    attributes: Record<string, string | null>;
+  } | null;
+}
+
 export interface PurchaseData {
   date: string;
-  purchaseType: string;
+  source: "App Store Connect" | "RevenueCat";
+  type: string;
   contentName: string;
   paymentMethod: string;
   territory: string;
@@ -74,6 +98,7 @@ export interface PurchaseData {
   proceedsUsd: number;
   salesUsd: number;
   payingUsers: number;
+  revenueCat: RevenueCatDetail | null;
 }
 
 export interface LtvPoint {
@@ -195,6 +220,7 @@ export interface DashboardConfig {
   country: string;
   locales: string;
   hasASC: boolean;
+  hasRevenueCat: boolean;
   hasSearchAds: boolean;
   scrapeInterval: number;
 }
@@ -390,6 +416,13 @@ export interface AppleAdsStatus {
   connectedAt: string | null;
 }
 
+export interface RevenueCatStatus {
+  connected: boolean;
+  projectId: string | null;
+  projectName: string | null;
+  connectedAt: string | null;
+}
+
 export interface AppleAdsOrgOption {
   orgId: string;
   orgName: string;
@@ -415,6 +448,20 @@ export interface AppleAdsCampaign {
   impressions: number;
   taps: number;
   installs: number;
+}
+
+export interface AppleAdsCampaignRevenue {
+  byCampaign: Record<string, {
+    proceedsUsd: number;
+    transactions: {
+      id: string;
+      date: string;
+      app: string;
+      product: string;
+      eventType: string;
+      proceedsUsd: number;
+    }[];
+  }>;
 }
 
 export interface GitHubRepo {

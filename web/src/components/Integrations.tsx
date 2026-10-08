@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { BarChart2, Megaphone, CheckCircle2 } from "lucide-react";
-import { useApi, apiPost } from "../hooks/useApi";
+import { BarChart2, Megaphone, DollarSign, CheckCircle2 } from "lucide-react";
+import { useApi, apiPost, getActiveBundleId } from "../hooks/useApi";
 import { borderDefault, btnPrimary, cardCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
 import { fmtRelativeDateTime } from "../utils/formatters";
-import type { AppleAdsStatus } from "../types";
+import type { AppleAdsStatus, DashboardData, RevenueCatStatus } from "../types";
 import AppleAdsConnectModal from "./integrations/AppleAdsConnectModal";
+import RevenueCatConnectModal from "./integrations/RevenueCatConnectModal";
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -13,11 +14,18 @@ interface Props {
 export default function Integrations({ addToast }: Props) {
   const { data: appleAds, refetch: refetchAppleAds } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
   const [showAppleAdsModal, setShowAppleAdsModal] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectingAppleAds, setDisconnectingAppleAds] = useState(false);
+
+  const bundleId = getActiveBundleId();
+  const { data: dash } = useApi<DashboardData>("/dashboard");
+  const appName = dash?.app?.displayName || dash?.app?.name || null;
+  const { data: revenueCat, refetch: refetchRevenueCat } = useApi<RevenueCatStatus>("/revenuecat/status");
+  const [showRevenueCatModal, setShowRevenueCatModal] = useState(false);
+  const [disconnectingRevenueCat, setDisconnectingRevenueCat] = useState(false);
 
   const handleDisconnectAppleAds = async () => {
     if (!confirm("Disconnect Apple Search Ads?")) return;
-    setDisconnecting(true);
+    setDisconnectingAppleAds(true);
     try {
       await apiPost("/apple-ads/disconnect");
       addToast("Apple Search Ads disconnected", "info");
@@ -25,7 +33,21 @@ export default function Integrations({ addToast }: Props) {
     } catch (err: any) {
       addToast(err.message ?? "Failed to disconnect", "error");
     } finally {
-      setDisconnecting(false);
+      setDisconnectingAppleAds(false);
+    }
+  };
+
+  const handleDisconnectRevenueCat = async () => {
+    if (!bundleId || !confirm(`Disconnect RevenueCat from ${appName ?? "this app"}?`)) return;
+    setDisconnectingRevenueCat(true);
+    try {
+      await apiPost("/revenuecat/disconnect", { bundleId });
+      addToast("RevenueCat disconnected", "info");
+      refetchRevenueCat();
+    } catch (err: any) {
+      addToast(err.message ?? "Failed to disconnect", "error");
+    } finally {
+      setDisconnectingRevenueCat(false);
     }
   };
 
@@ -51,15 +73,52 @@ export default function Integrations({ addToast }: Props) {
               </div>
               <button
                 onClick={handleDisconnectAppleAds}
-                disabled={disconnecting}
+                disabled={disconnectingAppleAds}
                 className="mt-1.5 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
               >
-                {disconnecting ? "Disconnecting…" : "Disconnect"}
+                {disconnectingAppleAds ? "Disconnecting…" : "Disconnect"}
               </button>
             </div>
           </div>
         ) : (
           <button onClick={() => setShowAppleAdsModal(true)} className={btnPrimary}>
+            Connect
+          </button>
+        ),
+    },
+    {
+      key: "revenuecat",
+      name: "RevenueCat",
+      description: appName
+        ? `Connect RevenueCat for ${appName} to see its subscription and revenue data next to your ASO data. RevenueCat keys are per-app — connect each app separately.`
+        : "Select an app above to connect RevenueCat for it. RevenueCat keys are per-app, so each app needs its own connection.",
+      icon: DollarSign,
+      iconBg: "bg-[#f05146]",
+      iconColor: "text-white",
+      render: () =>
+        !bundleId ? (
+          <span className={`text-[12px] ${textMuted}`}>Select an app first</span>
+        ) : revenueCat?.connected ? (
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-emerald-800 dark:text-emerald-400 truncate">
+                {revenueCat.projectName ?? "Connected"}
+              </div>
+              <div className={`text-[11px] ${textMuted} mt-0.5`}>
+                Connected {revenueCat.connectedAt ? fmtRelativeDateTime(revenueCat.connectedAt) : ""}
+              </div>
+              <button
+                onClick={handleDisconnectRevenueCat}
+                disabled={disconnectingRevenueCat}
+                className="mt-1.5 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
+              >
+                {disconnectingRevenueCat ? "Disconnecting…" : "Disconnect"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowRevenueCatModal(true)} className={btnPrimary}>
             Connect
           </button>
         ),
@@ -109,6 +168,15 @@ export default function Integrations({ addToast }: Props) {
         <AppleAdsConnectModal
           onClose={() => setShowAppleAdsModal(false)}
           onConnected={refetchAppleAds}
+          addToast={addToast}
+        />
+      )}
+
+      {showRevenueCatModal && bundleId && (
+        <RevenueCatConnectModal
+          bundleId={bundleId}
+          onClose={() => setShowRevenueCatModal(false)}
+          onConnected={refetchRevenueCat}
           addToast={addToast}
         />
       )}
