@@ -184,9 +184,14 @@ export function generateDemoPurchases(count: number, seed = 7): PurchaseData[] {
     const country = DEMO_COUNTRIES[Math.floor(rand() * DEMO_COUNTRIES.length)];
     const purchases = 1 + Math.floor(rand() * 4);
     const unitPrice = 2 + rand() * 8;
+    const isSubscription = product.type === "Auto-Renewable Subscription";
+    const type = isSubscription
+      ? ["New Subscription", "Renewal", "Trial"][Math.floor(rand() * 3)]
+      : "One Time";
     return {
       date: d.toISOString().slice(0, 10),
-      purchaseType: product.type,
+      source: "App Store Connect",
+      type,
       contentName: product.name,
       paymentMethod: PAYMENT_METHODS[Math.floor(rand() * PAYMENT_METHODS.length)],
       territory: country,
@@ -194,6 +199,7 @@ export function generateDemoPurchases(count: number, seed = 7): PurchaseData[] {
       proceedsUsd: Math.round(purchases * unitPrice * 0.7 * 100) / 100,
       salesUsd: Math.round(purchases * unitPrice * 100) / 100,
       payingUsers: purchases,
+      revenueCat: null,
     };
   });
   return rows.sort((a, b) => b.date.localeCompare(a.date));

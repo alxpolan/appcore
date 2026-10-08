@@ -234,6 +234,7 @@ export default function Analytics({ addToast }: Props) {
 
   const { data: dash } = useApi<DashboardData>("/dashboard");
   const hasASC = dash?.config?.hasASC ?? true;
+  const hasRevenueCat = dash?.config?.hasRevenueCat ?? false;
 
   const demoDownloads = useMemo(() => generateDemoDownloads(range), [range]);
   const demoSummary = useMemo(() => generateDemoSummary(demoDownloads), [demoDownloads]);
@@ -678,7 +679,7 @@ export default function Analytics({ addToast }: Props) {
               <tr>
                 <th className={TH}>Date</th>
                 <th className={TH}>Product</th>
-                <th className={TH}>Payment Method</th>
+                <th className={TH}>Type</th>
                 <th className={TH}>Territory</th>
                 <th className={`${TH} text-right`}>Qty</th>
                 <th className={`${TH} text-right pr-5`}>Proceeds</th>
@@ -690,9 +691,8 @@ export default function Analytics({ addToast }: Props) {
                   <td className={TD}>{p.date}</td>
                   <td className={TD}>
                     <span className={`font-medium ${textPrimary}`}>{p.contentName}</span>
-                    <span className={`text-[11px] ${textMuted} ml-2`}>{p.purchaseType}</span>
                   </td>
-                  <td className={`${TD} ${textMuted}`}>{p.paymentMethod}</td>
+                  <td className={`${TD} ${textMuted}`}>{p.type}</td>
                   <td className={TD}>
                     <div className="flex items-center gap-2">
                       <img
@@ -766,7 +766,7 @@ export default function Analytics({ addToast }: Props) {
             </div>
           )}
         </div>
-        {hasASC && (
+        {(hasASC || hasRevenueCat) && (
           <div className="flex items-center gap-3">
             {summary?.lastSyncAt && (
               <span className={`text-[12px] ${textMuted}`}>

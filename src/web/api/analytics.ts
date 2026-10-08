@@ -3,6 +3,7 @@ import { prisma, logger, getEffectiveSettingsForTeam } from "../../config";
 import { requireAuth, requireBundleAccess } from "../auth";
 import { bossScheduler } from "../../jobs/boss";
 import { QUEUE_NAME as SYNC_ANALYTICS_QUEUE } from "../../jobs/workers/sync-analytics.worker";
+import { QUEUE_NAME as SYNC_REVENUECAT_QUEUE } from "../../jobs/workers/sync-revenuecat.worker";
 import { AscAnalyticsService, type TrialPotential } from "../../services/asc-analytics";
 
 export const analyticsRouter = Router();
@@ -64,6 +65,48 @@ function downloadSourceLabel(sourceType: string): string {
   return (DOWNLOAD_SOURCE_TYPES as readonly string[]).includes(sourceType) ? sourceType : "Other";
 }
 
+async function revenueCatGapStart(bundleId: string): Promise<Date> {
+  const agg = await prisma.appStoreCommercePurchase.aggregate({
+    where: { bundleId },
+    _max: { reportDate: true },
+  });
+  if (!agg._max.reportDate) return new Date(0);
+  const start = new Date(agg._max.reportDate);
+  start.setUTCDate(start.getUTCDate() + 1);
+  start.setUTCHours(0, 0, 0, 0);
+  return start;
+}
+
+function revenueCatGapWhere(bundleId: string, gapStart: Date) {
+  return {
+    bundleId,
+    OR: [{ store: { not: "app_store" } }, { occurredAt: { gte: gapStart } }],
+  };
+}
+
+interface RevenueCatDetail {
+  id: string;
+  customerId: string;
+  productId: string;
+  store: string;
+  environment: string;
+  eventType: string;
+  periodType: string;
+  isTrialConversion: boolean;
+  renewalNumber: number | null;
+  transactionId: string | null;
+  country: string | null;
+  proceedsUsd: number;
+  grossUsd: number;
+  customer: {
+    platform: string | null;
+    platformVersion: string | null;
+    appVersion: string | null;
+    country: string | null;
+    attributes: Record<string, string | null>;
+  } | null;
+}
+
 // ─── GET /api/analytics/summary ──────────────────────────────────────────────
 analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res) => {
   try {
@@ -79,7 +122,13 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
     const minimumOsVersion = req.bundleApp!.minimumOsVersion;
     const minOsMajor = minimumOsVersion ? majorVersionNumber(minimumOsVersion) : null;
 
-    const [metricAgg, reviewAgg, purchaseAgg, platformAgg] = await Promise.all([
+    const rcGapStart = await revenueCatGapStart(bundleId);
+    const rcWhere = {
+      ...revenueCatGapWhere(bundleId, rcGapStart),
+      ...(Object.keys(dateFilter).length ? { occurredAt: dateFilter } : {}),
+    };
+
+    const [metricAgg, reviewAgg, purchaseAgg, platformAgg, rcAgg, rcCustomers] = await Promise.all([
       prisma.appStoreAnalytics.aggregate({
         where: {
           bundleId,
@@ -116,6 +165,11 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
             _sum: { impressions: true },
           })
         : Promise.resolve([]),
+      prisma.revenueCatTransaction.aggregate({
+        where: rcWhere,
+        _sum: { proceedsUsd: true },
+      }),
+      prisma.revenueCatTransaction.groupBy({ by: ["customerId"], where: rcWhere }),
     ]);
 
     const lastSyncAgg = await prisma.appStoreAnalytics.aggregate({
@@ -136,12 +190,12 @@ analyticsRouter.get("/summary", ...requireBundleAccess("query"), async (req, res
 
     res.json({
       totalDownloads: downloads,
-      totalProceeds: (metricAgg._sum.proceeds ?? 0) + (purchaseAgg._sum.proceedsUsd ?? 0),
+      totalProceeds: (metricAgg._sum.proceeds ?? 0) + (purchaseAgg._sum.proceedsUsd ?? 0) + (rcAgg._sum.proceedsUsd ?? 0),
       totalImpressions: impressions,
       totalPageViews: pageViews,
       totalTaps: metricAgg._sum.taps ?? 0,
       totalSessions: metricAgg._sum.sessions ?? 0,
-      totalPayingUsers: purchaseAgg._sum.payingUsers ?? 0,
+      totalPayingUsers: (purchaseAgg._sum.payingUsers ?? 0) + rcCustomers.length,
       minimumOsVersion,
       impressionsBelowMinOs,
       conversionRate: impressions > 0 ? (downloads / impressions) * 100 : null,
@@ -167,7 +221,8 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
     if (until) dateFilter.lte = until;
 
     const countryFilter = req.query.country as string | undefined;
-    const [rows, purchaseRows, sourceRows, installDeletionRows] = await Promise.all([
+    const rcGapStart = countryFilter ? null : await revenueCatGapStart(bundleId);
+    const [rows, purchaseRows, sourceRows, installDeletionRows, rcRows] = await Promise.all([
       prisma.appStoreAnalytics.findMany({
         where: {
           bundleId,
@@ -207,6 +262,16 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         },
         select: { reportDate: true, event: true, counts: true },
       }),
+
+      rcGapStart === null
+        ? Promise.resolve([])
+        : prisma.revenueCatTransaction.findMany({
+            where: {
+              ...revenueCatGapWhere(bundleId, rcGapStart),
+              ...(Object.keys(dateFilter).length ? { occurredAt: dateFilter } : {}),
+            },
+            select: { occurredAt: true, proceedsUsd: true },
+          }),
     ]);
 
     type DayEntry = {
@@ -283,6 +348,23 @@ analyticsRouter.get("/downloads", ...requireBundleAccess("query"), async (req, r
         deletions: 0,
       });
       day.proceeds += p.proceedsUsd;
+    }
+
+    for (const r of rcRows) {
+      const key = r.occurredAt.toISOString().slice(0, 10);
+      const day = (byDayMap[key] ??= {
+        date: key,
+        downloads: 0,
+        updates: 0,
+        proceeds: 0,
+        impressions: 0,
+        pageViews: 0,
+        taps: 0,
+        sessions: 0,
+        installs: 0,
+        deletions: 0,
+      });
+      day.proceeds += r.proceedsUsd;
     }
 
     for (const r of installDeletionRows) {
@@ -519,6 +601,25 @@ analyticsRouter.get("/purchases", ...requireBundleAccess("query"), async (req, r
   try {
     const bundleId = req.bundleApp!.bundleId;
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const rcGapStart = await revenueCatGapStart(bundleId);
+
+    const rcSelect = {
+      rcId: true,
+      customerId: true,
+      productId: true,
+      store: true,
+      environment: true,
+      eventType: true,
+      periodType: true,
+      isTrialConversion: true,
+      renewalNumber: true,
+      transactionId: true,
+      country: true,
+      occurredAt: true,
+      quantity: true,
+      proceedsUsd: true,
+      grossUsd: true,
+    } as const;
 
     const rows = await prisma.appStoreCommercePurchase.findMany({
       where: { bundleId },
@@ -537,10 +638,113 @@ analyticsRouter.get("/purchases", ...requireBundleAccess("query"), async (req, r
       },
     });
 
-    res.json(
-      rows.map((r) => ({
+    const oldestAscDate = rows.length ? rows[rows.length - 1].reportDate : rcGapStart;
+    const rcRows = await prisma.revenueCatTransaction.findMany({
+      where: { bundleId, occurredAt: { gte: oldestAscDate } },
+      orderBy: { occurredAt: "desc" },
+      take: Math.max(limit * 4, 2000),
+      select: rcSelect,
+    });
+
+    type RcRow = (typeof rcRows)[number];
+
+    const rcByDayCountry = new Map<string, RcRow[]>();
+    for (const r of rcRows) {
+      const key = `${r.occurredAt.toISOString().slice(0, 10)}|${(r.country ?? "").toUpperCase()}`;
+      const bucket = rcByDayCountry.get(key);
+      if (bucket) bucket.push(r);
+      else rcByDayCountry.set(key, [r]);
+    }
+
+    function withinTolerance(a: number, b: number): boolean {
+      return Math.abs(a - b) <= Math.max(1, Math.abs(a) * 0.15);
+    }
+
+    const matches = new Map<(typeof rows)[number], RcRow>();
+    for (const r of rows) {
+      const key = `${r.reportDate.toISOString().slice(0, 10)}|${r.territory.toUpperCase()}`;
+      const bucket = rcByDayCountry.get(key);
+      if (!bucket?.length) continue;
+      let bestIdx = -1;
+      let bestDiff = Infinity;
+      for (let i = 0; i < bucket.length; i++) {
+        const diff = Math.abs(bucket[i].proceedsUsd - r.proceedsUsd);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0 && withinTolerance(bucket[bestIdx].proceedsUsd, r.proceedsUsd)) {
+        matches.set(r, bucket.splice(bestIdx, 1)[0]);
+      }
+    }
+
+    const subscriptionContentNames = new Set<string>();
+    for (const [ascRow, rcRow] of matches) {
+      if (rcRow.eventType !== "NON_RENEWING_PURCHASE") subscriptionContentNames.add(ascRow.contentName);
+    }
+
+    const standaloneRc: RcRow[] = [];
+    for (const bucket of rcByDayCountry.values()) {
+      for (const r of bucket) {
+        if (r.store !== "app_store" || r.occurredAt >= rcGapStart) standaloneRc.push(r);
+      }
+    }
+
+    const usedCustomerIds = new Set<string>();
+    for (const r of matches.values()) usedCustomerIds.add(r.customerId);
+    for (const r of standaloneRc) usedCustomerIds.add(r.customerId);
+
+    const customers = usedCustomerIds.size
+      ? await prisma.revenueCatCustomer.findMany({
+          where: { bundleId, customerId: { in: [...usedCustomerIds] } },
+          select: { customerId: true, platform: true, platformVersion: true, appVersion: true, country: true, attributes: true },
+        })
+      : [];
+    const customerById = new Map(customers.map((c) => [c.customerId, c]));
+
+    function toRcDetail(r: RcRow): RevenueCatDetail {
+      const customer = customerById.get(r.customerId);
+      return {
+        id: r.rcId,
+        customerId: r.customerId,
+        productId: r.productId,
+        store: r.store,
+        environment: r.environment,
+        eventType: r.eventType,
+        periodType: r.periodType,
+        isTrialConversion: r.isTrialConversion,
+        renewalNumber: r.renewalNumber,
+        transactionId: r.transactionId,
+        country: r.country,
+        proceedsUsd: r.proceedsUsd,
+        grossUsd: r.grossUsd,
+        customer: customer
+          ? {
+              platform: customer.platform,
+              platformVersion: customer.platformVersion,
+              appVersion: customer.appVersion,
+              country: customer.country,
+              attributes: (customer.attributes as Record<string, string | null> | null) ?? {},
+            }
+          : null,
+      };
+    }
+
+    function transactionType(r: RcRow | null, contentName: string): string {
+      if (!r) return subscriptionContentNames.has(contentName) ? "Subscription" : "One Time";
+      if (r.eventType === "NON_RENEWING_PURCHASE") return "One Time";
+      if (r.periodType === "TRIAL") return "Trial";
+      if (r.eventType === "RENEWAL") return r.isTrialConversion ? "Trial Converted" : "Renewal";
+      return "New Subscription";
+    }
+
+    const ascPurchases = rows.map((r) => {
+      const match = matches.get(r) ?? null;
+      return {
         date: r.reportDate.toISOString().slice(0, 10),
-        purchaseType: r.purchaseType,
+        source: "App Store Connect" as const,
+        type: transactionType(match, r.contentName),
         contentName: r.contentName,
         paymentMethod: r.paymentMethod,
         territory: r.territory,
@@ -548,8 +752,27 @@ analyticsRouter.get("/purchases", ...requireBundleAccess("query"), async (req, r
         proceedsUsd: r.proceedsUsd,
         salesUsd: r.salesUsd,
         payingUsers: r.payingUsers,
-      })),
-    );
+        revenueCat: match ? toRcDetail(match) : null,
+      };
+    });
+
+    const rcStandalone = standaloneRc.map((r) => ({
+      date: r.occurredAt.toISOString().slice(0, 10),
+      source: "RevenueCat" as const,
+      type: transactionType(r, ""),
+      contentName: r.productId,
+      paymentMethod: r.store,
+      territory: r.country ?? "",
+      purchases: r.quantity,
+      proceedsUsd: r.proceedsUsd,
+      salesUsd: r.grossUsd,
+      payingUsers: 1,
+      revenueCat: toRcDetail(r),
+    }));
+
+    const merged = [...ascPurchases, ...rcStandalone].sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
+
+    res.json(merged);
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -572,7 +795,9 @@ analyticsRouter.get("/ltv", ...requireBundleAccess("query"), async (req, res) =>
     const since = resolveSince(req.query, anchor);
     const until = resolveUntil(req.query);
 
-    const [rows, purchaseRows] = await Promise.all([
+    const rcGapStart = await revenueCatGapStart(bundleId);
+
+    const [rows, purchaseRows, rcRows] = await Promise.all([
       prisma.appStoreAnalytics.findMany({
         where: { bundleId },
         orderBy: { reportDate: "asc" },
@@ -581,6 +806,10 @@ analyticsRouter.get("/ltv", ...requireBundleAccess("query"), async (req, res) =>
       prisma.appStoreCommercePurchase.findMany({
         where: { bundleId },
         select: { reportDate: true, proceedsUsd: true },
+      }),
+      prisma.revenueCatTransaction.findMany({
+        where: revenueCatGapWhere(bundleId, rcGapStart),
+        select: { occurredAt: true, proceedsUsd: true },
       }),
     ]);
 
@@ -595,6 +824,11 @@ analyticsRouter.get("/ltv", ...requireBundleAccess("query"), async (req, res) =>
       const key = p.reportDate.toISOString().slice(0, 10);
       const d = (byDayMap[key] ??= { downloads: 0, proceeds: 0 });
       d.proceeds += p.proceedsUsd;
+    }
+    for (const r of rcRows) {
+      const key = r.occurredAt.toISOString().slice(0, 10);
+      const d = (byDayMap[key] ??= { downloads: 0, proceeds: 0 });
+      d.proceeds += r.proceedsUsd;
     }
 
     const dates = Object.keys(byDayMap).sort();
@@ -778,16 +1012,7 @@ analyticsRouter.post("/sync", requireAuth, async (req, res) => {
   try {
     const teamId = req.user!.teamId;
     const settings = await getEffectiveSettingsForTeam(teamId!);
-
-    if (!settings.ascIssuerId || !settings.ascKeyId || !settings.ascPrivateKey) {
-      res.status(400).json({ error: "App Store Connect credentials not configured." });
-      return;
-    }
-
-    if (!settings.ascVendorNumber) {
-      res.status(400).json({ error: "ASC Vendor Number not configured in Settings." });
-      return;
-    }
+    const hasAsc = !!(settings.ascIssuerId && settings.ascKeyId && settings.ascPrivateKey && settings.ascVendorNumber);
 
     const requestedBundleId = (req.body.bundleId as string) || null;
     if (!requestedBundleId) {
@@ -802,7 +1027,7 @@ analyticsRouter.post("/sync", requireAuth, async (req, res) => {
         bundleId: requestedBundleId,
         ...teamFilter,
       },
-      select: { bundleId: true, trackId: true, name: true },
+      select: { bundleId: true, trackId: true, name: true, revenueCatConnectedAt: true, revenueCatProjectId: true },
     });
 
     if (ownApps.length === 0) {
@@ -812,19 +1037,33 @@ analyticsRouter.post("/sync", requireAuth, async (req, res) => {
       return;
     }
 
+    const anyRevenueCat = ownApps.some((a) => a.revenueCatConnectedAt && a.revenueCatProjectId);
+    if (!hasAsc && !anyRevenueCat) {
+      res.status(400).json({ error: "Neither App Store Connect nor RevenueCat is configured." });
+      return;
+    }
+
+    const enqueued: string[] = [];
     for (const app of ownApps) {
-      if (!app.trackId) continue;
-      await bossScheduler.sendJob(SYNC_ANALYTICS_QUEUE, {
-        teamId,
-        bundleId: app.bundleId,
-        ascAppId: app.trackId.toString(),
-      });
-      logger.info(`[BOSS] Enqueued ${SYNC_ANALYTICS_QUEUE} for ${app.bundleId}`);
+      if (hasAsc && app.trackId) {
+        await bossScheduler.sendJob(SYNC_ANALYTICS_QUEUE, {
+          teamId,
+          bundleId: app.bundleId,
+          ascAppId: app.trackId.toString(),
+        });
+        logger.info(`[BOSS] Enqueued ${SYNC_ANALYTICS_QUEUE} for ${app.bundleId}`);
+        enqueued.push("App Store Connect");
+      }
+      if (app.revenueCatConnectedAt && app.revenueCatProjectId) {
+        await bossScheduler.sendJob(SYNC_REVENUECAT_QUEUE, { bundleId: app.bundleId });
+        logger.info(`[BOSS] Enqueued ${SYNC_REVENUECAT_QUEUE} for ${app.bundleId}`);
+        enqueued.push("RevenueCat");
+      }
     }
 
     res.json({
       ok: true,
-      message: `Analytics sync enqueued for ${ownApps.map((a) => a.name).join(", ")}`,
+      message: `${[...new Set(enqueued)].join(" + ") || "Analytics"} sync enqueued for ${ownApps.map((a) => a.name).join(", ")}`,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
