@@ -35,6 +35,8 @@ import {
   handler as translateLocalizationHandler,
 } from "./workers/translate-localization.worker";
 import { QUEUE_NAME as ASC_MAILBOX_QUEUE, handler as ascMailboxHandler } from "./workers/asc-mailbox.worker";
+import { QUEUE_NAME as SYNC_REVENUECAT_QUEUE, handler as syncRevenueCatHandler } from "./workers/sync-revenuecat.worker";
+import type { SyncRevenueCatData } from "./workers/sync-revenuecat.worker";
 
 async function loadTeamApps() {
   return prisma.team.findMany({
@@ -80,6 +82,8 @@ export class BossScheduler {
       COMPETITOR_INTEL_QUEUE,
       TRANSLATE_LOCALIZATION_QUEUE,
       ASC_MAILBOX_QUEUE,
+      SYNC_REVENUECAT_QUEUE,
+      `${SYNC_REVENUECAT_QUEUE}/dispatch`,
     ];
     for (const q of allQueues) {
       await this.boss.createQueue(q);
@@ -256,8 +260,23 @@ export class BossScheduler {
       logger.info(`[BOSS] ${ASC_MAILBOX_QUEUE} not scheduled — ASC_MAILBOX_IMAP_HOST not configured`);
     }
 
+    // ── sync-revenuecat ──────────────────────────────────────────────────────
+    await this.boss.work(`${SYNC_REVENUECAT_QUEUE}/dispatch`, async () => {
+      const apps = await prisma.app.findMany({
+        where: { isOwnApp: true, revenueCatConnectedAt: { not: null } },
+        select: { bundleId: true },
+      });
+      for (const app of apps) {
+        const data: SyncRevenueCatData = { bundleId: app.bundleId };
+        await this.boss.send(SYNC_REVENUECAT_QUEUE, data);
+        logger.info(`[BOSS] Enqueued ${SYNC_REVENUECAT_QUEUE} for ${app.bundleId}`);
+      }
+    });
+    await this.boss.work(SYNC_REVENUECAT_QUEUE, syncRevenueCatHandler);
+    await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "0 3 * * *", {}, { tz: "Europe/Berlin" });
+
     logger.info(
-      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}, ${ASC_MAILBOX_QUEUE}`,
+      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}, ${ASC_MAILBOX_QUEUE}, ${SYNC_REVENUECAT_QUEUE}`,
     );
     this._running = true;
   }
