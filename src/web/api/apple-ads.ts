@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { prisma, logger } from "../../config";
-import { requireAuth, requireTeamAdmin, loadTeamSettings } from "../auth";
+import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
 import { listAppleAdsOrgs, listAppleAdsCampaigns } from "../../services/apple-ads";
+import { appleAdsCampaignAttribution } from "../../services/revenuecat-attribution";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
@@ -40,6 +41,75 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
       body: err?.response?.data,
     });
     res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
+  }
+});
+
+appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
+  const orgId = req.teamSettings?.appleAdsOrgId;
+  if (!req.teamSettings?.appleAdsConnectedAt || !orgId) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const apps = await prisma.app.findMany({
+      where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
+      select: { id: true, bundleId: true, displayName: true, name: true },
+    });
+    const accessibleApps = req.user!.role === "ADMIN"
+      ? apps
+      : (await Promise.all(apps.map(async (app) => ({ app, allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id) }))))
+          .filter(({ allowed }) => allowed).map(({ app }) => app);
+    const bundleIds = accessibleApps.map((app) => app.bundleId);
+    if (bundleIds.length === 0) {
+      res.json({ byCampaign: {} });
+      return;
+    }
+
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - 30);
+    start.setUTCHours(0, 0, 0, 0);
+    const [customers, transactions] = await Promise.all([
+      prisma.revenueCatCustomer.findMany({
+        where: { bundleId: { in: bundleIds } },
+        select: { bundleId: true, customerId: true, appleAttribution: true, attributes: true },
+      }),
+      prisma.revenueCatTransaction.findMany({
+        where: { bundleId: { in: bundleIds }, occurredAt: { gte: start }, environment: "production" },
+        select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, occurredAt: true, proceedsUsd: true },
+        orderBy: { occurredAt: "desc" },
+      }),
+    ]);
+
+    const attributionByCustomer = new Map(customers.map((customer) => [
+      `${customer.bundleId}\0${customer.customerId}`,
+      appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
+    ]));
+    const appNameByBundle = new Map(accessibleApps.map((app) => [app.bundleId, app.displayName || app.name]));
+    const byCampaign: Record<string, {
+      proceedsUsd: number;
+      transactions: { id: string; date: string; app: string; product: string; eventType: string; proceedsUsd: number }[];
+    }> = {};
+
+    for (const transaction of transactions) {
+      const attribution = attributionByCustomer.get(`${transaction.bundleId}\0${transaction.customerId}`);
+      if (!attribution || (attribution.orgId && attribution.orgId !== orgId)) continue;
+      const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [] };
+      campaign.proceedsUsd += transaction.proceedsUsd;
+      campaign.transactions.push({
+        id: transaction.rcId,
+        date: transaction.occurredAt.toISOString(),
+        app: appNameByBundle.get(transaction.bundleId) ?? transaction.bundleId,
+        product: transaction.productId,
+        eventType: transaction.eventType,
+        proceedsUsd: transaction.proceedsUsd,
+      });
+    }
+
+    res.json({ byCampaign });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign revenue error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: "Failed to load campaign revenue" });
   }
 });
 

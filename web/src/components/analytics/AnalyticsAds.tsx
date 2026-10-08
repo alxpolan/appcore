@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
-import { Megaphone, ArrowRight } from "lucide-react";
+import { Megaphone, ArrowRight, ChevronRight } from "lucide-react";
 import { useApi, apiPost } from "../../hooks/useApi";
-import type { AppleAdsCampaign, AppleAdsOrgsResponse, AppleAdsStatus } from "../../types";
+import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsOrgsResponse, AppleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
 
@@ -36,12 +36,15 @@ export default function AnalyticsAds() {
     refetch: refetchOrgs,
   } = useApi<AppleAdsOrgsResponse>("/apple-ads/orgs", [status?.connected], true);
   const [switchingOrg, setSwitchingOrg] = useState(false);
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const {
     data: campaignsData,
     loading,
     error,
     refetch: refetchCampaigns,
   } = useApi<{ campaigns: AppleAdsCampaign[] }>("/apple-ads/campaigns", [status?.connected, status?.orgId], true);
+  const { data: revenueData, loading: revenueLoading, error: revenueError, refetch: refetchRevenue } =
+    useApi<AppleAdsCampaignRevenue>("/apple-ads/campaign-revenue", [status?.connected, status?.orgId], true);
 
   const handleOrgChange = async (orgId: string) => {
     setSwitchingOrg(true);
@@ -49,6 +52,8 @@ export default function AnalyticsAds() {
       await apiPost("/apple-ads/org", { orgId });
       await Promise.all([refetchStatus(), refetchOrgs()]);
       refetchCampaigns();
+      refetchRevenue();
+      setExpandedCampaign(null);
     } finally {
       setSwitchingOrg(false);
     }
@@ -71,7 +76,7 @@ export default function AnalyticsAds() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className={`${pageTitle} mb-1`}>Ads</h1>
-          <p className={`text-[13px] ${textSecondary}`}>Apple Search Ads campaigns, last 30 days.</p>
+          <p className={`text-[13px] ${textSecondary}`}>Apple Search Ads campaigns and attributed RevenueCat transactions, last 30 days.</p>
         </div>
         {status?.connected && orgsData && orgsData.orgs.length > 0 && (
           <label className="flex flex-col items-end gap-1 shrink-0">
@@ -141,6 +146,9 @@ export default function AnalyticsAds() {
               <Megaphone className={`w-4 h-4 ${textMuted}`} />
               <div className={`text-[16px] font-semibold ${textPrimary}`}>Campaigns</div>
             </div>
+            <div className={`px-5 py-2 text-[11px] ${textMuted} border-b border-[#f3f4f6] dark:border-[#2a2f3d]`}>
+              RevenueCat proceeds are in USD and include later purchases by customers attributed to each Apple Ads campaign.
+            </div>
             {loading ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
             ) : error ? (
@@ -148,7 +156,8 @@ export default function AnalyticsAds() {
             ) : campaigns.length === 0 ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No campaigns found</div>
             ) : (
-              <table className="w-full">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[1100px]">
                 <thead>
                   <tr>
                     <th className={TH}>Campaign</th>
@@ -157,14 +166,19 @@ export default function AnalyticsAds() {
                     <th className={`${TH} text-right`}>Spend</th>
                     <th className={`${TH} text-right`}>Impressions</th>
                     <th className={`${TH} text-right`}>Taps</th>
-                    <th className={`${TH} text-right pr-5`}>Installs</th>
+                    <th className={`${TH} text-right`}>Installs</th>
+                    <th className={`${TH} text-right`}>Transactions</th>
+                    <th className={`${TH} text-right pr-5`}>RC Proceeds</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {campaigns.map((c) => (
-                    <tr key={c.id} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors">
+                  {campaigns.map((c) => (<Fragment key={c.id}>
+                    <tr onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors cursor-pointer">
                       <td className={TD}>
-                        <span className={`font-medium ${textPrimary}`}>{c.name}</span>
+                        <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
+                          <ChevronRight className={`w-3.5 h-3.5 ${textMuted} transition-transform ${expandedCampaign === c.id ? "rotate-90" : ""}`} />
+                          {c.name}
+                        </span>
                       </td>
                       <td className={TD}>{statusBadge(c.status)}</td>
                       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
@@ -173,11 +187,50 @@ export default function AnalyticsAds() {
                       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(c.spend, c.currency)}</td>
                       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.impressions)}</td>
                       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.taps)}</td>
-                      <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>{fmtNumber(c.installs)}</td>
+                      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.installs)}</td>
+                      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                        {revenueLoading ? "…" : revenueError ? "—" : fmtNumber(revenueData?.byCampaign[c.id]?.transactions.length ?? 0)}
+                      </td>
+                      <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>
+                        {revenueLoading ? "…" : revenueError ? "—" : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
+                      </td>
                     </tr>
-                  ))}
+                    {expandedCampaign === c.id && (
+                      <tr className="bg-[#fafbfc] dark:bg-[#161920]">
+                        <td colSpan={9} className="px-5 py-4">
+                          <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>RevenueCat transactions</div>
+                          {revenueLoading ? (
+                            <div className={`text-[12px] ${textMuted}`}>Loading…</div>
+                          ) : revenueError ? (
+                            <div className="text-[12px] text-red-500">Could not load attributed transactions.</div>
+                          ) : !revenueData?.byCampaign[c.id]?.transactions.length ? (
+                            <div className={`text-[12px] ${textMuted}`}>No attributed transactions in the last 30 days.</div>
+                          ) : (
+                            <div className="max-h-80 overflow-auto">
+                              <table className="w-full text-[12px]">
+                                <thead><tr>
+                                  <th className={TH}>Date</th><th className={TH}>App</th><th className={TH}>Product</th>
+                                  <th className={TH}>Event</th><th className={`${TH} text-right`}>Proceeds (USD)</th>
+                                </tr></thead>
+                                <tbody>{revenueData.byCampaign[c.id].transactions.map((transaction) => (
+                                  <tr key={transaction.id}>
+                                    <td className={TD}>{transaction.date.slice(0, 10)}</td>
+                                    <td className={TD}>{transaction.app}</td>
+                                    <td className={TD}>{transaction.product}</td>
+                                    <td className={TD}>{transaction.eventType.replace(/_/g, " ")}</td>
+                                    <td className={`${TD} text-right tabular-nums`}>{fmtMoney(transaction.proceedsUsd, "USD")}</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>
