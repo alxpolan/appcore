@@ -433,6 +433,29 @@ export interface AppleAdsOrgsResponse {
   selectedOrgId: string | null;
 }
 
+export interface AppleAdsAppOption {
+  adamId: string;
+  name: string;
+  bundleId: string | null;
+}
+
+export interface AppleAdsAppsResponse {
+  apps: AppleAdsAppOption[];
+  storeAppsAvailable: boolean;
+}
+
+export interface AppleAdsNegativeKeyword {
+  id: string;
+  text: string;
+  matchType: string;
+  status: string | null;
+}
+
+export interface AppleAdsNegativesResponse {
+  campaign: AppleAdsNegativeKeyword[];
+  adGroups: { id: string; name: string; negatives: AppleAdsNegativeKeyword[] }[];
+}
+
 export interface AppleAdsStats {
   spend: number;
   impressions: number;

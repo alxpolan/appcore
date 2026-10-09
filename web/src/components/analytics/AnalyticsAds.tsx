@@ -1,11 +1,13 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Megaphone, ArrowRight, Check, ChevronRight, ExternalLink, X } from "lucide-react";
+import { Megaphone, ArrowRight, Check, ChevronRight, ExternalLink, Plus, X } from "lucide-react";
 import { useApi, apiPost } from "../../hooks/useApi";
+import { usePermissions } from "../../hooks/usePermissions";
 import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsOrgsResponse, AppleAdsStatus } from "../../types";
-import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
+import { TD, TH, borderDefault, btnSecSm, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
 
 function fmtMoney(amount: number, currency: string | null): string {
   return new Intl.NumberFormat(undefined, {
@@ -35,6 +37,8 @@ function statusDot(status: string) {
 
 export default function AnalyticsAds() {
   const navigate = useNavigate();
+  const { canManageTeam } = usePermissions();
+  const [showCreate, setShowCreate] = useState(false);
   const { data: status, refetch: refetchStatus } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
   const { data: orgsData, refetch: refetchOrgs } = useApi<AppleAdsOrgsResponse>(
     "/apple-ads/orgs",
@@ -201,6 +205,11 @@ export default function AnalyticsAds() {
             <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
               <Megaphone className={`w-4 h-4 ${textMuted}`} />
               <div className={`text-[16px] font-semibold ${textPrimary}`}>Campaigns</div>
+              {canManageTeam && (
+                <button onClick={() => setShowCreate(true)} className={`${btnSecSm} ml-auto`}>
+                  <Plus className="w-3.5 h-3.5" /> New Campaign
+                </button>
+              )}
             </div>
             {loading ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
@@ -327,6 +336,16 @@ export default function AnalyticsAds() {
               </div>
             )}
           </div>
+          {showCreate && (
+            <AnalyticsAdsCreateCampaign
+              defaultCurrency={currency}
+              onClose={() => setShowCreate(false)}
+              onCreated={() => {
+                setShowCreate(false);
+                refetchCampaigns();
+              }}
+            />
+          )}
         </>
       )}
     </div>

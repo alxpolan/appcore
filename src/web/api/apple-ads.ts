@@ -2,12 +2,23 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
-import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend, resolveAppleAdsRange } from "../../services/apple-ads";
-import { appleAdsCampaignAttribution } from "../../services/revenuecat-attribution";
-import { buildTrialPriceMap, findCohortStart, isTrialConverted, trialPotentialFor } from "../../services/trial-pricing";
+import { listAppleAdsOrgs, listAppleAdsCampaigns, listAppleAdsAdGroups, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend, resolveAppleAdsRange, listAppleAdsApps, createAppleAdsCampaignFull, validateCreateCampaignInput, listAppleAdsNegativeKeywords, createAppleAdsNegativeKeywordsBulk, deleteAppleAdsNegativeKeywordsBulk, type CreateAppleAdsCampaignInput, type CreateAppleAdsNegativeKeywordInput } from "../../services/apple-ads";
+import { getAppleAdsCampaignRevenue } from "../../services/apple-ads-revenue";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
+
+function appleWriteErrorMessage(err: any): string {
+  const data = err?.response?.data;
+  const appleErr = data?.error;
+  if (appleErr) {
+    const details = Array.isArray(appleErr.errors)
+      ? appleErr.errors.map((e: any) => e.message ?? e.messageCode ?? JSON.stringify(e)).join("; ")
+      : (appleErr.message ?? JSON.stringify(appleErr));
+    return `Apple Search Ads rejected the request: ${details}`;
+  }
+  return String(err?.message ?? err);
+}
 
 appleAdsRouter.get("/status", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
@@ -43,6 +54,82 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
     });
     res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
   }
+});
+
+appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    let input: CreateAppleAdsCampaignInput;
+    try {
+      input = validateCreateCampaignInput(req.body);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    const created = await createAppleAdsCampaignFull({
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    }, input);
+    res.json({ campaign: created });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign create error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+      partialResult: (err as any)?.partialResult,
+    });
+    const status = err?.response?.status;
+    res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
+  }
+});
+
+appleAdsRouter.get("/apps", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  const teamApps = await prisma.app.findMany({
+    where: { teamId: req.user!.teamId, trackId: { not: null } },
+    select: { trackId: true, name: true, displayName: true, bundleId: true },
+    orderBy: { name: "asc" },
+  });
+
+  let storeAppsAvailable = true;
+  let storeApps: { adamId: string; name: string }[] = [];
+  try {
+    storeApps = await listAppleAdsApps({
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    });
+  } catch (err: any) {
+    logger.warn("[apple-ads] store apps fetch failed, falling back to team apps", { err: String(err?.message ?? err) });
+    storeAppsAvailable = false;
+  }
+
+  const apps = new Map<string, { adamId: string; name: string; bundleId: string | null }>();
+  for (const a of teamApps) {
+    if (a.trackId == null) continue;
+    apps.set(String(a.trackId), { adamId: String(a.trackId), name: a.displayName ?? a.name, bundleId: a.bundleId });
+  }
+  for (const a of storeApps) {
+    if (!apps.has(a.adamId)) apps.set(a.adamId, { adamId: a.adamId, name: a.name, bundleId: null });
+  }
+  res.json({ apps: [...apps.values()], storeAppsAvailable });
 });
 
 appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (req, res) => {
@@ -102,6 +189,142 @@ appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async
   }
 });
 
+function validateNegativesBody(body: any): { adGroupId: string | null; keywords: CreateAppleAdsNegativeKeywordInput[] } {
+  if (!body || typeof body !== "object") throw new Error("Request body is required");
+  const adGroupId = body.adGroupId ?? null;
+  if (adGroupId != null && (typeof adGroupId !== "string" || adGroupId.trim().length === 0)) {
+    throw new Error("adGroupId must be a non-empty string or omitted for campaign-level negatives");
+  }
+  if (!Array.isArray(body.keywords) || body.keywords.length === 0) {
+    throw new Error("At least one keyword is required");
+  }
+  if (body.keywords.length > 500) throw new Error("At most 500 negative keywords can be added at once");
+  const keywords = body.keywords.map((k: any, j: number) => {
+    if (!k || typeof k !== "object") throw new Error(`keywords[${j}] must be an object`);
+    if (k.matchType !== "EXACT" && k.matchType !== "BROAD") {
+      throw new Error(`keywords[${j}].matchType must be "EXACT" or "BROAD"`);
+    }
+    if (typeof k.text !== "string" || k.text.trim().length === 0 || k.text.trim().length > 100) {
+      throw new Error(`keywords[${j}].text must be 1–100 characters`);
+    }
+    return { text: k.text.trim(), matchType: k.matchType };
+  });
+  return { adGroupId: adGroupId?.trim() ?? null, keywords };
+}
+
+appleAdsRouter.get("/campaigns/:campaignId/negatives", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const creds = {
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    };
+    const campaignId = req.params.campaignId as string;
+    const [campaign, adGroups] = await Promise.all([
+      listAppleAdsNegativeKeywords(creds, campaignId, null),
+      listAppleAdsAdGroups(creds, campaignId),
+    ]);
+    const byAdGroup = await Promise.all(
+      adGroups.map(async (g) => ({
+        id: g.id,
+        name: g.name,
+        negatives: await listAppleAdsNegativeKeywords(creds, campaignId, g.id),
+      })),
+    );
+    res.json({ campaign, adGroups: byAdGroup });
+  } catch (err: any) {
+    logger.error("[apple-ads] negatives fetch error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    res.status(500).json({ error: "Failed to load negative keywords from Apple Search Ads" });
+  }
+});
+
+appleAdsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    let validated: { adGroupId: string | null; keywords: CreateAppleAdsNegativeKeywordInput[] };
+    try {
+      validated = validateNegativesBody(req.body);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    const added = await createAppleAdsNegativeKeywordsBulk({
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    }, req.params.campaignId as string, validated.adGroupId, validated.keywords);
+    res.json({ added });
+  } catch (err: any) {
+    logger.error("[apple-ads] negatives create error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    const status = err?.response?.status;
+    res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
+  }
+});
+
+appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    const adGroupId = req.body?.adGroupId ?? null;
+    if (adGroupId != null && (typeof adGroupId !== "string" || adGroupId.trim().length === 0)) {
+      res.status(400).json({ error: "adGroupId must be a non-empty string or omitted for campaign-level negatives" });
+      return;
+    }
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) {
+      res.status(400).json({ error: "ids must be a non-empty array of at most 500 negative keyword ids" });
+      return;
+    }
+
+    const deleted = await deleteAppleAdsNegativeKeywordsBulk({
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    }, req.params.campaignId as string, adGroupId?.trim() ?? null, ids);
+    res.json({ deleted });
+  } catch (err: any) {
+    logger.error("[apple-ads] negatives delete error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    const status = err?.response?.status;
+    res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
+  }
+});
+
 appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
   const orgId = req.teamSettings?.appleAdsOrgId;
   if (!req.teamSettings?.appleAdsConnectedAt || !orgId) {
@@ -118,126 +341,8 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
       ? apps
       : (await Promise.all(apps.map(async (app) => ({ app, allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id) }))))
           .filter(({ allowed }) => allowed).map(({ app }) => app);
-    const bundleIds = accessibleApps.map((app) => app.bundleId);
-    if (bundleIds.length === 0) {
-      res.json({ byCampaign: {} });
-      return;
-    }
 
-    // Evaluation window follows the selected range; pricing and cohort
-    // lookbacks stay fixed since they need history beyond the window.
-    const range = resolveAppleAdsRange(req.query);
-    const start = new Date(`${range.startDate}T00:00:00Z`);
-    const until = new Date(`${range.endDate}T00:00:00Z`);
-    until.setUTCDate(until.getUTCDate() + 1);
-    // Trial pricing looks further back so new trials still find a paid
-    // reference for their product even without recent conversions.
-    const priceStart = new Date();
-    priceStart.setUTCDate(priceStart.getUTCDate() - 90);
-    priceStart.setUTCHours(0, 0, 0, 0);
-    const [customers, transactions, priceSamples] = await Promise.all([
-      prisma.revenueCatCustomer.findMany({
-        where: { bundleId: { in: bundleIds } },
-        select: { bundleId: true, customerId: true, appleAttribution: true, attributes: true },
-      }),
-      prisma.revenueCatTransaction.findMany({
-        where: { bundleId: { in: bundleIds }, occurredAt: { gte: start, lt: until }, environment: "production" },
-        select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, periodType: true, isTrialConversion: true, occurredAt: true, proceedsUsd: true },
-        orderBy: { occurredAt: "desc" },
-      }),
-      prisma.revenueCatTransaction.groupBy({
-        by: ["bundleId", "productId"],
-        where: { bundleId: { in: bundleIds }, occurredAt: { gte: priceStart }, environment: "production", proceedsUsd: { gt: 0 } },
-        _avg: { proceedsUsd: true },
-      }),
-    ]);
-    const trialPrices = buildTrialPriceMap(
-      priceSamples.map((sample) => ({
-        bundleId: sample.bundleId,
-        productId: sample.productId,
-        avgProceedsUsd: sample._avg.proceedsUsd ?? 0,
-      })),
-    );
-
-    // Cohort links: trial starts and conversions for the customers in the
-    // window, so conversions attribute back to their trial-start day and
-    // converted trials carry no open potential anymore.
-    const cohortLookback = new Date();
-    cohortLookback.setUTCDate(cohortLookback.getUTCDate() - 365);
-    cohortLookback.setUTCHours(0, 0, 0, 0);
-    const cohortCustomerIds = [...new Set(transactions.map((transaction) => transaction.customerId))];
-    const cohortSelect = { bundleId: true, customerId: true, productId: true, occurredAt: true } as const;
-    let trialStarts: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
-    let trialConversions: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
-    if (cohortCustomerIds.length > 0) {
-      [trialStarts, trialConversions] = await Promise.all([
-        prisma.revenueCatTransaction.findMany({
-          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, eventType: "INITIAL_PURCHASE", periodType: "TRIAL", occurredAt: { gte: cohortLookback, lt: until } },
-          select: cohortSelect,
-        }),
-        prisma.revenueCatTransaction.findMany({
-          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, isTrialConversion: true, occurredAt: { gte: cohortLookback, lt: until } },
-          select: cohortSelect,
-        }),
-      ]);
-    }
-
-    const attributionByCustomer = new Map(customers.map((customer) => [
-      `${customer.bundleId}\0${customer.customerId}`,
-      appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
-    ]));
-    const appNameByBundle = new Map(accessibleApps.map((app) => [app.bundleId, app.displayName || app.name]));
-    type RevenueTransaction = {
-      id: string;
-      date: string;
-      cohortDate: string | null;
-      app: string;
-      product: string;
-      eventType: string;
-      isTrial: boolean;
-      isConvertedTrial: boolean;
-      proceedsUsd: number;
-      potentialProceedsUsd: number;
-    };
-    type RevenueBucket = { proceedsUsd: number; transactions: RevenueTransaction[] };
-    const byCampaign: Record<string, RevenueBucket & { byKeyword: Record<string, RevenueBucket> }> = {};
-
-    for (const transaction of transactions) {
-      const attribution = attributionByCustomer.get(`${transaction.bundleId}\0${transaction.customerId}`);
-      if (!attribution || (attribution.orgId && attribution.orgId !== orgId)) continue;
-
-      const isTrial = transaction.periodType === "TRIAL" && transaction.eventType === "INITIAL_PURCHASE";
-      const cohortEvent = { bundleId: transaction.bundleId, customerId: transaction.customerId, productId: transaction.productId, occurredAt: transaction.occurredAt };
-      const convertedTrial = isTrial && isTrialConverted(trialConversions, cohortEvent);
-      const cohortStart = transaction.isTrialConversion ? findCohortStart(trialStarts, cohortEvent) : null;
-      const entry: RevenueTransaction = {
-        id: transaction.rcId,
-        date: transaction.occurredAt.toISOString(),
-        cohortDate: cohortStart ? cohortStart.toISOString() : null,
-        app: appNameByBundle.get(transaction.bundleId) ?? transaction.bundleId,
-        product: transaction.productId,
-        eventType: transaction.eventType,
-        isTrial,
-        isConvertedTrial: convertedTrial,
-        proceedsUsd: transaction.proceedsUsd,
-        potentialProceedsUsd: convertedTrial ? 0 : trialPotentialFor(trialPrices, transaction.bundleId, transaction.productId, isTrial),
-      };
-
-      const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [], byKeyword: {} };
-      campaign.proceedsUsd += transaction.proceedsUsd;
-      campaign.transactions.push(entry);
-
-      // Not every click carries a keyword (e.g. Search Match, or non-keyword
-      // placements) — those still count toward the campaign total above, but
-      // can't be attributed to one specific keyword below.
-      if (attribution.keywordId) {
-        const keyword = campaign.byKeyword[attribution.keywordId] ??= { proceedsUsd: 0, transactions: [] };
-        keyword.proceedsUsd += transaction.proceedsUsd;
-        keyword.transactions.push(entry);
-      }
-    }
-
-    res.json({ byCampaign });
+    res.json(await getAppleAdsCampaignRevenue(accessibleApps, orgId, resolveAppleAdsRange(req.query)));
   } catch (err: any) {
     logger.error("[apple-ads] campaign revenue error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: "Failed to load campaign revenue" });

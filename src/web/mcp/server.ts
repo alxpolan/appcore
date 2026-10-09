@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAdsTools } from "./tools/ads-tools";
 import { registerAppTools } from "./tools/app-tools";
 import { registerAscTools } from "./tools/asc-tools";
 import { registerAscSubscriptionTools } from "./tools/asc-subscription-tools";
@@ -12,6 +13,7 @@ export function createMcpServer(userId: string): McpServer {
     version: "1.0.0",
   });
 
+  registerAdsTools(server, userId);
   registerAppTools(server, userId);
   registerAscTools(server, userId);
   registerAscSubscriptionTools(server, userId);

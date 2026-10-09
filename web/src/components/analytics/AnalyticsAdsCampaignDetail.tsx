@@ -2,7 +2,8 @@ import { Fragment, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Megaphone, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
-import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsStats } from "../../types";
+import { usePermissions } from "../../hooks/usePermissions";
+import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
@@ -16,6 +17,7 @@ import {
   type SortDir,
 } from "../../utils/keywordTable";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
+import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -135,6 +137,18 @@ export default function AnalyticsAdsCampaignDetail() {
     loading: spendLoading,
     error: spendError,
   } = useApi<AppleAdsDailySpendResponse>(`/apple-ads/campaigns/${campaignId}/daily-spend${query}`, [campaignId, ...rangeDeps], true);
+
+  const { canManageTeam } = usePermissions();
+  const {
+    data: negativesData,
+    loading: negativesLoading,
+    error: negativesError,
+    refetch: refetchNegatives,
+  } = useApi<AppleAdsNegativesResponse>(`/apple-ads/campaigns/${campaignId}/negatives`, [campaignId], true);
+  const negativesByGroup = useMemo(
+    () => new Map((negativesData?.adGroups ?? []).map((a) => [a.id, a.negatives])),
+    [negativesData],
+  );
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
@@ -286,6 +300,30 @@ export default function AnalyticsAdsCampaignDetail() {
       />
 
       <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Negative Keywords</div>
+          <div className={`text-[12px] ${textMuted} mt-0.5`}>Campaign level — apply to all ad groups</div>
+        </div>
+        <div className="px-5 py-4">
+          {negativesLoading ? (
+            <div className={`text-[13px] ${textMuted}`}>Loading…</div>
+          ) : negativesError || !negativesData || !campaignId ? (
+            <div className={`text-[13px] ${textMuted}`}>Failed to load negative keywords</div>
+          ) : (
+            <NegativeKeywordManager
+              campaignId={campaignId}
+              adGroupId={null}
+              negatives={negativesData.campaign}
+              canEdit={canManageTeam}
+              onChanged={refetchNegatives}
+            />
+          )}
+        </div>
+      </div>
+
+      <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
@@ -338,6 +376,25 @@ export default function AnalyticsAdsCampaignDetail() {
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
                           <td colSpan={11} className="px-5 py-4">
+                            <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
+                              Negative keywords{" "}
+                              <span className={`font-normal ${textMuted}`}>(apply to this ad group only)</span>
+                            </div>
+                            <div className="mb-4">
+                              {negativesLoading ? (
+                                <div className={`text-[12px] ${textMuted}`}>Loading…</div>
+                              ) : negativesError || !campaignId ? (
+                                <div className={`text-[12px] ${textMuted}`}>Failed to load negative keywords</div>
+                              ) : (
+                                <NegativeKeywordManager
+                                  campaignId={campaignId}
+                                  adGroupId={g.id}
+                                  negatives={negativesByGroup.get(g.id) ?? []}
+                                  canEdit={canManageTeam}
+                                  onChanged={refetchNegatives}
+                                />
+                              )}
+                            </div>
                             <div className={`text-[12px] font-semibold ${textPrimary} mb-2 flex items-center justify-between gap-2`}>
                               <span>
                                 Keywords {g.cpaGoal != null && (
