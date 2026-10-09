@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
-import { listAppleAdsOrgs, listAppleAdsCampaigns } from "../../services/apple-ads";
+import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail } from "../../services/apple-ads";
 import { appleAdsCampaignAttribution } from "../../services/revenuecat-attribution";
 
 export const appleAdsRouter = Router();
@@ -41,6 +41,35 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
       body: err?.response?.data,
     });
     res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
+  }
+});
+
+appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const adGroups = await getAppleAdsCampaignDetail(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId,
+    );
+    res.json({ adGroups });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign detail fetch error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    res.status(500).json({ error: "Failed to load campaign detail from Apple Search Ads" });
   }
 });
 
@@ -86,24 +115,42 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
       appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
     ]));
     const appNameByBundle = new Map(accessibleApps.map((app) => [app.bundleId, app.displayName || app.name]));
-    const byCampaign: Record<string, {
+    type RevenueTransaction = {
+      id: string;
+      date: string;
+      app: string;
+      product: string;
+      eventType: string;
       proceedsUsd: number;
-      transactions: { id: string; date: string; app: string; product: string; eventType: string; proceedsUsd: number }[];
-    }> = {};
+    };
+    type RevenueBucket = { proceedsUsd: number; transactions: RevenueTransaction[] };
+    const byCampaign: Record<string, RevenueBucket & { byKeyword: Record<string, RevenueBucket> }> = {};
 
     for (const transaction of transactions) {
       const attribution = attributionByCustomer.get(`${transaction.bundleId}\0${transaction.customerId}`);
       if (!attribution || (attribution.orgId && attribution.orgId !== orgId)) continue;
-      const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [] };
-      campaign.proceedsUsd += transaction.proceedsUsd;
-      campaign.transactions.push({
+
+      const entry: RevenueTransaction = {
         id: transaction.rcId,
         date: transaction.occurredAt.toISOString(),
         app: appNameByBundle.get(transaction.bundleId) ?? transaction.bundleId,
         product: transaction.productId,
         eventType: transaction.eventType,
         proceedsUsd: transaction.proceedsUsd,
-      });
+      };
+
+      const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [], byKeyword: {} };
+      campaign.proceedsUsd += transaction.proceedsUsd;
+      campaign.transactions.push(entry);
+
+      // Not every click carries a keyword (e.g. Search Match, or non-keyword
+      // placements) — those still count toward the campaign total above, but
+      // can't be attributed to one specific keyword below.
+      if (attribution.keywordId) {
+        const keyword = campaign.byKeyword[attribution.keywordId] ??= { proceedsUsd: 0, transactions: [] };
+        keyword.proceedsUsd += transaction.proceedsUsd;
+        keyword.transactions.push(entry);
+      }
     }
 
     res.json({ byCampaign });

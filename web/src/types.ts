@@ -433,7 +433,18 @@ export interface AppleAdsOrgsResponse {
   selectedOrgId: string | null;
 }
 
-export interface AppleAdsCampaign {
+export interface AppleAdsStats {
+  spend: number;
+  impressions: number;
+  taps: number;
+  installs: number;
+  ttr: number | null;
+  avgCpt: number | null;
+  avgCpa: number | null;
+  conversionRate: number | null;
+}
+
+export interface AppleAdsCampaign extends AppleAdsStats {
   id: string;
   name: string;
   status: string;
@@ -444,24 +455,52 @@ export interface AppleAdsCampaign {
   countriesOrRegions: string[];
   startTime: string | null;
   endTime: string | null;
-  spend: number;
-  impressions: number;
-  taps: number;
-  installs: number;
+}
+
+export interface AppleAdsKeyword extends AppleAdsStats {
+  id: string;
+  adGroupId: string;
+  text: string;
+  matchType: string;
+  status: string;
+  bidAmount: number | null;
+  currency: string | null;
+}
+
+export interface AppleAdsAdGroup extends AppleAdsStats {
+  id: string;
+  campaignId: string;
+  name: string;
+  status: string;
+  servingStatus: string;
+  defaultBidAmount: number | null;
+  cpaGoal: number | null;
+  currency: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  keywords: AppleAdsKeyword[];
+}
+
+export interface AppleAdsCampaignDetail {
+  adGroups: AppleAdsAdGroup[];
+}
+
+export interface AppleAdsRevenueTransaction {
+  id: string;
+  date: string;
+  app: string;
+  product: string;
+  eventType: string;
+  proceedsUsd: number;
+}
+
+export interface AppleAdsRevenueBucket {
+  proceedsUsd: number;
+  transactions: AppleAdsRevenueTransaction[];
 }
 
 export interface AppleAdsCampaignRevenue {
-  byCampaign: Record<string, {
-    proceedsUsd: number;
-    transactions: {
-      id: string;
-      date: string;
-      app: string;
-      product: string;
-      eventType: string;
-      proceedsUsd: number;
-    }[];
-  }>;
+  byCampaign: Record<string, AppleAdsRevenueBucket & { byKeyword: Record<string, AppleAdsRevenueBucket> }>;
 }
 
 export interface GitHubRepo {

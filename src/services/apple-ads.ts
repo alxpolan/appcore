@@ -29,7 +29,18 @@ export interface AppleAdsOrgOption {
   orgName: string;
 }
 
-export interface AppleAdsCampaign {
+export interface AppleAdsStats {
+  spend: number;
+  impressions: number;
+  taps: number;
+  installs: number;
+  ttr: number | null;
+  avgCpt: number | null;
+  avgCpa: number | null;
+  conversionRate: number | null;
+}
+
+export interface AppleAdsCampaign extends AppleAdsStats {
   id: string;
   name: string;
   status: string;
@@ -40,10 +51,33 @@ export interface AppleAdsCampaign {
   countriesOrRegions: string[];
   startTime: string | null;
   endTime: string | null;
-  spend: number;
-  impressions: number;
-  taps: number;
-  installs: number;
+}
+
+export interface AppleAdsAdGroup extends AppleAdsStats {
+  id: string;
+  campaignId: string;
+  name: string;
+  status: string;
+  servingStatus: string;
+  defaultBidAmount: number | null;
+  cpaGoal: number | null;
+  currency: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface AppleAdsKeyword extends AppleAdsStats {
+  id: string;
+  adGroupId: string;
+  text: string;
+  matchType: string;
+  status: string;
+  bidAmount: number | null;
+  currency: string | null;
+}
+
+export interface AppleAdsAdGroupWithKeywords extends AppleAdsAdGroup {
+  keywords: AppleAdsKeyword[];
 }
 
 function generateClientSecret({ clientId, teamId, keyId, privateKey }: AppleAdsOrgCredentials): string {
@@ -97,6 +131,23 @@ export async function listAppleAdsOrgs(creds: AppleAdsOrgCredentials): Promise<A
   }
 
   return orgs.map((o) => ({ orgId: String(o.orgId), orgName: o.orgName }));
+}
+
+function statsFromTotal(total: any): AppleAdsStats {
+  const spend = total.localSpend?.amount != null ? Number(total.localSpend.amount) : 0;
+  const impressions = total.impressions != null ? Number(total.impressions) : 0;
+  const taps = total.taps != null ? Number(total.taps) : 0;
+  const installs = total.totalInstalls != null ? Number(total.totalInstalls) : 0;
+  return {
+    spend,
+    impressions,
+    taps,
+    installs,
+    ttr: impressions > 0 ? taps / impressions : null,
+    avgCpt: taps > 0 ? spend / taps : null,
+    avgCpa: installs > 0 ? spend / installs : null,
+    conversionRate: taps > 0 ? installs / taps : null,
+  };
 }
 
 /** Pulls the row's metrics regardless of whether the response used
@@ -163,7 +214,6 @@ export async function listAppleAdsCampaigns(
     .filter((row) => !row.metadata?.deleted)
     .map((row) => {
       const meta = row.metadata ?? {};
-      const total = totalsFromRow(row);
       return {
         id: String(meta.campaignId),
         name: meta.campaignName,
@@ -180,10 +230,136 @@ export async function listAppleAdsCampaigns(
         countriesOrRegions: meta.countriesOrRegions ?? [],
         startTime: meta.startTime ?? null,
         endTime: meta.endTime ?? null,
-        spend: total.localSpend?.amount != null ? Number(total.localSpend.amount) : 0,
-        impressions: total.impressions != null ? Number(total.impressions) : 0,
-        taps: total.taps != null ? Number(total.taps) : 0,
-        installs: total.totalInstalls != null ? Number(total.totalInstalls) : 0,
+        ...statsFromTotal(totalsFromRow(row)),
       };
     });
+}
+
+function dateRange(days: number): { startTime: string; endTime: string } {
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { startTime: fmt(start), endTime: fmt(end) };
+}
+
+function authedHeaders(accessToken: string, orgId: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "X-AP-Context": `orgId=${orgId}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function rowsFromReport(data: any): any[] {
+  if (data?.error) throw new Error(`Apple Search Ads reports error: ${JSON.stringify(data.error)}`);
+  return data?.data?.reportingDataResponse?.row ?? data?.data?.row ?? data?.row ?? [];
+}
+
+export async function listAppleAdsAdGroups(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  days = 30,
+): Promise<AppleAdsAdGroup[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const headers = authedHeaders(accessToken, creds.orgId);
+  const { startTime, endTime } = dateRange(days);
+
+  const reportRes = await axios.post<any>(
+    `${API_BASE}/reports/campaigns/${campaignId}/adgroups`,
+    {
+      startTime,
+      endTime,
+      selector: {
+        orderBy: [{ field: "adGroupId", sortOrder: "ASCENDING" }],
+        pagination: { offset: 0, limit: 1000 },
+      },
+      timeZone: "UTC",
+      returnRecordsWithNoMetrics: true,
+      returnRowTotals: true,
+      returnGrandTotals: false,
+    },
+    { headers },
+  );
+
+  return rowsFromReport(reportRes.data)
+    .filter((row) => !row.metadata?.deleted)
+    .map((row) => {
+      const meta = row.metadata ?? {};
+      return {
+        id: String(meta.adGroupId),
+        campaignId: String(meta.campaignId ?? campaignId),
+        name: meta.adGroupName,
+        status: meta.status ?? meta.adGroupStatus,
+        servingStatus: meta.servingStatus,
+        defaultBidAmount: meta.defaultBidAmount?.amount != null ? Number(meta.defaultBidAmount.amount) : null,
+        cpaGoal: meta.cpaGoal?.amount != null ? Number(meta.cpaGoal.amount) : null,
+        currency: meta.defaultBidAmount?.currency ?? meta.cpaGoal?.currency ?? null,
+        startTime: meta.startTime ?? null,
+        endTime: meta.endTime ?? null,
+        ...statsFromTotal(totalsFromRow(row)),
+      };
+    });
+}
+
+export async function listAppleAdsKeywords(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  adGroupId: string,
+  days = 30,
+): Promise<AppleAdsKeyword[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const headers = authedHeaders(accessToken, creds.orgId);
+  const { startTime, endTime } = dateRange(days);
+
+  const reportRes = await axios.post<any>(
+    `${API_BASE}/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`,
+    {
+      startTime,
+      endTime,
+      selector: {
+        orderBy: [{ field: "keywordId", sortOrder: "ASCENDING" }],
+        pagination: { offset: 0, limit: 1000 },
+      },
+      timeZone: "UTC",
+      returnRecordsWithNoMetrics: true,
+      returnRowTotals: true,
+      returnGrandTotals: false,
+    },
+    { headers },
+  );
+
+  return rowsFromReport(reportRes.data)
+    .filter((row) => !row.metadata?.deleted)
+    .map((row) => {
+      const meta = row.metadata ?? {};
+      return {
+        id: String(meta.keywordId),
+        adGroupId: String(meta.adGroupId ?? adGroupId),
+        text: meta.keyword,
+        matchType: meta.matchType,
+        status: meta.status ?? meta.keywordStatus,
+        bidAmount: meta.bidAmount?.amount != null ? Number(meta.bidAmount.amount) : null,
+        currency: meta.bidAmount?.currency ?? null,
+        ...statsFromTotal(totalsFromRow(row)),
+      };
+    });
+}
+
+/** Ad groups for a campaign, each with its own keywords (including bid
+ * amount) and the same stat set Apple's own UI shows. Keywords live under an
+ * ad group in Apple's API, so getting all of a campaign's keywords means one
+ * extra call per ad group — fine in practice since campaigns rarely have more
+ * than a handful. */
+export async function getAppleAdsCampaignDetail(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  days = 30,
+): Promise<AppleAdsAdGroupWithKeywords[]> {
+  const adGroups = await listAppleAdsAdGroups(creds, campaignId, days);
+  return Promise.all(
+    adGroups.map(async (adGroup) => ({
+      ...adGroup,
+      keywords: await listAppleAdsKeywords(creds, campaignId, adGroup.id, days),
+    })),
+  );
 }

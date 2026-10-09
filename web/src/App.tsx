@@ -35,6 +35,7 @@ import AnalyticsCountryDetail from "./components/analytics/AnalyticsCountryDetai
 import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
 import AnalyticsAds from "./components/analytics/AnalyticsAds";
+import AnalyticsAdsCampaignDetail from "./components/analytics/AnalyticsAdsCampaignDetail";
 import Versions from "./components/Versions";
 import Screenshots from "./components/Screenshots";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
@@ -1455,6 +1456,7 @@ export default function App() {
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/analytics/ads" element={<AnalyticsAds />} />
+              <Route path="/analytics/ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />

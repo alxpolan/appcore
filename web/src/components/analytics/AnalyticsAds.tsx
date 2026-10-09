@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
-import { Link } from "react-router-dom";
-import { Megaphone, ArrowRight, ChevronRight } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Megaphone, ArrowRight, ChevronRight, ExternalLink } from "lucide-react";
 import { useApi, apiPost } from "../../hooks/useApi";
 import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsOrgsResponse, AppleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
@@ -30,6 +30,7 @@ function statusBadge(status: string) {
 }
 
 export default function AnalyticsAds() {
+  const navigate = useNavigate();
   const { data: status, refetch: refetchStatus } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
   const {
     data: orgsData,
@@ -168,7 +169,8 @@ export default function AnalyticsAds() {
                     <th className={`${TH} text-right`}>Taps</th>
                     <th className={`${TH} text-right`}>Installs</th>
                     <th className={`${TH} text-right`}>Transactions</th>
-                    <th className={`${TH} text-right pr-5`}>RC Proceeds</th>
+                    <th className={`${TH} text-right`}>RC Proceeds</th>
+                    <th className={`${TH} pr-5`}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -191,13 +193,24 @@ export default function AnalyticsAds() {
                       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                         {revenueLoading ? "…" : revenueError ? "—" : fmtNumber(revenueData?.byCampaign[c.id]?.transactions.length ?? 0)}
                       </td>
-                      <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>
+                      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                         {revenueLoading ? "…" : revenueError ? "—" : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
+                      </td>
+                      <td className={`${TD} text-right pr-5`}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/analytics/ads/${c.id}`);
+                          }}
+                          className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
+                        >
+                          Details <ExternalLink className="w-3 h-3" />
+                        </button>
                       </td>
                     </tr>
                     {expandedCampaign === c.id && (
                       <tr className="bg-[#fafbfc] dark:bg-[#161920]">
-                        <td colSpan={9} className="px-5 py-4">
+                        <td colSpan={10} className="px-5 py-4">
                           <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>RevenueCat transactions</div>
                           {revenueLoading ? (
                             <div className={`text-[12px] ${textMuted}`}>Loading…</div>
