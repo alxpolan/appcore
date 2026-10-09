@@ -14,6 +14,7 @@ model Team {
   apps         App[]
   settings     TeamSettings?
   subscription Subscription?
+  activityLogs ActivityLog[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -106,6 +107,7 @@ model User {
   passkeys           PasskeyCredential[]
   teamMembers        TeamMember[]
   emailVerifications EmailVerificationToken[]
+  activityLogs       ActivityLog[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
@@ -896,4 +898,33 @@ model AscRateLimit {
   updatedAt     DateTime @updatedAt
 
   @@index([teamId])
+}
+
+// Audit trail for every state-changing action (AI adjustments, MCP agent
+// calls, web UI writes): who changed what, when, and with which outcome.
+model ActivityLog {
+  id         String   @id @default(cuid())
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // "mcp" | "web" | "system"
+  source     String
+  // Display label, e.g. user email for MCP calls.
+  actor      String?
+  // Namespaced action, e.g. "ads.campaign.create" or "mcp.update_ads_campaign".
+  action     String
+  entityType String?
+  entityId   String?
+  // Human-readable one-liner for the activity feed.
+  summary    String
+  // JSON blob with arguments / result excerpt.
+  details    String?
+  // "success" | "error"
+  status     String   @default("success")
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([teamId, action])
 }

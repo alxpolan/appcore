@@ -1,4 +1,6 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prisma, getEffectiveSettings } from "../../../config";
+import { logActivity } from "../../../services/activity-log";
 
 type EffectiveSettings = Awaited<ReturnType<typeof getEffectiveSettings>>;
 
@@ -100,4 +102,116 @@ export function formatAscError(err: any): string {
     return errors.map((e: any) => e.detail || e.title || JSON.stringify(e)).join("; ");
   }
   return err?.message ?? String(err);
+}
+
+export interface ToolSummary {
+  summary?: string;
+  entityType?: string;
+  entityId?: string;
+  details?: unknown;
+}
+
+export type ToolSummarize = (args: any, resultText: string) => ToolSummary | void;
+
+export interface MutatingToolOpts {
+  /** Defaults to `mcp.<toolName>`. */
+  action?: string;
+  summarize?: ToolSummarize;
+}
+
+// Our tools return failures as text (not thrown errors); recognize those so
+// the audit log records the real outcome.
+const FAILURE_PATTERNS = [
+  /requires the team admin role/i,
+  /^invalid\b/i,
+  /^nothing to do/i,
+  /^no team\b/i,
+  /is not connected/i,
+  /request failed/i,
+  /not found/i,
+  /^failed/i,
+  /^error/i,
+];
+
+function truncateText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function defaultSummary(action: string, args: any): string {
+  const flat = JSON.stringify(args ?? {});
+  return flat && flat !== "{}" ? `${action} ${truncateText(flat, 200)}` : action;
+}
+
+async function logToolCall(
+  userId: string,
+  action: string,
+  args: any,
+  resultText: string | null,
+  thrown: unknown,
+  extra?: ToolSummary,
+): Promise<void> {
+  const teamId = await getMcpUserTeamId(userId);
+  if (!teamId) return;
+  let actor: string | undefined;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    actor = user?.email ?? undefined;
+  } catch {
+    // Actor label is best effort.
+  }
+  if (thrown) {
+    const message = String((thrown as any)?.message ?? thrown);
+    await logActivity({
+      teamId,
+      userId,
+      source: "mcp",
+      actor,
+      action,
+      summary: `${action} failed: ${truncateText(message, 200)}`,
+      details: { args },
+      status: "error",
+      error: message,
+    });
+    return;
+  }
+  const text = resultText ?? "";
+  const failed = text.trim().length === 0 || FAILURE_PATTERNS.some((re) => re.test(text.trim()));
+  await logActivity({
+    teamId,
+    userId,
+    source: "mcp",
+    actor,
+    action,
+    entityType: extra?.entityType,
+    entityId: extra?.entityId,
+    summary: extra?.summary ?? defaultSummary(action, args),
+    details: extra?.details ?? { args, result: truncateText(text, 2000) },
+    status: failed ? "error" : "success",
+    error: failed ? truncateText(text, 500) : null,
+  });
+}
+
+/** Registers a state-changing tool and audit-logs every invocation (success
+ * and failure). Read-only tools keep using `server.registerTool` directly. */
+export function registerMutatingTool(
+  server: McpServer,
+  userId: string,
+  name: string,
+  config: { description?: string; inputSchema?: any; outputSchema?: any; annotations?: any },
+  handler: (args: any, extra?: any) => Promise<any>,
+  opts: MutatingToolOpts = {},
+): void {
+  const action = opts.action ?? `mcp.${name}`;
+  (server as any).registerTool(name, config, async (args: any, extra: any) => {
+    let result: any;
+    try {
+      result = await handler(args, extra);
+    } catch (err) {
+      await logToolCall(userId, action, args, null, err);
+      throw err;
+    }
+    const text: string = result?.content?.[0]?.text ?? "";
+    await logToolCall(userId, action, args, text, null, opts.summarize?.(args, text) ?? undefined);
+    return result;
+  });
 }

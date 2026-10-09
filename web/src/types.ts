@@ -456,6 +456,25 @@ export interface AppleAdsNegativesResponse {
   adGroups: { id: string; name: string; negatives: AppleAdsNegativeKeyword[] }[];
 }
 
+export interface ActivityLogEntry {
+  id: string;
+  source: "mcp" | "web" | "system";
+  actor: string | null;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  summary: string;
+  details: unknown;
+  status: "success" | "error";
+  error: string | null;
+  createdAt: string;
+}
+
+export interface ActivityLogResponse {
+  entries: ActivityLogEntry[];
+  total: number;
+}
+
 export interface AppleAdsStats {
   spend: number;
   impressions: number;

@@ -15,6 +15,7 @@ import {
   getAppleAdsCampaignDetail,
   listAppleAdsAdGroups,
   listAppleAdsCampaigns,
+  listAppleAdsKeywords,
   listAppleAdsNegativeKeywords,
   resolveAppleAdsRange,
   updateAppleAdsAdGroup,
@@ -25,7 +26,7 @@ import {
   type AppleAdsCredentials,
 } from "../../../services/apple-ads";
 import { getAppleAdsCampaignRevenue } from "../../../services/apple-ads-revenue";
-import { getMcpAllowedAppIds, getMcpUserTeamId } from "./shared";
+import { getMcpAllowedAppIds, getMcpUserTeamId, registerMutatingTool, type ToolSummary } from "./shared";
 
 const rangeSchema = {
   days: z
@@ -68,6 +69,244 @@ function textResult(text: string) {
 function jsonResult(value: unknown) {
   return textResult(JSON.stringify(value, null, 2));
 }
+
+function tryParseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort read: history snapshots must never break the mutation itself. */
+async function bestEffort<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch {
+    return undefined;
+  }
+}
+
+function quote(value: unknown): string {
+  return value == null || value === "" ? "—" : `"${value}"`;
+}
+
+/** "label: from → to", or "label → to" when the old value is unknown. */
+function fromTo(label: string, from: unknown, to: unknown): string {
+  const oldText = from == null || from === "" ? null : String(from);
+  return oldText == null ? `${label} → ${to}` : `${label}: ${oldText} → ${to}`;
+}
+
+/** Snapshot of the current campaign settings, so the history can show old → new. */
+async function previousCampaign(creds: AppleAdsCredentials, campaignId: string) {
+  const list = await bestEffort(() => listAppleAdsCampaigns(creds));
+  const c = list?.find((x) => String(x.id) === String(campaignId));
+  if (!c) return undefined;
+  return {
+    name: c.name ?? null,
+    status: c.status ?? null,
+    dailyBudget: c.dailyBudget ?? null,
+    currency: c.currency ?? null,
+    countriesOrRegions: c.countriesOrRegions ?? [],
+  };
+}
+
+async function previousAdGroup(creds: AppleAdsCredentials, campaignId: string, adGroupId: string) {
+  const list = await bestEffort(() => listAppleAdsAdGroups(creds, campaignId));
+  const g = list?.find((x) => String(x.id) === String(adGroupId));
+  if (!g) return undefined;
+  return {
+    name: g.name ?? null,
+    status: g.status ?? null,
+    defaultBidAmount: g.defaultBidAmount ?? null,
+    cpaGoal: g.cpaGoal ?? null,
+    currency: g.currency ?? null,
+  };
+}
+
+/** Resolve keyword ids to their texts before a delete (capped, for the history). */
+async function previousKeywordTexts(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  adGroupId: string,
+  ids: (string | number)[],
+): Promise<{ id: string; text: string }[]> {
+  const list = await bestEffort(() => listAppleAdsKeywords(creds, campaignId, adGroupId));
+  if (!list) return [];
+  const want = new Set(ids.map((id) => String(id)));
+  return list
+    .filter((k) => want.has(String(k.id)))
+    .map((k) => ({ id: String(k.id), text: k.text ?? "" }))
+    .slice(0, 10);
+}
+
+async function previousNegativeTexts(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  adGroupId: string | null | undefined,
+  ids: (string | number)[],
+): Promise<string[]> {
+  const list = await bestEffort(() => listAppleAdsNegativeKeywords(creds, campaignId, adGroupId ?? null));
+  if (!list) return [];
+  const want = new Set(ids.map((id) => String(id)));
+  return list
+    .filter((k) => want.has(String(k.id)))
+    .map((k) => k.text)
+    .slice(0, 10);
+}
+
+const summarizeCreateCampaign = (args: any, text: string): ToolSummary => ({
+  summary: `Created campaign "${args?.name}" (${args?.status ?? "PAUSED"}) with ${args?.adGroups?.length ?? 0} ad group(s)`,
+  entityType: "ads_campaign",
+  entityId: tryParseJson(text)?.campaign?.id != null ? String(tryParseJson(text).campaign.id) : undefined,
+});
+
+const summarizeUpdateCampaign = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  const parts: string[] = [];
+  if (args?.name != null) parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
+  if (args?.status != null) parts.push(fromTo("status", prev?.status, args.status));
+  if (args?.dailyBudgetAmount != null) {
+    const ccy = args?.currency ?? prev?.currency;
+    parts.push(fromTo("daily budget", prev?.dailyBudget, `${args.dailyBudgetAmount}${ccy ? ` ${ccy}` : ""}`));
+  }
+  if (args?.countriesOrRegions != null) {
+    parts.push(fromTo("countries", (prev?.countriesOrRegions ?? []).join(", ") || null, args.countriesOrRegions.join(", ")));
+  }
+  return {
+    summary: `Updated campaign ${args?.campaignId}${parts.length ? `: ${parts.join("; ")}` : ""}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeCampaignStatus = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  const verb = args?.status === "ENABLED" ? "Published" : "Paused";
+  const target = prev?.name ? `"${prev.name}" (${args?.campaignId})` : `campaign ${args?.campaignId}`;
+  const transition = prev?.status ? `: ${prev.status} → ${args?.status}` : "";
+  return {
+    summary: `${verb} ${target}${transition}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeDeleteCampaign = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  return {
+    summary: prev?.name
+      ? `Deleted campaign "${prev.name}" (${args?.campaignId})`
+      : `Deleted campaign ${args?.campaignId}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeCreateAdGroup = (args: any, text: string): ToolSummary => {
+  const created = tryParseJson(text)?.adGroup;
+  return {
+    summary: `Created ad group "${args?.name}"${created?.id != null ? ` (${created.id})` : ""} in campaign ${args?.campaignId}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeUpdateAdGroup = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  const ccy = args?.currency ?? prev?.currency;
+  const suffix = ccy ? ` ${ccy}` : "";
+  const parts: string[] = [];
+  if (args?.name != null) parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
+  if (args?.status != null) parts.push(fromTo("status", prev?.status, args.status));
+  if (args?.defaultBidAmount != null) {
+    parts.push(fromTo("default bid", prev?.defaultBidAmount, `${args.defaultBidAmount}${suffix}`));
+  }
+  if (args?.cpaGoal != null) parts.push(fromTo("CPA goal", prev?.cpaGoal, `${args.cpaGoal}${suffix}`));
+  return {
+    summary: `Updated ad group ${args?.adGroupId} (campaign ${args?.campaignId})${parts.length ? `: ${parts.join("; ")}` : ""}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeDeleteAdGroup = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  return {
+    summary: prev?.name
+      ? `Deleted ad group "${prev.name}" (${args?.adGroupId}) from campaign ${args?.campaignId}`
+      : `Deleted ad group ${args?.adGroupId} from campaign ${args?.campaignId}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeAddKeywords = (args: any): ToolSummary => {
+  const texts = (args?.keywords ?? []).map((k: any) => k?.text).filter(Boolean).slice(0, 5).join(", ");
+  return {
+    summary: `Added ${args?.keywords?.length ?? 0} keyword(s)${texts ? ` (${texts}${(args?.keywords?.length ?? 0) > 5 ? ", …" : ""})` : ""} to ad group ${args?.adGroupId}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeUpdateKeywords = (args: any, text: string): ToolSummary => {
+  const rows = tryParseJson(text)?.updated ?? [];
+  const suffix = args?.currency ? ` ${args.currency}` : "";
+  const parts = rows.slice(0, 5).map((r: any) => {
+    const bits: string[] = [];
+    if (r?.bidAmount != null) bits.push(`bid ${r.previousBidAmount ?? "—"} → ${r.bidAmount}${suffix}`);
+    if (r?.status != null) bits.push(`${r.previousStatus ?? "—"} → ${r.status}`);
+    return `"${r?.text ?? r?.id}": ${bits.join(", ") || "no changes"}`;
+  });
+  const more = rows.length > 5 ? `; +${rows.length - 5} more` : "";
+  return {
+    summary: `Updated ${rows.length} keyword(s) in ad group ${args?.adGroupId}${parts.length ? `: ${parts.join("; ")}${more}` : ""}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeDeleteKeywords = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous ?? [];
+  const names = prev
+    .map((p: any) => (p?.text ? `"${p.text}"` : null))
+    .filter(Boolean)
+    .join(", ");
+  const label = names || (args?.keywordIds ?? []).join(", ");
+  return {
+    summary: `Deleted ${args?.keywordIds?.length ?? 0} keyword(s) (${label}) from ad group ${args?.adGroupId}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
+const summarizeUpdateNegatives = (args: any, text: string): ToolSummary => {
+  const scope = args?.adGroupId ? `ad group ${args.adGroupId}` : "campaign level";
+  const prev = tryParseJson(text)?.previous;
+  const parts: string[] = [];
+  if (args?.add?.length) {
+    const texts = args.add
+      .map((k: any) => (k?.text ? `"${k.text}"` : null))
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(", ");
+    parts.push(`added ${args.add.length}${texts ? ` (${texts})` : ""}`);
+  }
+  if (args?.removeIds?.length) {
+    const texts = (prev?.removedTexts ?? [])
+      .map((t: any) => (t ? `"${t}"` : null))
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(", ");
+    parts.push(`removed ${args.removeIds.length}${texts ? ` (${texts})` : ""}`);
+  }
+  return {
+    summary: `Negative keywords (${scope}, campaign ${args?.campaignId}): ${parts.join(", ") || "no changes"}`,
+    entityType: "ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
 
 async function getAppleAdsContext(
   userId: string,
@@ -196,7 +435,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "create_ads_campaign",
     {
       description:
@@ -301,9 +542,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return adsError("create_ads_campaign", err);
       }
     },
+    { summarize: summarizeCreateCampaign },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "update_ads_campaign_status",
     {
       description:
@@ -324,16 +568,20 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return textResult("Publishing campaigns requires the team admin role.");
       }
 
+      const previous = await previousCampaign(ctx.creds, campaignId);
       try {
         const campaign = await updateAppleAdsCampaignStatus(ctx.creds, campaignId, status);
-        return jsonResult({ campaign });
+        return jsonResult({ campaign, previous: previous ?? null });
       } catch (err) {
         return adsError("update_ads_campaign_status", err);
       }
     },
+    { summarize: summarizeCampaignStatus },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "delete_ads_campaign",
     {
       description:
@@ -352,16 +600,20 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return textResult("Deleting campaigns requires the team admin role.");
       }
 
+      const previous = await previousCampaign(ctx.creds, campaignId);
       try {
         const campaign = await deleteAppleAdsCampaign(ctx.creds, campaignId);
-        return jsonResult({ campaign });
+        return jsonResult({ campaign, previous: previous ? { name: previous.name } : null });
       } catch (err) {
         return adsError("delete_ads_campaign", err);
       }
     },
+    { summarize: summarizeDeleteCampaign },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "update_ads_campaign",
     {
       description:
@@ -390,6 +642,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Updating campaigns requires the team admin role.");
       }
+      const previous = await previousCampaign(ctx.creds, campaignId);
       try {
         const campaign = await updateAppleAdsCampaign(ctx.creds, campaignId, {
           name,
@@ -398,15 +651,18 @@ export function registerAdsTools(server: McpServer, userId: string) {
           currency,
           countriesOrRegions,
         });
-        return jsonResult({ campaign });
+        return jsonResult({ campaign, previous: previous ?? null });
       } catch (err: any) {
         if (err?.response == null) return textResult(`Invalid campaign update: ${err.message}`);
         return adsError("update_ads_campaign", err);
       }
     },
+    { summarize: summarizeUpdateCampaign },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "create_ads_ad_group",
     {
       description:
@@ -459,9 +715,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return adsError("create_ads_ad_group", err);
       }
     },
+    { summarize: summarizeCreateAdGroup },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "update_ads_ad_group",
     {
       description:
@@ -487,6 +746,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Updating ad groups requires the team admin role.");
       }
+      const previous = await previousAdGroup(ctx.creds, campaignId, adGroupId);
       try {
         const adGroup = await updateAppleAdsAdGroup(ctx.creds, campaignId, adGroupId, {
           name,
@@ -495,15 +755,18 @@ export function registerAdsTools(server: McpServer, userId: string) {
           cpaGoal,
           currency,
         });
-        return jsonResult({ adGroup });
+        return jsonResult({ adGroup, previous: previous ?? null });
       } catch (err: any) {
         if (err?.response == null) return textResult(`Invalid ad group update: ${err.message}`);
         return adsError("update_ads_ad_group", err);
       }
     },
+    { summarize: summarizeUpdateAdGroup },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "delete_ads_ad_group",
     {
       description:
@@ -521,16 +784,20 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Deleting ad groups requires the team admin role.");
       }
+      const previous = await previousAdGroup(ctx.creds, campaignId, adGroupId);
       try {
         const adGroup = await deleteAppleAdsAdGroup(ctx.creds, campaignId, adGroupId);
-        return jsonResult({ adGroup });
+        return jsonResult({ adGroup, previous: previous ? { name: previous.name } : null });
       } catch (err) {
         return adsError("delete_ads_ad_group", err);
       }
     },
+    { summarize: summarizeDeleteAdGroup },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "add_ads_keywords",
     {
       description:
@@ -557,7 +824,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Adding keywords requires the team admin role.");
       }
-      if (keywords.some((k) => k.bidAmount != null) && !/^[A-Z]{3}$/i.test(currency ?? "")) {
+      if (keywords.some((k: any) => k.bidAmount != null) && !/^[A-Z]{3}$/i.test(currency ?? "")) {
         return textResult("currency (e.g. USD, EUR) is required when setting keyword bids.");
       }
       try {
@@ -567,9 +834,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return adsError("add_ads_keywords", err);
       }
     },
+    { summarize: summarizeAddKeywords },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "update_ads_keywords",
     {
       description:
@@ -610,9 +880,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return adsError("update_ads_keywords", err);
       }
     },
+    { summarize: summarizeUpdateKeywords },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "delete_ads_keywords",
     {
       description:
@@ -635,13 +908,15 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Deleting keywords requires the team admin role.");
       }
+      const previous = await previousKeywordTexts(ctx.creds, campaignId, adGroupId, keywordIds);
       try {
         const deleted = await deleteAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroupId, keywordIds);
-        return jsonResult({ campaignId, adGroupId, deleted });
+        return jsonResult({ campaignId, adGroupId, deleted, previous });
       } catch (err) {
         return adsError("delete_ads_keywords", err);
       }
     },
+    { summarize: summarizeDeleteKeywords },
   );
 
   server.registerTool(
@@ -678,7 +953,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerMutatingTool(
+    server,
+    userId,
     "update_ads_negative_keywords",
     {
       description:
@@ -707,6 +984,8 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return textResult("Nothing to do: pass add and/or removeIds.");
       }
 
+      const removedTexts =
+        removeIds?.length ? await previousNegativeTexts(ctx.creds, campaignId, adGroupId, removeIds) : [];
       try {
         const added = await createAppleAdsNegativeKeywordsBulk(ctx.creds, campaignId, adGroupId ?? null, add ?? []);
         const removed = await deleteAppleAdsNegativeKeywordsBulk(
@@ -715,11 +994,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
           adGroupId ?? null,
           removeIds ?? [],
         );
-        return jsonResult({ campaignId, adGroupId: adGroupId ?? null, added, removed });
+        return jsonResult({ campaignId, adGroupId: adGroupId ?? null, added, removed, previous: { removedTexts } });
       } catch (err) {
         return adsError("update_ads_negative_keywords", err);
       }
     },
+    { summarize: summarizeUpdateNegatives },
   );
 
   server.registerTool(

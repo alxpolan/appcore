@@ -987,7 +987,16 @@ export async function updateAppleAdsKeywords(
   adGroupId: string,
   currency: string | undefined,
   updates: UpdateAppleAdsKeywordInput[],
-): Promise<{ id: string; bidAmount: number | null; status: string | null }[]> {
+): Promise<
+  {
+    id: string;
+    text: string;
+    bidAmount: number | null;
+    status: string | null;
+    previousBidAmount: number | null;
+    previousStatus: string | null;
+  }[]
+> {
   if (updates.length === 0) return [];
   if (updates.length > 500) throw new Error("At most 500 keywords can be updated at once");
   for (const u of updates) {
@@ -1027,7 +1036,18 @@ export async function updateAppleAdsKeywords(
     { headers: authedHeaders(accessToken, creds.orgId) },
   );
   throwIfAppleError(res.data, "keyword update");
-  return updates.map((u) => ({ id: String(u.keywordId), bidAmount: u.bidAmount ?? null, status: u.status ?? null }));
+  // The resolve step above guarantees every id exists in byId.
+  return updates.map((u) => {
+    const known = byId.get(String(u.keywordId))!;
+    return {
+      id: String(u.keywordId),
+      text: known.text,
+      bidAmount: u.bidAmount ?? null,
+      status: u.status ?? null,
+      previousBidAmount: known.bidAmount,
+      previousStatus: known.status,
+    };
+  });
 }
 
 export async function deleteAppleAdsKeywordsBulk(

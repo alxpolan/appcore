@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
@@ -18,6 +18,7 @@ import {
 } from "../../utils/keywordTable";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
+import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -156,6 +157,11 @@ export default function AnalyticsAdsCampaignDetail() {
     () => new Map((negativesData?.adGroups ?? []).map((a) => [a.id, a.negatives])),
     [negativesData],
   );
+  const [historyToken, setHistoryToken] = useState(0);
+  const handleNegativesChanged = useCallback(() => {
+    refetchNegatives();
+    setHistoryToken((t) => t + 1);
+  }, [refetchNegatives]);
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
@@ -324,14 +330,14 @@ export default function AnalyticsAdsCampaignDetail() {
               adGroupId={null}
               negatives={negativesData.campaign}
               canEdit={canManageTeam}
-              onChanged={refetchNegatives}
+              onChanged={handleNegativesChanged}
             />
           )}
         </div>
       </div>
 
       <div
-        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Ad Groups</div>
@@ -398,7 +404,7 @@ export default function AnalyticsAdsCampaignDetail() {
                                   adGroupId={g.id}
                                   negatives={negativesByGroup.get(g.id) ?? []}
                                   canEdit={canManageTeam}
-                                  onChanged={refetchNegatives}
+                                  onChanged={handleNegativesChanged}
                                 />
                               )}
                             </div>
@@ -583,6 +589,8 @@ export default function AnalyticsAdsCampaignDetail() {
           </div>
         )}
       </div>
+
+      {campaignId && <AppleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
     </div>
   );
 }

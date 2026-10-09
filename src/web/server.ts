@@ -19,6 +19,7 @@ import { oauthRouter } from "./api/oauth";
 import { submissionsRouter } from "./api/submissions";
 import { githubRouter } from "./api/github";
 import { appleAdsRouter } from "./api/apple-ads";
+import { activityRouter } from "./api/activity";
 import { revenueCatRouter } from "./api/revenuecat";
 import { requireAuth, loadTeamRole, requireWriteRole, demoGuard } from "./auth";
 import { mcpAuth, createMcpHandler } from "./mcp";
@@ -95,6 +96,7 @@ app.use("/api/suggestions", requireAuth, demoGuard, loadTeamRole, requireWriteRo
 app.use("/api/keywords", requireAuth, demoGuard, loadTeamRole, requireWriteRole, keywordsRouter);
 app.use("/api/actions", requireAuth, demoGuard, loadTeamRole, requireWriteRole, actionsRouter);
 app.use("/api/settings", requireAuth, demoGuard, loadTeamRole, settingsRouter);
+app.use("/api/activity", requireAuth, demoGuard, loadTeamRole, activityRouter);
 app.use("/api/asc", requireAuth, demoGuard, loadTeamRole, requireWriteRole, ascRouter);
 app.use("/api/analytics", requireAuth, demoGuard, loadTeamRole, requireWriteRole, analyticsRouter);
 app.use("/api/boss", requireAuth, demoGuard, loadTeamRole, requireWriteRole, bossRouter);

@@ -1,7 +1,8 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
+import { logActivity } from "../../services/activity-log";
 import {
   listAppleAdsOrgs,
   listAppleAdsCampaigns,
@@ -24,6 +25,19 @@ import { getAppleAdsCampaignRevenue } from "../../services/apple-ads-revenue";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
+
+function webActor(req: Request) {
+  return { teamId: req.user!.teamId, userId: req.user!.userId, actor: req.user!.email };
+}
+
+/** Best-effort read: history snapshots must never break the mutation itself. */
+async function bestEffort<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch {
+    return undefined;
+  }
+}
 
 function appleWriteErrorMessage(err: any): string {
   const data = err?.response?.data;
@@ -122,6 +136,25 @@ appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
       input,
     );
 
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "ads.campaign.create",
+      entityType: "ads_campaign",
+      entityId: created.id,
+      summary: `Created campaign "${created.name}" (${created.status}) with ${created.adGroups.length} ad group(s)`,
+      details: {
+        name: input.name,
+        adamId: input.adamId,
+        countriesOrRegions: input.countriesOrRegions,
+        dailyBudgetAmount: input.dailyBudgetAmount,
+        budgetAmount: input.budgetAmount ?? null,
+        currency: input.currency,
+        supplySources: input.supplySources,
+        adGroups: created.adGroups.map((g) => ({ name: g.name, keywords: g.keywordCount, negatives: g.negativeKeywordCount })),
+        negativeKeywordCount: created.negativeKeywordCount,
+      },
+    });
     res.json({ campaign: created });
   } catch (err: any) {
     logger.error("[apple-ads] campaign create error", {
@@ -205,18 +238,30 @@ appleAdsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings, async (r
       return;
     }
 
-    const updated = await updateAppleAdsCampaignStatus(
-      {
-        orgId: s.appleAdsOrgId,
-        clientId: s.appleAdsClientId,
-        teamId: s.appleAdsTeamId,
-        keyId: s.appleAdsKeyId,
-        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-      },
-      req.params.campaignId as string,
-      status,
-    );
+    const creds = {
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    };
+    const before = await bestEffort(() => listAppleAdsCampaigns(creds));
+    const prev = before?.find((c) => String(c.id) === String(req.params.campaignId));
 
+    const updated = await updateAppleAdsCampaignStatus(creds, req.params.campaignId as string, status);
+
+    const verb = status === "ENABLED" ? "Published" : "Paused";
+    const target = prev?.name ? `"${prev.name}" (${updated.id})` : `campaign ${updated.id}`;
+    const transition = prev?.status ? `: ${prev.status} → ${status}` : "";
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "ads.campaign.status",
+      entityType: "ads_campaign",
+      entityId: updated.id,
+      summary: `${verb} ${target}${transition}`,
+      details: { campaignId: updated.id, status, previousStatus: prev?.status ?? null },
+    });
     res.json({ campaign: updated });
   } catch (err: any) {
     logger.error("[apple-ads] campaign status error", {
@@ -246,16 +291,26 @@ appleAdsRouter.delete("/campaigns/:campaignId", loadTeamSettings, async (req, re
       return;
     }
 
-    const deleted = await deleteAppleAdsCampaign(
-      {
-        orgId: s.appleAdsOrgId,
-        clientId: s.appleAdsClientId,
-        teamId: s.appleAdsTeamId,
-        keyId: s.appleAdsKeyId,
-        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-      },
-      req.params.campaignId as string,
-    );
+    const creds = {
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    };
+    const before = await bestEffort(() => listAppleAdsCampaigns(creds));
+    const prev = before?.find((c) => String(c.id) === String(req.params.campaignId));
+
+    const deleted = await deleteAppleAdsCampaign(creds, req.params.campaignId as string);
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "ads.campaign.delete",
+      entityType: "ads_campaign",
+      entityId: deleted.id,
+      summary: prev?.name ? `Deleted campaign "${prev.name}" (${deleted.id})` : `Deleted campaign ${deleted.id}`,
+      details: { campaignId: deleted.id, name: prev?.name ?? null },
+    });
     res.json({ campaign: deleted });
   } catch (err: any) {
     logger.error("[apple-ads] campaign delete error", {
@@ -450,6 +505,15 @@ appleAdsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings, async 
       validated.adGroupId,
       validated.keywords,
     );
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "ads.negatives.add",
+      entityType: "ads_campaign",
+      entityId: req.params.campaignId as string,
+      summary: `Added ${added.length} negative keyword(s) (${validated.adGroupId ? `ad group ${validated.adGroupId}` : "campaign level"}, campaign ${req.params.campaignId})`,
+      details: { campaignId: req.params.campaignId, adGroupId: validated.adGroupId, keywords: validated.keywords },
+    });
     res.json({ added });
   } catch (err: any) {
     logger.error("[apple-ads] negatives create error", {
@@ -489,18 +553,33 @@ appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asyn
       return;
     }
 
-    const deleted = await deleteAppleAdsNegativeKeywordsBulk(
-      {
-        orgId: s.appleAdsOrgId,
-        clientId: s.appleAdsClientId,
-        teamId: s.appleAdsTeamId,
-        keyId: s.appleAdsKeyId,
-        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-      },
-      req.params.campaignId as string,
-      adGroupId?.trim() ?? null,
-      ids,
-    );
+    const creds = {
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    };
+    const scopeAdGroupId = adGroupId?.trim() ?? null;
+    const before = await bestEffort(() => listAppleAdsNegativeKeywords(creds, req.params.campaignId as string, scopeAdGroupId));
+    const want = new Set(ids.map((id: unknown) => String(id)));
+    const removedTexts = (before ?? [])
+      .filter((k) => want.has(String(k.id)))
+      .map((k) => k.text)
+      .slice(0, 10);
+
+    const deleted = await deleteAppleAdsNegativeKeywordsBulk(creds, req.params.campaignId as string, scopeAdGroupId, ids);
+    const scope = scopeAdGroupId ? `ad group ${scopeAdGroupId}` : "campaign level";
+    const texts = removedTexts.map((t) => `"${t}"`).join(", ");
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "ads.negatives.delete",
+      entityType: "ads_campaign",
+      entityId: req.params.campaignId as string,
+      summary: `Deleted ${deleted} negative keyword(s) (${texts ? `${texts}, ` : ""}${scope}, campaign ${req.params.campaignId})`,
+      details: { campaignId: req.params.campaignId, adGroupId: scopeAdGroupId, ids, removedTexts },
+    });
     res.json({ deleted });
   } catch (err: any) {
     logger.error("[apple-ads] negatives delete error", {
