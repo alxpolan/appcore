@@ -487,6 +487,8 @@ export interface AppleAdsCampaignDetail {
 
 export interface AppleAdsDailySpendResponse {
   days: { date: string; spend: number }[];
+  startDate: string;
+  endDate: string;
 }
 
 export interface AppleAdsRevenueTransaction {

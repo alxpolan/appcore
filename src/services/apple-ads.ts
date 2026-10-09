@@ -85,6 +85,106 @@ export interface AppleAdsDailySpend {
   spend: number;
 }
 
+export interface AppleAdsReportRange {
+  startDate: string;
+  endDate: string;
+}
+
+const MAX_RANGE_DAYS = 730;
+const MAX_CHUNK_DAYS = 90;
+
+const fmtDay = (d: Date) => d.toISOString().slice(0, 10);
+
+function isDayString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime())
+  );
+}
+
+export function resolveAppleAdsRange(query: Record<string, any>): AppleAdsReportRange {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const endDefault = fmtDay(today);
+  const back = (n: number) => {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - n);
+    return fmtDay(d);
+  };
+
+  let startDate = back(29);
+  let endDate = endDefault;
+  if (query.period === "all") {
+    startDate = back(364);
+  } else if (query.period === "ytd") {
+    startDate = `${today.getUTCFullYear()}-01-01`;
+  } else if (query.days != null) {
+    const n = parseInt(String(query.days), 10);
+    if (Number.isFinite(n) && n >= 1) startDate = back(Math.min(n, MAX_RANGE_DAYS) - 1);
+  }
+  if (isDayString(query.startDate)) startDate = query.startDate;
+  if (isDayString(query.endDate)) endDate = query.endDate;
+
+  if (endDate > endDefault) endDate = endDefault;
+  if (startDate > endDate) startDate = endDate;
+  const earliest = back(MAX_RANGE_DAYS - 1);
+  if (startDate < earliest) startDate = earliest;
+  return { startDate, endDate };
+}
+
+export function splitReportSpan(range: AppleAdsReportRange): AppleAdsReportRange[] {
+  const chunks: AppleAdsReportRange[] = [];
+  const end = new Date(`${range.endDate}T00:00:00Z`);
+  let cursor = new Date(`${range.startDate}T00:00:00Z`);
+  while (cursor <= end) {
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + MAX_CHUNK_DAYS - 1);
+    chunks.push({ startDate: fmtDay(cursor), endDate: fmtDay(chunkEnd > end ? end : chunkEnd) });
+    cursor = new Date(chunkEnd);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return chunks;
+}
+
+function mergeTotals(into: any, add: any): any {
+  for (const [key, value] of Object.entries(add ?? {})) {
+    if (typeof value === "number") into[key] = (into[key] ?? 0) + value;
+    else if (key === "localSpend" && value && typeof value === "object") {
+      const amount = Number((into.localSpend as any)?.amount ?? 0) + Number((value as any).amount ?? 0);
+      into.localSpend = { ...(value as object), amount: String(amount) };
+    } else if (into[key] == null) {
+      into[key] = value;
+    }
+  }
+  return into;
+}
+
+/** Merges rows from several chunks that describe the same entity. Derived
+ * ratios in `total` (avgCPT, …) are summed, not averaged — every consumer
+ * recomputes them from the summed bases instead. */
+export function mergeReportRows(rows: any[], idOf: (row: any) => string | undefined): any[] {
+  const merged = new Map<string, any>();
+  for (const row of rows) {
+    const id = idOf(row);
+    if (id == null) continue;
+    const existing = merged.get(id);
+    if (!existing) {
+      const copy: any = { ...row };
+      if (row.total != null) copy.total = { ...row.total };
+      if (Array.isArray(row.granularity)) copy.granularity = [...row.granularity];
+      merged.set(id, copy);
+    } else {
+      if (row.total != null) existing.total = mergeTotals(existing.total ?? {}, row.total);
+      if (Array.isArray(row.granularity)) {
+        if (!Array.isArray(existing.granularity)) existing.granularity = [];
+        existing.granularity.push(...row.granularity);
+      }
+    }
+  }
+  return [...merged.values()];
+}
+
 function generateClientSecret({ clientId, teamId, keyId, privateKey }: AppleAdsOrgCredentials): string {
   const now = Math.floor(Date.now() / 1000);
   return jwt.sign(
@@ -176,7 +276,7 @@ function totalsFromRow(row: any): any {
 
 export async function listAppleAdsCampaigns(
   creds: AppleAdsCredentials,
-  days = 30,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
 ): Promise<AppleAdsCampaign[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const headers = {
@@ -185,35 +285,36 @@ export async function listAppleAdsCampaigns(
     "Content-Type": "application/json",
   };
 
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-
-  const reportRes = await axios.post<any>(
-    `${API_BASE}/reports/campaigns`,
-    {
-      startTime: fmt(start),
-      endTime: fmt(end),
-      selector: {
-        orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
-        pagination: { offset: 0, limit: 1000 },
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: true,
+        returnGrandTotals: false,
       },
-      timeZone: "UTC",
-      returnRecordsWithNoMetrics: true,
-      returnRowTotals: true,
-      returnGrandTotals: false,
-    },
-    { headers },
+      { headers },
+    );
+
+    // Apple can return HTTP 200 with a body-level error (data: null, error: {...})
+    // for a malformed request instead of a 4xx — don't let that look like "no campaigns".
+    if (reportRes.data?.error) {
+      throw new Error(`Apple Search Ads reports error: ${JSON.stringify(reportRes.data.error)}`);
+    }
+    return reportRes.data?.data?.reportingDataResponse?.row ?? reportRes.data?.data?.row ?? reportRes.data?.row ?? [];
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.campaignId != null ? String(row.metadata.campaignId) : undefined,
   );
-
-  // Apple can return HTTP 200 with a body-level error (data: null, error: {...})
-  // for a malformed request instead of a 4xx — don't let that look like "no campaigns".
-  if (reportRes.data?.error) {
-    throw new Error(`Apple Search Ads reports error: ${JSON.stringify(reportRes.data.error)}`);
-  }
-
-  const rows: any[] =
-    reportRes.data?.data?.reportingDataResponse?.row ?? reportRes.data?.data?.row ?? reportRes.data?.row ?? [];
 
   return rows
     .filter((row) => !row.metadata?.deleted)
@@ -240,13 +341,6 @@ export async function listAppleAdsCampaigns(
     });
 }
 
-function dateRange(days: number): { startTime: string; endTime: string } {
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  return { startTime: fmt(start), endTime: fmt(end) };
-}
-
 function authedHeaders(accessToken: string, orgId: string) {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -263,31 +357,39 @@ function rowsFromReport(data: any): any[] {
 export async function getAppleAdsCampaignDailySpend(
   creds: AppleAdsCredentials,
   campaignId: string,
-  days = 30,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
 ): Promise<AppleAdsDailySpend[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
-  const { startTime, endTime } = dateRange(days);
-  const reportRes = await axios.post<any>(
-    `${API_BASE}/reports/campaigns`,
-    {
-      startTime,
-      endTime,
-      selector: {
-        orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
-        conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
-        pagination: { offset: 0, limit: 1000 },
+  const headers = authedHeaders(accessToken, creds.orgId);
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
+          conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        granularity: "DAILY",
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: false,
+        returnGrandTotals: false,
       },
-      granularity: "DAILY",
-      timeZone: "UTC",
-      returnRecordsWithNoMetrics: true,
-      returnRowTotals: false,
-      returnGrandTotals: false,
-    },
-    { headers: authedHeaders(accessToken, creds.orgId) },
+      { headers },
+    );
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.campaignId != null ? String(row.metadata.campaignId) : undefined,
   );
 
   const byDate = new Map<string, number>();
-  for (const row of rowsFromReport(reportRes.data)) {
+  for (const row of rows) {
     if (String(row.metadata?.campaignId) !== campaignId) continue;
     for (const day of row.granularity ?? []) {
       const date = String(day.date ?? "").slice(0, 10);
@@ -301,30 +403,37 @@ export async function getAppleAdsCampaignDailySpend(
 export async function listAppleAdsAdGroups(
   creds: AppleAdsCredentials,
   campaignId: string,
-  days = 30,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
 ): Promise<AppleAdsAdGroup[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const headers = authedHeaders(accessToken, creds.orgId);
-  const { startTime, endTime } = dateRange(days);
 
-  const reportRes = await axios.post<any>(
-    `${API_BASE}/reports/campaigns/${campaignId}/adgroups`,
-    {
-      startTime,
-      endTime,
-      selector: {
-        orderBy: [{ field: "adGroupId", sortOrder: "ASCENDING" }],
-        pagination: { offset: 0, limit: 1000 },
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns/${campaignId}/adgroups`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "adGroupId", sortOrder: "ASCENDING" }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: true,
+        returnGrandTotals: false,
       },
-      timeZone: "UTC",
-      returnRecordsWithNoMetrics: true,
-      returnRowTotals: true,
-      returnGrandTotals: false,
-    },
-    { headers },
+      { headers },
+    );
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.adGroupId != null ? String(row.metadata.adGroupId) : undefined,
   );
 
-  return rowsFromReport(reportRes.data)
+  return rows
     .filter((row) => !row.metadata?.deleted)
     .map((row) => {
       const meta = row.metadata ?? {};
@@ -348,30 +457,37 @@ export async function listAppleAdsKeywords(
   creds: AppleAdsCredentials,
   campaignId: string,
   adGroupId: string,
-  days = 30,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
 ): Promise<AppleAdsKeyword[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const headers = authedHeaders(accessToken, creds.orgId);
-  const { startTime, endTime } = dateRange(days);
 
-  const reportRes = await axios.post<any>(
-    `${API_BASE}/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`,
-    {
-      startTime,
-      endTime,
-      selector: {
-        orderBy: [{ field: "keywordId", sortOrder: "ASCENDING" }],
-        pagination: { offset: 0, limit: 1000 },
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "keywordId", sortOrder: "ASCENDING" }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: true,
+        returnGrandTotals: false,
       },
-      timeZone: "UTC",
-      returnRecordsWithNoMetrics: true,
-      returnRowTotals: true,
-      returnGrandTotals: false,
-    },
-    { headers },
+      { headers },
+    );
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.keywordId != null ? String(row.metadata.keywordId) : undefined,
   );
 
-  return rowsFromReport(reportRes.data)
+  return rows
     .filter((row) => !row.metadata?.deleted)
     .map((row) => {
       const meta = row.metadata ?? {};
@@ -396,13 +512,13 @@ export async function listAppleAdsKeywords(
 export async function getAppleAdsCampaignDetail(
   creds: AppleAdsCredentials,
   campaignId: string,
-  days = 30,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
 ): Promise<AppleAdsAdGroupWithKeywords[]> {
-  const adGroups = await listAppleAdsAdGroups(creds, campaignId, days);
+  const adGroups = await listAppleAdsAdGroups(creds, campaignId, range);
   return Promise.all(
     adGroups.map(async (adGroup) => ({
       ...adGroup,
-      keywords: await listAppleAdsKeywords(creds, campaignId, adGroup.id, days),
+      keywords: await listAppleAdsKeywords(creds, campaignId, adGroup.id, range),
     })),
   );
 }

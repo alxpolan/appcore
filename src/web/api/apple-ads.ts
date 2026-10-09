@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
-import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend } from "../../services/apple-ads";
+import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend, resolveAppleAdsRange } from "../../services/apple-ads";
 import { appleAdsCampaignAttribution } from "../../services/revenuecat-attribution";
 import { buildTrialPriceMap, findCohortStart, isTrialConverted, trialPotentialFor } from "../../services/trial-pricing";
 
@@ -33,7 +33,7 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
       teamId: s.appleAdsTeamId,
       keyId: s.appleAdsKeyId,
       privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    });
+    }, resolveAppleAdsRange(req.query));
     res.json({ campaigns });
   } catch (err: any) {
     logger.error("[apple-ads] campaigns fetch error", {
@@ -62,6 +62,7 @@ appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (re
         privateKey: decryptNullable(s.appleAdsPrivateKey)!,
       },
       req.params.campaignId as string,
+      resolveAppleAdsRange(req.query),
     );
     res.json({ adGroups });
   } catch (err: any) {
@@ -82,14 +83,15 @@ appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async
   }
 
   try {
+    const range = resolveAppleAdsRange(req.query);
     const days = await getAppleAdsCampaignDailySpend({
       orgId: s.appleAdsOrgId,
       clientId: s.appleAdsClientId,
       teamId: s.appleAdsTeamId,
       keyId: s.appleAdsKeyId,
       privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, req.params.campaignId as string);
-    res.json({ days });
+    }, req.params.campaignId as string, range);
+    res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     logger.error("[apple-ads] campaign daily spend fetch error", {
       err: String(err?.message ?? err),
@@ -122,9 +124,12 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
       return;
     }
 
-    const start = new Date();
-    start.setUTCDate(start.getUTCDate() - 30);
-    start.setUTCHours(0, 0, 0, 0);
+    // Evaluation window follows the selected range; pricing and cohort
+    // lookbacks stay fixed since they need history beyond the window.
+    const range = resolveAppleAdsRange(req.query);
+    const start = new Date(`${range.startDate}T00:00:00Z`);
+    const until = new Date(`${range.endDate}T00:00:00Z`);
+    until.setUTCDate(until.getUTCDate() + 1);
     // Trial pricing looks further back so new trials still find a paid
     // reference for their product even without recent conversions.
     const priceStart = new Date();
@@ -136,7 +141,7 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
         select: { bundleId: true, customerId: true, appleAttribution: true, attributes: true },
       }),
       prisma.revenueCatTransaction.findMany({
-        where: { bundleId: { in: bundleIds }, occurredAt: { gte: start }, environment: "production" },
+        where: { bundleId: { in: bundleIds }, occurredAt: { gte: start, lt: until }, environment: "production" },
         select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, periodType: true, isTrialConversion: true, occurredAt: true, proceedsUsd: true },
         orderBy: { occurredAt: "desc" },
       }),
@@ -167,11 +172,11 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
     if (cohortCustomerIds.length > 0) {
       [trialStarts, trialConversions] = await Promise.all([
         prisma.revenueCatTransaction.findMany({
-          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, eventType: "INITIAL_PURCHASE", periodType: "TRIAL", occurredAt: { gte: cohortLookback } },
+          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, eventType: "INITIAL_PURCHASE", periodType: "TRIAL", occurredAt: { gte: cohortLookback, lt: until } },
           select: cohortSelect,
         }),
         prisma.revenueCatTransaction.findMany({
-          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, isTrialConversion: true, occurredAt: { gte: cohortLookback } },
+          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, isTrialConversion: true, occurredAt: { gte: cohortLookback, lt: until } },
           select: cohortSelect,
         }),
       ]);
