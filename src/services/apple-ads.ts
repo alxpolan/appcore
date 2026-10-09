@@ -80,6 +80,11 @@ export interface AppleAdsAdGroupWithKeywords extends AppleAdsAdGroup {
   keywords: AppleAdsKeyword[];
 }
 
+export interface AppleAdsDailySpend {
+  date: string;
+  spend: number;
+}
+
 function generateClientSecret({ clientId, teamId, keyId, privateKey }: AppleAdsOrgCredentials): string {
   const now = Math.floor(Date.now() / 1000);
   return jwt.sign(
@@ -253,6 +258,44 @@ function authedHeaders(accessToken: string, orgId: string) {
 function rowsFromReport(data: any): any[] {
   if (data?.error) throw new Error(`Apple Search Ads reports error: ${JSON.stringify(data.error)}`);
   return data?.data?.reportingDataResponse?.row ?? data?.data?.row ?? data?.row ?? [];
+}
+
+export async function getAppleAdsCampaignDailySpend(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  days = 30,
+): Promise<AppleAdsDailySpend[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const { startTime, endTime } = dateRange(days);
+  const reportRes = await axios.post<any>(
+    `${API_BASE}/reports/campaigns`,
+    {
+      startTime,
+      endTime,
+      selector: {
+        orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
+        conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
+        pagination: { offset: 0, limit: 1000 },
+      },
+      granularity: "DAILY",
+      timeZone: "UTC",
+      returnRecordsWithNoMetrics: true,
+      returnRowTotals: false,
+      returnGrandTotals: false,
+    },
+    { headers: authedHeaders(accessToken, creds.orgId) },
+  );
+
+  const byDate = new Map<string, number>();
+  for (const row of rowsFromReport(reportRes.data)) {
+    if (String(row.metadata?.campaignId) !== campaignId) continue;
+    for (const day of row.granularity ?? []) {
+      const date = String(day.date ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      byDate.set(date, (byDate.get(date) ?? 0) + Number(day.localSpend?.amount ?? 0));
+    }
+  }
+  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, spend]) => ({ date, spend }));
 }
 
 export async function listAppleAdsAdGroups(

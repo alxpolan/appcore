@@ -2,9 +2,10 @@ import { Fragment, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Megaphone, ChevronRight } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
-import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsStats } from "../../types";
+import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtPct } from "../../utils/formatters";
+import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -90,6 +91,12 @@ export default function AnalyticsAdsCampaignDetail() {
   } = useApi<AppleAdsCampaignRevenue>("/apple-ads/campaign-revenue", [], true);
   const campaignRevenue = campaignId ? revenueData?.byCampaign[campaignId] : undefined;
 
+  const {
+    data: dailySpend,
+    loading: spendLoading,
+    error: spendError,
+  } = useApi<AppleAdsDailySpendResponse>(`/apple-ads/campaigns/${campaignId}/daily-spend`, [campaignId], true);
+
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
 
@@ -131,6 +138,15 @@ export default function AnalyticsAdsCampaignDetail() {
           />
         </div>
       )}
+
+      <AppleAdsCampaignChart
+        spendDays={dailySpend?.days}
+        revenue={campaignRevenue}
+        currency={currency}
+        loading={spendLoading || revenueLoading}
+        error={!!spendError}
+        revenueError={!!revenueError}
+      />
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}

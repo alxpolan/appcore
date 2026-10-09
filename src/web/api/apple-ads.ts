@@ -2,8 +2,9 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
-import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail } from "../../services/apple-ads";
+import { listAppleAdsOrgs, listAppleAdsCampaigns, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend } from "../../services/apple-ads";
 import { appleAdsCampaignAttribution } from "../../services/revenuecat-attribution";
+import { buildTrialPriceMap, findCohortStart, isTrialConverted, trialPotentialFor } from "../../services/trial-pricing";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
@@ -60,7 +61,7 @@ appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (re
         keyId: s.appleAdsKeyId,
         privateKey: decryptNullable(s.appleAdsPrivateKey)!,
       },
-      req.params.campaignId,
+      req.params.campaignId as string,
     );
     res.json({ adGroups });
   } catch (err: any) {
@@ -70,6 +71,32 @@ appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (re
       body: err?.response?.data,
     });
     res.status(500).json({ error: "Failed to load campaign detail from Apple Search Ads" });
+  }
+});
+
+appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const days = await getAppleAdsCampaignDailySpend({
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    }, req.params.campaignId as string);
+    res.json({ days });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign daily spend fetch error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    res.status(500).json({ error: "Failed to load daily campaign spend from Apple Search Ads" });
   }
 });
 
@@ -98,17 +125,57 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
     const start = new Date();
     start.setUTCDate(start.getUTCDate() - 30);
     start.setUTCHours(0, 0, 0, 0);
-    const [customers, transactions] = await Promise.all([
+    // Trial pricing looks further back so new trials still find a paid
+    // reference for their product even without recent conversions.
+    const priceStart = new Date();
+    priceStart.setUTCDate(priceStart.getUTCDate() - 90);
+    priceStart.setUTCHours(0, 0, 0, 0);
+    const [customers, transactions, priceSamples] = await Promise.all([
       prisma.revenueCatCustomer.findMany({
         where: { bundleId: { in: bundleIds } },
         select: { bundleId: true, customerId: true, appleAttribution: true, attributes: true },
       }),
       prisma.revenueCatTransaction.findMany({
         where: { bundleId: { in: bundleIds }, occurredAt: { gte: start }, environment: "production" },
-        select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, occurredAt: true, proceedsUsd: true },
+        select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, periodType: true, isTrialConversion: true, occurredAt: true, proceedsUsd: true },
         orderBy: { occurredAt: "desc" },
       }),
+      prisma.revenueCatTransaction.groupBy({
+        by: ["bundleId", "productId"],
+        where: { bundleId: { in: bundleIds }, occurredAt: { gte: priceStart }, environment: "production", proceedsUsd: { gt: 0 } },
+        _avg: { proceedsUsd: true },
+      }),
     ]);
+    const trialPrices = buildTrialPriceMap(
+      priceSamples.map((sample) => ({
+        bundleId: sample.bundleId,
+        productId: sample.productId,
+        avgProceedsUsd: sample._avg.proceedsUsd ?? 0,
+      })),
+    );
+
+    // Cohort links: trial starts and conversions for the customers in the
+    // window, so conversions attribute back to their trial-start day and
+    // converted trials carry no open potential anymore.
+    const cohortLookback = new Date();
+    cohortLookback.setUTCDate(cohortLookback.getUTCDate() - 365);
+    cohortLookback.setUTCHours(0, 0, 0, 0);
+    const cohortCustomerIds = [...new Set(transactions.map((transaction) => transaction.customerId))];
+    const cohortSelect = { bundleId: true, customerId: true, productId: true, occurredAt: true } as const;
+    let trialStarts: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
+    let trialConversions: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
+    if (cohortCustomerIds.length > 0) {
+      [trialStarts, trialConversions] = await Promise.all([
+        prisma.revenueCatTransaction.findMany({
+          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, eventType: "INITIAL_PURCHASE", periodType: "TRIAL", occurredAt: { gte: cohortLookback } },
+          select: cohortSelect,
+        }),
+        prisma.revenueCatTransaction.findMany({
+          where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, isTrialConversion: true, occurredAt: { gte: cohortLookback } },
+          select: cohortSelect,
+        }),
+      ]);
+    }
 
     const attributionByCustomer = new Map(customers.map((customer) => [
       `${customer.bundleId}\0${customer.customerId}`,
@@ -118,10 +185,14 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
     type RevenueTransaction = {
       id: string;
       date: string;
+      cohortDate: string | null;
       app: string;
       product: string;
       eventType: string;
+      isTrial: boolean;
+      isConvertedTrial: boolean;
       proceedsUsd: number;
+      potentialProceedsUsd: number;
     };
     type RevenueBucket = { proceedsUsd: number; transactions: RevenueTransaction[] };
     const byCampaign: Record<string, RevenueBucket & { byKeyword: Record<string, RevenueBucket> }> = {};
@@ -130,13 +201,21 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
       const attribution = attributionByCustomer.get(`${transaction.bundleId}\0${transaction.customerId}`);
       if (!attribution || (attribution.orgId && attribution.orgId !== orgId)) continue;
 
+      const isTrial = transaction.periodType === "TRIAL" && transaction.eventType === "INITIAL_PURCHASE";
+      const cohortEvent = { bundleId: transaction.bundleId, customerId: transaction.customerId, productId: transaction.productId, occurredAt: transaction.occurredAt };
+      const convertedTrial = isTrial && isTrialConverted(trialConversions, cohortEvent);
+      const cohortStart = transaction.isTrialConversion ? findCohortStart(trialStarts, cohortEvent) : null;
       const entry: RevenueTransaction = {
         id: transaction.rcId,
         date: transaction.occurredAt.toISOString(),
+        cohortDate: cohortStart ? cohortStart.toISOString() : null,
         app: appNameByBundle.get(transaction.bundleId) ?? transaction.bundleId,
         product: transaction.productId,
         eventType: transaction.eventType,
+        isTrial,
+        isConvertedTrial: convertedTrial,
         proceedsUsd: transaction.proceedsUsd,
+        potentialProceedsUsd: convertedTrial ? 0 : trialPotentialFor(trialPrices, transaction.bundleId, transaction.productId, isTrial),
       };
 
       const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [], byKeyword: {} };

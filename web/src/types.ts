@@ -485,13 +485,21 @@ export interface AppleAdsCampaignDetail {
   adGroups: AppleAdsAdGroup[];
 }
 
+export interface AppleAdsDailySpendResponse {
+  days: { date: string; spend: number }[];
+}
+
 export interface AppleAdsRevenueTransaction {
   id: string;
   date: string;
+  cohortDate: string | null;
   app: string;
   product: string;
   eventType: string;
+  isTrial: boolean;
+  isConvertedTrial: boolean;
   proceedsUsd: number;
+  potentialProceedsUsd: number;
 }
 
 export interface AppleAdsRevenueBucket {
