@@ -1,11 +1,11 @@
 import { Fragment, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Megaphone, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, Megaphone, ChevronRight, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
-import { fmtNumber, fmtPct, fmtShortDate } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
+import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
@@ -32,13 +32,31 @@ function statusBadge(status: string) {
   );
 }
 
+function statusDot(status: string) {
+  const isOn = status === "ENABLED" || status === "ACTIVE";
+  const Icon = isOn ? Check : X;
+  return (
+    <span
+      title={status.replace(/_/g, " ")}
+      className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
+        isOn ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+      }`}
+    >
+      <Icon
+        className={`w-3 h-3 ${isOn ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+        strokeWidth={3}
+      />
+    </span>
+  );
+}
+
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
     >
       <div className={`text-[11px] ${textMuted} mb-1.5`}>{label}</div>
-      <div className={`text-[20px] font-bold leading-none ${textPrimary}`}>{value}</div>
+      <div className={`text-[20px] font-bold leading-none truncate ${textPrimary}`} title={value}>{value}</div>
     </div>
   );
 }
@@ -124,14 +142,8 @@ export default function AnalyticsAdsCampaignDetail() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className={`${pageTitle} leading-tight truncate`}>{campaign?.name ?? "Campaign"}</h1>
-            {campaign && statusBadge(campaign.status)}
+            {campaign && statusDot(campaign.status)}
           </div>
-          <p className={`text-sm ${textMuted}`}>
-            {campaign?.countriesOrRegions?.join(", ") || "—"} ·{" "}
-            {range === "custom" && (customStart || customEnd)
-              ? [customStart ? fmtShortDate(customStart) : "…", customEnd ? fmtShortDate(customEnd) : "…"].join(" – ")
-              : rangeLabel(range)}
-          </p>
         </div>
       </div>
 
@@ -172,6 +184,7 @@ export default function AnalyticsAdsCampaignDetail() {
 
       {campaign && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+          <StatTile label="Countries" value={campaign.countriesOrRegions?.join(", ") || "—"} />
           <StatTile label="Spend" value={fmtMoney(campaign.spend, campaign.currency)} />
           <StatTile label="Impressions" value={fmtNumber(campaign.impressions)} />
           <StatTile label="Taps" value={fmtNumber(campaign.taps)} />
