@@ -1,11 +1,20 @@
 import { Fragment, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Megaphone, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, Check, Megaphone, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import {
+  EMPTY_KEYWORD_FILTERS,
+  filterKeywordRows,
+  isFilterActive,
+  sortKeywordRows,
+  type KeywordFilters,
+  type KeywordSortCol,
+  type SortDir,
+} from "../../utils/keywordTable";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
@@ -93,6 +102,9 @@ export default function AnalyticsAdsCampaignDetail() {
   const navigate = useNavigate();
   const [expandedAdGroup, setExpandedAdGroup] = useState<string | null>(null);
   const [expandedKeyword, setExpandedKeyword] = useState<string | null>(null);
+  const [kwSortCol, setKwSortCol] = useState<KeywordSortCol>("spend");
+  const [kwSortDir, setKwSortDir] = useState<SortDir>("desc");
+  const [kwFilter, setKwFilter] = useState<KeywordFilters>(EMPTY_KEYWORD_FILTERS);
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -126,6 +138,69 @@ export default function AnalyticsAdsCampaignDetail() {
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
+
+  const TEXT_SORT_COLS: KeywordSortCol[] = ["keyword", "matchType", "status"];
+  function handleKwSort(col: KeywordSortCol) {
+    if (kwSortCol === col) {
+      setKwSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setKwSortCol(col);
+      setKwSortDir(TEXT_SORT_COLS.includes(col) ? "asc" : "desc");
+    }
+  }
+
+  function KwSortTh({
+    col,
+    children,
+    right,
+    last,
+  }: {
+    col: KeywordSortCol;
+    children: React.ReactNode;
+    right?: boolean;
+    last?: boolean;
+  }) {
+    const active = kwSortCol === col;
+    return (
+      <th
+        className={`${TH} ${right ? "text-right" : ""} ${last ? "pr-5" : ""} cursor-pointer select-none hover:text-[#111827] dark:hover:text-[#e8eaf0] transition-colors`}
+        onClick={() => handleKwSort(col)}
+      >
+        <span className="inline-flex items-center gap-1">
+          {children}
+          <span className="opacity-40 [&_svg]:w-3 [&_svg]:h-3">
+            {active ? kwSortDir === "asc" ? <ChevronUp /> : <ChevronDown /> : <ChevronsUpDown />}
+          </span>
+        </span>
+      </th>
+    );
+  }
+
+  function resetKwTable() {
+    setKwFilter(EMPTY_KEYWORD_FILTERS);
+    setKwSortCol("spend");
+    setKwSortDir("desc");
+  }
+
+  const setKwFilterValue = (key: keyof KeywordFilters) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setKwFilter((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const kwFilterInput =
+    `h-7 w-full min-w-[56px] px-1.5 text-[11px] border ${borderDefault} rounded-lg ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2] tabular-nums`;
+  const kwFilterCell = "px-4 py-1.5 border-b border-[#f3f4f6] dark:border-[#2a2f3d]";
+  const kwTableModified = isFilterActive(kwFilter) || kwSortCol !== "spend" || kwSortDir !== "desc";
+  const kwRevenueById = campaignRevenue?.byKeyword;
+  // Only one ad group expands at a time, so one shared filtered/sorted view is enough.
+  const visibleKeywords = useMemo(() => {
+    const group = adGroups.find((g) => g.id === expandedAdGroup);
+    if (!group) return [];
+    return sortKeywordRows(
+      filterKeywordRows(group.keywords, kwFilter, kwRevenueById),
+      kwSortCol,
+      kwSortDir,
+      kwRevenueById,
+    );
+  }, [adGroups, expandedAdGroup, kwFilter, kwSortCol, kwSortDir, kwRevenueById]);
 
   return (
     <div className="max-w-[1440px] mx-auto">
@@ -263,36 +338,117 @@ export default function AnalyticsAdsCampaignDetail() {
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
                           <td colSpan={11} className="px-5 py-4">
-                            <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
-                              Keywords {g.cpaGoal != null && (
-                                <span className={`font-normal ${textMuted}`}>
-                                  · CPA goal {fmtMoney(g.cpaGoal, g.currency ?? currency)}
-                                </span>
+                            <div className={`text-[12px] font-semibold ${textPrimary} mb-2 flex items-center justify-between gap-2`}>
+                              <span>
+                                Keywords {g.cpaGoal != null && (
+                                  <span className={`font-normal ${textMuted}`}>
+                                    · CPA goal {fmtMoney(g.cpaGoal, g.currency ?? currency)}
+                                  </span>
+                                )}
+                              </span>
+                              {kwTableModified && (
+                                <button
+                                  onClick={resetKwTable}
+                                  className={`text-[11px] font-medium ${textMuted} hover:text-[#111827] dark:hover:text-[#e8eaf0] transition-colors`}
+                                >
+                                  Reset
+                                </button>
                               )}
                             </div>
                             {g.keywords.length === 0 ? (
                               <div className={`text-[12px] ${textMuted}`}>No keywords in this ad group.</div>
+                            ) : visibleKeywords.length === 0 ? (
+                              <div className={`text-[12px] ${textMuted}`}>No keywords match the current filters.</div>
                             ) : (
                               <div className="overflow-x-auto">
                                 <table className="w-full text-[12px] min-w-[1200px]">
                                   <thead>
                                     <tr>
                                       <th className={TH}></th>
-                                      <th className={TH}>Keyword</th>
-                                      <th className={TH}>Match Type</th>
-                                      <th className={TH}>Status</th>
-                                      <th className={`${TH} text-right`}>Bid</th>
-                                      {STAT_HEADERS.map((h) => (
-                                        <th key={h} className={`${TH} text-right`}>
-                                          {h}
-                                        </th>
-                                      ))}
-                                      <th className={`${TH} text-right`}>RC Txns</th>
-                                      <th className={`${TH} text-right pr-5`}>RC Proceeds</th>
+                                      <KwSortTh col="keyword">Keyword</KwSortTh>
+                                      <KwSortTh col="matchType">Match Type</KwSortTh>
+                                      <KwSortTh col="status">Status</KwSortTh>
+                                      <KwSortTh col="bid" right>Bid</KwSortTh>
+                                      <KwSortTh col="spend" right>Spend</KwSortTh>
+                                      <KwSortTh col="impressions" right>Impressions</KwSortTh>
+                                      <KwSortTh col="taps" right>Taps</KwSortTh>
+                                      <KwSortTh col="ttr" right>TTR</KwSortTh>
+                                      <KwSortTh col="installs" right>Installs</KwSortTh>
+                                      <KwSortTh col="avgCpt" right>Avg CPT</KwSortTh>
+                                      <KwSortTh col="avgCpa" right>Avg CPA</KwSortTh>
+                                      <KwSortTh col="convRate" right>Conv. Rate</KwSortTh>
+                                      <KwSortTh col="rcTxns" right>Txns</KwSortTh>
+                                      <KwSortTh col="rcProceeds" right last>Proceeds</KwSortTh>
+                                    </tr>
+                                    <tr>
+                                      <th className={kwFilterCell}>
+                                        {isFilterActive(kwFilter) && (
+                                          <span className={`text-[11px] tabular-nums ${textMuted}`}>
+                                            {visibleKeywords.length}/{g.keywords.length}
+                                          </span>
+                                        )}
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input
+                                          value={kwFilter.text}
+                                          onChange={setKwFilterValue("text")}
+                                          placeholder="Search"
+                                          className={kwFilterInput}
+                                        />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <select value={kwFilter.matchType} onChange={setKwFilterValue("matchType")} className={kwFilterInput}>
+                                          <option value="">All</option>
+                                          {[...new Set(g.keywords.map((k) => k.matchType))].sort().map((v) => (
+                                            <option key={v} value={v}>{v}</option>
+                                          ))}
+                                        </select>
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <select value={kwFilter.status} onChange={setKwFilterValue("status")} className={kwFilterInput}>
+                                          <option value="">All</option>
+                                          {[...new Set(g.keywords.map((k) => k.status))].sort().map((v) => (
+                                            <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
+                                          ))}
+                                        </select>
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.bid} onChange={setKwFilterValue("bid")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.spend} onChange={setKwFilterValue("spend")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.impressions} onChange={setKwFilterValue("impressions")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.taps} onChange={setKwFilterValue("taps")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.ttr} onChange={setKwFilterValue("ttr")} placeholder="min %" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.installs} onChange={setKwFilterValue("installs")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.avgCpt} onChange={setKwFilterValue("avgCpt")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.avgCpa} onChange={setKwFilterValue("avgCpa")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.convRate} onChange={setKwFilterValue("convRate")} placeholder="min %" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={kwFilterCell}>
+                                        <input value={kwFilter.rcTxns} onChange={setKwFilterValue("rcTxns")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
+                                      <th className={`${kwFilterCell} pr-5`}>
+                                        <input value={kwFilter.rcProceeds} onChange={setKwFilterValue("rcProceeds")} placeholder="min" inputMode="decimal" className={`${kwFilterInput} text-right`} />
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {g.keywords.map((k) => {
+                                    {visibleKeywords.map((k) => {
                                       const kwExpanded = expandedKeyword === k.id;
                                       const kwRevenue = campaignRevenue?.byKeyword[k.id];
                                       return (
