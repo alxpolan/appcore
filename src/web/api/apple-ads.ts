@@ -260,7 +260,11 @@ appleAdsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings, async (r
       entityType: "ads_campaign",
       entityId: updated.id,
       summary: `${verb} ${target}${transition}`,
-      details: { campaignId: updated.id, status, previousStatus: prev?.status ?? null },
+      details: {
+        campaignId: updated.id,
+        name: prev?.name ?? null,
+        changes: [{ label: "Status", from: prev?.status ?? null, to: status }],
+      },
     });
     res.json({ campaign: updated });
   } catch (err: any) {
@@ -505,14 +509,22 @@ appleAdsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings, async 
       validated.adGroupId,
       validated.keywords,
     );
+    const addedTexts = validated.keywords.map((k) => k.text);
+    const addScope = validated.adGroupId ? `ad group ${validated.adGroupId}` : "campaign level";
     await logActivity({
       ...webActor(req),
       source: "web",
       action: "ads.negatives.add",
       entityType: "ads_campaign",
       entityId: req.params.campaignId as string,
-      summary: `Added ${added.length} negative keyword(s) (${validated.adGroupId ? `ad group ${validated.adGroupId}` : "campaign level"}, campaign ${req.params.campaignId})`,
-      details: { campaignId: req.params.campaignId, adGroupId: validated.adGroupId, keywords: validated.keywords },
+      summary: `Added ${added.length} negative keyword(s) (${addedTexts.map((t) => `"${t}"`).join(", ")}, ${addScope}, campaign ${req.params.campaignId})`,
+      details: {
+        campaignId: req.params.campaignId,
+        adGroupId: validated.adGroupId,
+        scope: addScope,
+        added: addedTexts,
+        removed: [],
+      },
     });
     res.json({ added });
   } catch (err: any) {
@@ -578,7 +590,13 @@ appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asyn
       entityType: "ads_campaign",
       entityId: req.params.campaignId as string,
       summary: `Deleted ${deleted} negative keyword(s) (${texts ? `${texts}, ` : ""}${scope}, campaign ${req.params.campaignId})`,
-      details: { campaignId: req.params.campaignId, adGroupId: scopeAdGroupId, ids, removedTexts },
+      details: {
+        campaignId: req.params.campaignId,
+        adGroupId: scopeAdGroupId,
+        scope,
+        added: [],
+        removed: removedTexts,
+      },
     });
     res.json({ deleted });
   } catch (err: any) {

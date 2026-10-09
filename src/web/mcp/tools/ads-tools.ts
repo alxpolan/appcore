@@ -164,19 +164,35 @@ const summarizeCreateCampaign = (args: any, text: string): ToolSummary => ({
 const summarizeUpdateCampaign = (args: any, text: string): ToolSummary => {
   const prev = tryParseJson(text)?.previous;
   const parts: string[] = [];
-  if (args?.name != null) parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
-  if (args?.status != null) parts.push(fromTo("status", prev?.status, args.status));
+  const changes: { label: string; from: string | null; to: string | null }[] = [];
+  if (args?.name != null) {
+    parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
+    changes.push({ label: "Name", from: prev?.name ?? null, to: args.name });
+  }
+  if (args?.status != null) {
+    parts.push(fromTo("status", prev?.status, args.status));
+    changes.push({ label: "Status", from: prev?.status ?? null, to: args.status });
+  }
   if (args?.dailyBudgetAmount != null) {
     const ccy = args?.currency ?? prev?.currency;
-    parts.push(fromTo("daily budget", prev?.dailyBudget, `${args.dailyBudgetAmount}${ccy ? ` ${ccy}` : ""}`));
+    const suffix = ccy ? ` ${ccy}` : "";
+    parts.push(fromTo("daily budget", prev?.dailyBudget, `${args.dailyBudgetAmount}${suffix}`));
+    changes.push({
+      label: "Daily budget",
+      from: prev?.dailyBudget != null ? `${prev.dailyBudget}${suffix}` : null,
+      to: `${args.dailyBudgetAmount}${suffix}`,
+    });
   }
   if (args?.countriesOrRegions != null) {
-    parts.push(fromTo("countries", (prev?.countriesOrRegions ?? []).join(", ") || null, args.countriesOrRegions.join(", ")));
+    const from = (prev?.countriesOrRegions ?? []).join(", ") || null;
+    parts.push(fromTo("countries", from, args.countriesOrRegions.join(", ")));
+    changes.push({ label: "Countries", from, to: args.countriesOrRegions.join(", ") });
   }
   return {
     summary: `Updated campaign ${args?.campaignId}${parts.length ? `: ${parts.join("; ")}` : ""}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, changes },
   };
 };
 
@@ -189,6 +205,11 @@ const summarizeCampaignStatus = (args: any, text: string): ToolSummary => {
     summary: `${verb} ${target}${transition}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: {
+      campaignId: args?.campaignId,
+      name: prev?.name ?? null,
+      changes: [{ label: "Status", from: prev?.status ?? null, to: args?.status ?? null }],
+    },
   };
 };
 
@@ -217,16 +238,36 @@ const summarizeUpdateAdGroup = (args: any, text: string): ToolSummary => {
   const ccy = args?.currency ?? prev?.currency;
   const suffix = ccy ? ` ${ccy}` : "";
   const parts: string[] = [];
-  if (args?.name != null) parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
-  if (args?.status != null) parts.push(fromTo("status", prev?.status, args.status));
+  const changes: { label: string; from: string | null; to: string | null }[] = [];
+  if (args?.name != null) {
+    parts.push(`name: ${quote(prev?.name)} → ${quote(args.name)}`);
+    changes.push({ label: "Name", from: prev?.name ?? null, to: args.name });
+  }
+  if (args?.status != null) {
+    parts.push(fromTo("status", prev?.status, args.status));
+    changes.push({ label: "Status", from: prev?.status ?? null, to: args.status });
+  }
   if (args?.defaultBidAmount != null) {
     parts.push(fromTo("default bid", prev?.defaultBidAmount, `${args.defaultBidAmount}${suffix}`));
+    changes.push({
+      label: "Default bid",
+      from: prev?.defaultBidAmount != null ? `${prev.defaultBidAmount}${suffix}` : null,
+      to: `${args.defaultBidAmount}${suffix}`,
+    });
   }
-  if (args?.cpaGoal != null) parts.push(fromTo("CPA goal", prev?.cpaGoal, `${args.cpaGoal}${suffix}`));
+  if (args?.cpaGoal != null) {
+    parts.push(fromTo("CPA goal", prev?.cpaGoal, `${args.cpaGoal}${suffix}`));
+    changes.push({
+      label: "CPA goal",
+      from: prev?.cpaGoal != null ? `${prev.cpaGoal}${suffix}` : null,
+      to: `${args.cpaGoal}${suffix}`,
+    });
+  }
   return {
     summary: `Updated ad group ${args?.adGroupId} (campaign ${args?.campaignId})${parts.length ? `: ${parts.join("; ")}` : ""}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, adGroupId: args?.adGroupId, changes },
   };
 };
 
@@ -253,50 +294,61 @@ const summarizeAddKeywords = (args: any): ToolSummary => {
 const summarizeUpdateKeywords = (args: any, text: string): ToolSummary => {
   const rows = tryParseJson(text)?.updated ?? [];
   const suffix = args?.currency ? ` ${args.currency}` : "";
+  const changes: { label: string; from: string | null; to: string | null }[] = [];
   const parts = rows.slice(0, 5).map((r: any) => {
     const bits: string[] = [];
-    if (r?.bidAmount != null) bits.push(`bid ${r.previousBidAmount ?? "—"} → ${r.bidAmount}${suffix}`);
-    if (r?.status != null) bits.push(`${r.previousStatus ?? "—"} → ${r.status}`);
-    return `"${r?.text ?? r?.id}": ${bits.join(", ") || "no changes"}`;
+    const name = `"${r?.text ?? r?.id}"`;
+    if (r?.bidAmount != null) {
+      bits.push(`bid ${r.previousBidAmount ?? "—"} → ${r.bidAmount}${suffix}`);
+      changes.push({
+        label: `${name} · bid`,
+        from: r.previousBidAmount != null ? `${r.previousBidAmount}${suffix}` : null,
+        to: `${r.bidAmount}${suffix}`,
+      });
+    }
+    if (r?.status != null) {
+      bits.push(`${r.previousStatus ?? "—"} → ${r.status}`);
+      changes.push({ label: `${name} · status`, from: r.previousStatus ?? null, to: r.status });
+    }
+    return `${name}: ${bits.join(", ") || "no changes"}`;
   });
   const more = rows.length > 5 ? `; +${rows.length - 5} more` : "";
   return {
     summary: `Updated ${rows.length} keyword(s) in ad group ${args?.adGroupId}${parts.length ? `: ${parts.join("; ")}${more}` : ""}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, adGroupId: args?.adGroupId, changes },
   };
 };
 
 const summarizeDeleteKeywords = (args: any, text: string): ToolSummary => {
   const prev = tryParseJson(text)?.previous ?? [];
-  const names = prev
-    .map((p: any) => (p?.text ? `"${p.text}"` : null))
-    .filter(Boolean)
-    .join(", ");
-  const label = names || (args?.keywordIds ?? []).join(", ");
+  const removed = prev.map((p: any) => p?.text).filter(Boolean);
+  const label = removed.map((t: string) => `"${t}"`).join(", ") || (args?.keywordIds ?? []).join(", ");
   return {
     summary: `Deleted ${args?.keywordIds?.length ?? 0} keyword(s) (${label}) from ad group ${args?.adGroupId}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, adGroupId: args?.adGroupId, removed },
   };
 };
 
 const summarizeUpdateNegatives = (args: any, text: string): ToolSummary => {
   const scope = args?.adGroupId ? `ad group ${args.adGroupId}` : "campaign level";
   const prev = tryParseJson(text)?.previous;
+  const added = (args?.add ?? []).map((k: any) => k?.text).filter(Boolean);
+  const removed = (prev?.removedTexts ?? []).filter(Boolean);
   const parts: string[] = [];
   if (args?.add?.length) {
-    const texts = args.add
-      .map((k: any) => (k?.text ? `"${k.text}"` : null))
-      .filter(Boolean)
+    const texts = added
+      .map((t: string) => `"${t}"`)
       .slice(0, 5)
       .join(", ");
     parts.push(`added ${args.add.length}${texts ? ` (${texts})` : ""}`);
   }
   if (args?.removeIds?.length) {
-    const texts = (prev?.removedTexts ?? [])
-      .map((t: any) => (t ? `"${t}"` : null))
-      .filter(Boolean)
+    const texts = removed
+      .map((t: string) => `"${t}"`)
       .slice(0, 5)
       .join(", ");
     parts.push(`removed ${args.removeIds.length}${texts ? ` (${texts})` : ""}`);
@@ -305,6 +357,7 @@ const summarizeUpdateNegatives = (args: any, text: string): ToolSummary => {
     summary: `Negative keywords (${scope}, campaign ${args?.campaignId}): ${parts.join(", ") || "no changes"}`,
     entityType: "ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, adGroupId: args?.adGroupId ?? null, scope, added, removed },
   };
 };
 

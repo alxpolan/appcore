@@ -4,6 +4,7 @@ import { useApi } from "../../hooks/useApi";
 import type { ActivityLogResponse } from "../../types";
 import { borderDefault, textMuted, textPrimary } from "../../styles";
 import { fmtDateTime, fmtRelativeDateTime } from "../../utils/formatters";
+import { parseHistoryDetails } from "../../utils/historyDetails";
 
 const SOURCE_BADGE: Record<string, string> = {
   mcp: "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
@@ -101,11 +102,7 @@ export default function AppleAdsCampaignHistory({
                       </div>
                     )}
                     {e.details != null ? (
-                      <pre
-                        className={`text-[11px] leading-relaxed font-mono ${textMuted} bg-[#fafbfc] dark:bg-[#14171e] border ${borderDefault} rounded-xl px-3 py-2 overflow-x-auto max-h-64 overflow-y-auto`}
-                      >
-                        {typeof e.details === "string" ? e.details : JSON.stringify(e.details, null, 2)}
-                      </pre>
+                      <HistoryDetails details={e.details} />
                     ) : (
                       <div className={`text-[12px] ${textMuted}`}>No details recorded.</div>
                     )}
@@ -122,5 +119,64 @@ export default function AppleAdsCampaignHistory({
         </div>
       )}
     </div>
+  );
+}
+
+function HistoryDetails({ details }: { details: unknown }) {
+  const parsed = parseHistoryDetails(details);
+
+  if (parsed.kind === "changes") {
+    const shown = parsed.changes.slice(0, 20);
+    return (
+      <div className={`rounded-xl border ${borderDefault} bg-[#fafbfc] dark:bg-[#14171e] px-3 py-1.5`}>
+        {shown.map((c, i) => (
+          <div
+            key={i}
+            className="flex items-baseline justify-between gap-3 py-1 text-[12px] [&:not(:last-child)]:border-b [&:not(:last-child)]:border-[#f3f4f6] dark:[&:not(:last-child)]:border-[#2a2f3d]"
+          >
+            <span className={`${textMuted} truncate`}>{c.label}</span>
+            <span className={`shrink-0 font-medium ${textPrimary}`}>
+              {c.from != null ? <span className={textMuted}>{c.from}</span> : <span>—</span>}
+              <span className={`mx-1.5 ${textMuted}`}>→</span>
+              {c.to ?? "—"}
+            </span>
+          </div>
+        ))}
+        {parsed.changes.length > shown.length && (
+          <div className={`py-1 text-[12px] ${textMuted}`}>+{parsed.changes.length - shown.length} more</div>
+        )}
+      </div>
+    );
+  }
+
+  if (parsed.kind === "addedRemoved") {
+    return (
+      <div className={`rounded-xl border ${borderDefault} bg-[#fafbfc] dark:bg-[#14171e] px-3 py-2 text-[12px]`}>
+        {parsed.scope && <div className={`${textMuted} mb-1`}>{parsed.scope}</div>}
+        {parsed.added.length > 0 && (
+          <div className="py-0.5">
+            <span className={`font-medium ${textPrimary}`}>Added: </span>
+            <span className={textMuted}>{parsed.added.map((t) => `"${t}"`).join(", ")}</span>
+          </div>
+        )}
+        {parsed.removed.length > 0 && (
+          <div className="py-0.5">
+            <span className={`font-medium ${textPrimary}`}>Removed: </span>
+            <span className={textMuted}>{parsed.removed.map((t) => `"${t}"`).join(", ")}</span>
+          </div>
+        )}
+        {parsed.added.length === 0 && parsed.removed.length === 0 && (
+          <div className={textMuted}>No keyword changes.</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <pre
+      className={`text-[11px] leading-relaxed font-mono ${textMuted} bg-[#fafbfc] dark:bg-[#14171e] border ${borderDefault} rounded-xl px-3 py-2 overflow-x-auto max-h-64 overflow-y-auto`}
+    >
+      {typeof details === "string" ? details : JSON.stringify(details, null, 2)}
+    </pre>
   );
 }
