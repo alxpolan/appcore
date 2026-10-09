@@ -38,6 +38,8 @@ function DailyTooltip({ active, payload, currency, showTrials }: { active?: bool
 
 export default function AppleAdsCampaignChart({
   spendDays,
+  startDate,
+  endDate,
   revenue,
   currency,
   loading,
@@ -45,6 +47,8 @@ export default function AppleAdsCampaignChart({
   revenueError,
 }: {
   spendDays?: AppleAdsDailySpendResponse["days"];
+  startDate?: string;
+  endDate?: string;
   revenue?: AppleAdsCampaignRevenue["byCampaign"][string];
   currency: string;
   loading: boolean;
@@ -52,13 +56,17 @@ export default function AppleAdsCampaignChart({
   revenueError: boolean;
 }) {
   const [showTrials, setShowTrials] = useState(true);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // Day buckets follow the resolved backend range; fall back to the last 30
+  // days while the range is still loading.
+  const fallbackEnd = new Date();
+  fallbackEnd.setUTCHours(0, 0, 0, 0);
+  const fallbackStart = new Date(fallbackEnd);
+  fallbackStart.setUTCDate(fallbackStart.getUTCDate() - 29);
+  const rangeStart = startDate ?? fallbackStart.toISOString().slice(0, 10);
+  const rangeEnd = endDate ?? fallbackEnd.toISOString().slice(0, 10);
   const byDay = new Map<string, ChartDay>();
-  for (let offset = 30; offset >= 0; offset--) {
-    const date = new Date(today);
-    date.setUTCDate(date.getUTCDate() - offset);
-    const key = date.toISOString().slice(0, 10);
+  for (let cursor = new Date(`${rangeStart}T00:00:00Z`); cursor <= new Date(`${rangeEnd}T00:00:00Z`); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const key = cursor.toISOString().slice(0, 10);
     byDay.set(key, { date: key, spend: 0, proceeds: 0, trialPotential: 0, trials: 0, unpricedTrials: 0 });
   }
   for (const day of spendDays ?? []) {
@@ -66,8 +74,7 @@ export default function AppleAdsCampaignChart({
     if (point) point.spend += day.spend;
   }
   for (const transaction of revenue?.transactions ?? []) {
-    // Conversions attribute to their trial-start day (cohort view); converted
-    // trials carry no open potential anymore — their value is in proceeds.
+   
     const point = byDay.get((transaction.cohortDate ?? transaction.date).slice(0, 10));
     if (!point) continue;
     if (transaction.isTrial && !transaction.isConvertedTrial) {
@@ -99,7 +106,7 @@ export default function AppleAdsCampaignChart({
         )}
       </div>
       <div className={`text-[12px] ${textMuted} mt-0.5 mb-5`}>
-        Daily spend vs proceeds{showTrials ? " + trial potential" : ""} · last 30 days · UTC
+        Daily spend vs proceeds{showTrials ? " + trial potential" : ""} · {chartDate(rangeStart)} – {chartDate(rangeEnd)} · UTC
       </div>
       {loading ? (
         <div className={`h-72 flex items-center justify-center text-[13px] ${textMuted}`}>Loading chart…</div>

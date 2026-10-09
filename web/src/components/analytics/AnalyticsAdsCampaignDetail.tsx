@@ -1,10 +1,11 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Megaphone, ChevronRight } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
-import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { fmtNumber, fmtPct, fmtShortDate } from "../../utils/formatters";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
@@ -74,28 +75,36 @@ export default function AnalyticsAdsCampaignDetail() {
   const navigate = useNavigate();
   const [expandedAdGroup, setExpandedAdGroup] = useState<string | null>(null);
   const [expandedKeyword, setExpandedKeyword] = useState<string | null>(null);
+  const [range, setRange] = useState<RangeKey>("30d");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const query = useMemo(
+    () => rangeToParams(range, customStart, customEnd).replace(/^&/, "?"),
+    [range, customStart, customEnd],
+  );
+  const rangeDeps = [range, customStart, customEnd];
 
-  const { data: campaignsData } = useApi<{ campaigns: AppleAdsCampaign[] }>("/apple-ads/campaigns", [], true);
+  const { data: campaignsData } = useApi<{ campaigns: AppleAdsCampaign[] }>(`/apple-ads/campaigns${query}`, rangeDeps, true);
   const campaign = campaignsData?.campaigns.find((c) => c.id === campaignId) ?? null;
 
   const {
     data: detail,
     loading,
     error,
-  } = useApi<AppleAdsCampaignDetail>(`/apple-ads/campaigns/${campaignId}/details`, [campaignId], true);
+  } = useApi<AppleAdsCampaignDetail>(`/apple-ads/campaigns/${campaignId}/details${query}`, [campaignId, ...rangeDeps], true);
 
   const {
     data: revenueData,
     loading: revenueLoading,
     error: revenueError,
-  } = useApi<AppleAdsCampaignRevenue>("/apple-ads/campaign-revenue", [], true);
+  } = useApi<AppleAdsCampaignRevenue>(`/apple-ads/campaign-revenue${query}`, rangeDeps, true);
   const campaignRevenue = campaignId ? revenueData?.byCampaign[campaignId] : undefined;
 
   const {
     data: dailySpend,
     loading: spendLoading,
     error: spendError,
-  } = useApi<AppleAdsDailySpendResponse>(`/apple-ads/campaigns/${campaignId}/daily-spend`, [campaignId], true);
+  } = useApi<AppleAdsDailySpendResponse>(`/apple-ads/campaigns/${campaignId}/daily-spend${query}`, [campaignId, ...rangeDeps], true);
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
@@ -118,9 +127,47 @@ export default function AnalyticsAdsCampaignDetail() {
             {campaign && statusBadge(campaign.status)}
           </div>
           <p className={`text-sm ${textMuted}`}>
-            {campaign?.countriesOrRegions?.join(", ") || "—"} · last 30 days
+            {campaign?.countriesOrRegions?.join(", ") || "—"} ·{" "}
+            {range === "custom" && (customStart || customEnd)
+              ? [customStart ? fmtShortDate(customStart) : "…", customEnd ? fmtShortDate(customEnd) : "…"].join(" – ")
+              : rangeLabel(range)}
           </p>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setRange(opt.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                range === opt.key
+                  ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                  : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
+            />
+            <span className={`${textMuted} text-[12px]`}>–</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className={`h-8 px-2.5 text-[12px] border ${borderDefault} rounded-xl ${textPrimary} bg-white dark:bg-[#1c2028] focus:outline-none focus:border-[#c4c9d4] dark:focus:border-[#595DD2]`}
+            />
+          </div>
+        )}
       </div>
 
       {campaign && (
@@ -141,6 +188,8 @@ export default function AnalyticsAdsCampaignDetail() {
 
       <AppleAdsCampaignChart
         spendDays={dailySpend?.days}
+        startDate={dailySpend?.startDate}
+        endDate={dailySpend?.endDate}
         revenue={campaignRevenue}
         currency={currency}
         loading={spendLoading || revenueLoading}
