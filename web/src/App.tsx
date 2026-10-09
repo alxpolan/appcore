@@ -82,6 +82,7 @@ import {
   Cable,
   Camera,
   Hammer,
+  Megaphone,
 } from "lucide-react";
 
 const sidebarLinks = [
@@ -119,6 +120,7 @@ const settingsLinks: SidebarLink[] = [
 const railLinks: SidebarLink[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/analytics", label: "Analytics", icon: BarChart2 },
+  { to: "/analytics/ads", label: "Ads", icon: Megaphone },
   { to: "/keywords", label: "Keywords", icon: Search },
   { to: "/competitors", label: "Competitors", icon: Users },
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
@@ -574,10 +576,13 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
   const [expanded, setExpanded] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const isAnyAnalyticsActive = location.pathname.startsWith("/analytics");
+  const isAnyAnalyticsActive =
+    location.pathname.startsWith("/analytics") && !location.pathname.startsWith("/analytics/ads");
 
   useEffect(() => {
-    if (location.pathname.startsWith("/analytics")) setExpanded(true);
+    if (location.pathname.startsWith("/analytics") && !location.pathname.startsWith("/analytics/ads")) {
+      setExpanded(true);
+    }
   }, []);
 
   const subLinks = [
@@ -586,7 +591,6 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
     { to: "/analytics/countries", label: "Countries" },
     { to: "/analytics/reviews", label: "Reviews" },
     { to: "/analytics/financial", label: "Financial" },
-    { to: "/analytics/ads", label: "Ads" },
   ];
 
   const handleHeaderClick = () => {
@@ -1393,6 +1397,10 @@ export default function App() {
                     </NavLink>
                   ))}
                   <AnalyticsSidebarSection navLinkClass={navLinkClass} />
+                  <NavLink to="/analytics/ads" className={navLinkClass}>
+                    <Megaphone />
+                    Ads
+                  </NavLink>
                   {sidebarLinks
                     .slice(1)
                     .filter((link) => link.to !== "/suggestions" || user.isFringeloTeam)

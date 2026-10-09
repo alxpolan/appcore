@@ -220,7 +220,7 @@ export default function AnalyticsAds() {
                       <th className={`${TH} text-right`}>Taps</th>
                       <th className={`${TH} text-right`}>Installs</th>
                       <th className={`${TH} text-right`}>Transactions</th>
-                      <th className={`${TH} text-right`}>RC Proceeds</th>
+                      <th className={`${TH} text-right`}>Proceeds</th>
                       <th className={`${TH} pr-5`}></th>
                     </tr>
                   </thead>
