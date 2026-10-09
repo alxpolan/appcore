@@ -1,12 +1,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-// The SDK's schema types are keyed to the zod/v3 subpath — importing z from
-// anywhere else fails assignability under node10 module resolution.
 import { z } from "zod/v3";
 import { logger, prisma } from "../../../config";
 import { decryptNullable } from "../../../config/encryption";
 import {
+  createAppleAdsAdGroup,
   createAppleAdsCampaignFull,
+  createAppleAdsKeywordsBulk,
   createAppleAdsNegativeKeywordsBulk,
+  deleteAppleAdsAdGroup,
+  deleteAppleAdsCampaign,
+  deleteAppleAdsKeywordsBulk,
   deleteAppleAdsNegativeKeywordsBulk,
   getAppleAdsCampaignDailySpend,
   getAppleAdsCampaignDetail,
@@ -14,6 +17,10 @@ import {
   listAppleAdsCampaigns,
   listAppleAdsNegativeKeywords,
   resolveAppleAdsRange,
+  updateAppleAdsAdGroup,
+  updateAppleAdsCampaign,
+  updateAppleAdsCampaignStatus,
+  updateAppleAdsKeywords,
   validateCreateCampaignInput,
   type AppleAdsCredentials,
 } from "../../../services/apple-ads";
@@ -44,6 +51,16 @@ const negativeKeywordSchema = z.object({
   matchType: z.enum(["EXACT", "BROAD"]).describe("EXACT blocks the precise term, BROAD blocks close variants."),
 });
 
+const targetingKeywordSchema = z.object({
+  text: z.string().describe("Keyword text, e.g. 'meditation app'."),
+  matchType: z.enum(["EXACT", "BROAD"]).describe("EXACT for precise matches, BROAD for discovery."),
+  bidAmount: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Keyword-level bid. Falls back to the ad group default bid when omitted."),
+});
+
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }] };
 }
@@ -68,10 +85,13 @@ async function getAppleAdsContext(
   ) {
     return { error: "Apple Search Ads is not connected. Connect it in Marteso Integrations first." };
   }
+
   const privateKey = decryptNullable(settings.appleAdsPrivateKey);
+
   if (!privateKey) {
     return { error: "Apple Search Ads credentials are unreadable. Reconnect them in Marteso Integrations." };
   }
+
   return {
     teamId,
     orgId: settings.appleAdsOrgId,
@@ -91,14 +111,15 @@ function adsError(tool: string, err: unknown) {
   return textResult(`Apple Search Ads request failed${detail || `: ${String((err as any)?.message ?? err)}`}`);
 }
 
-/** Mirrors requireTeamAdmin: creating campaigns can spend real money. */
 async function isTeamAdmin(userId: string, teamId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
   if (user?.role === "ADMIN") return true;
+
   const member = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } },
     select: { role: true },
   });
+
   return member?.role === "OWNER" || member?.role === "ADMIN";
 }
 
@@ -114,6 +135,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     async ({ days, period, startDate, endDate }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
         const campaigns = await listAppleAdsCampaigns(ctx.creds, range);
@@ -138,6 +160,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     async ({ campaignId, days, period, startDate, endDate }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
         const adGroups = await getAppleAdsCampaignDetail(ctx.creds, campaignId, range);
@@ -162,6 +185,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     async ({ campaignId, days, period, startDate, endDate }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
         const daysSeries = await getAppleAdsCampaignDailySpend(ctx.creds, campaignId, range);
@@ -178,7 +202,8 @@ export function registerAdsTools(server: McpServer, userId: string) {
       description:
         "Create an Apple Search Ads campaign with ad groups, keywords and negative keywords via the Apple Search Ads API. " +
         "The campaign starts PAUSED by default so it can be reviewed in Search Ads before it spends money — " +
-        "pass status ENABLED only when the user explicitly asks to run it immediately. " +
+        "pass status ENABLED only when the user explicitly asks to run it immediately, " +
+        "or publish it later with update_ads_campaign_status. " +
         "Requires team admin rights. Keywords only take effect for the APPSTORE_SEARCH_RESULTS placement. " +
         "Campaign-level negativeKeywords apply to the whole campaign; per-ad-group negativeKeywords apply to that ad group only.",
       inputSchema: {
@@ -193,20 +218,11 @@ export function registerAdsTools(server: McpServer, userId: string) {
           .min(1)
           .describe("Target countries as two-letter codes, e.g. ['US', 'DE']."),
         dailyBudgetAmount: z.number().positive().describe("Daily budget in the given currency, e.g. 50."),
-        budgetAmount: z
-          .number()
-          .positive()
-          .optional()
-          .describe("Optional lifetime budget cap in the given currency."),
+        budgetAmount: z.number().positive().optional().describe("Optional lifetime budget cap in the given currency."),
         currency: z.string().default("USD").describe("Three-letter currency code, e.g. USD, EUR."),
         supplySources: z
           .array(
-            z.enum([
-              "APPSTORE_SEARCH_RESULTS",
-              "APPSTORE_SEARCH_TAB",
-              "APPSTORE_TODAY_TAB",
-              "APPSTORE_PRODUCT_PAGE",
-            ]),
+            z.enum(["APPSTORE_SEARCH_RESULTS", "APPSTORE_SEARCH_TAB", "APPSTORE_TODAY_TAB", "APPSTORE_PRODUCT_PAGE"]),
           )
           .min(1)
           .default(["APPSTORE_SEARCH_RESULTS"])
@@ -219,10 +235,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
           .enum(["ENABLED", "PAUSED"])
           .default("PAUSED")
           .describe("PAUSED (default, recommended) or ENABLED to run immediately."),
-        startTime: z
-          .string()
-          .optional()
-          .describe("Start date, YYYY-MM-DD. Defaults to today when omitted."),
+        startTime: z.string().optional().describe("Start date, YYYY-MM-DD. Defaults to today when omitted."),
         adGroups: z
           .array(
             z.object({
@@ -272,17 +285,361 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Creating campaigns requires the team admin role.");
       }
+
       let input;
+
       try {
         input = validateCreateCampaignInput(params);
       } catch (err: any) {
         return textResult(`Invalid campaign input: ${err.message}`);
       }
+
       try {
         const campaign = await createAppleAdsCampaignFull(ctx.creds, input);
         return jsonResult({ campaign });
       } catch (err) {
         return adsError("create_ads_campaign", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_ads_campaign_status",
+    {
+      description:
+        "Publish or pause an Apple Search Ads campaign by setting its status to ENABLED or PAUSED. " +
+        "Use ENABLED to publish a paused campaign so it starts spending. Requires team admin rights. " +
+        "Use list_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        status: z
+          .enum(["ENABLED", "PAUSED"])
+          .describe("ENABLED publishes the campaign (it starts spending); PAUSED pauses it."),
+      },
+    },
+    async ({ campaignId, status }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Publishing campaigns requires the team admin role.");
+      }
+
+      try {
+        const campaign = await updateAppleAdsCampaignStatus(ctx.creds, campaignId, status);
+        return jsonResult({ campaign });
+      } catch (err) {
+        return adsError("update_ads_campaign_status", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_ads_campaign",
+    {
+      description:
+        "Permanently delete an Apple Search Ads campaign with all its ad groups and keywords. " +
+        "This cannot be undone — prefer update_ads_campaign_status with PAUSED when the campaign might be needed again. " +
+        "Only delete when the user explicitly asks for deletion. Requires team admin rights. " +
+        "Use list_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+      },
+    },
+    async ({ campaignId }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Deleting campaigns requires the team admin role.");
+      }
+
+      try {
+        const campaign = await deleteAppleAdsCampaign(ctx.creds, campaignId);
+        return jsonResult({ campaign });
+      } catch (err) {
+        return adsError("delete_ads_campaign", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_ads_campaign",
+    {
+      description:
+        "Update an Apple Search Ads campaign: daily budget, status, name and/or countries. " +
+        "Only the passed fields change. Apple's API does not allow changing the lifetime budget after creation. " +
+        "Requires team admin rights. Use list_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        name: z.string().optional().describe("New campaign name."),
+        status: z.enum(["ENABLED", "PAUSED"]).optional().describe("ENABLED runs the campaign, PAUSED pauses it."),
+        dailyBudgetAmount: z.number().positive().optional().describe("New daily budget, e.g. 50."),
+        currency: z
+          .string()
+          .optional()
+          .describe("Three-letter currency code, e.g. USD, EUR. Required when setting dailyBudgetAmount."),
+        countriesOrRegions: z
+          .array(z.string())
+          .min(1)
+          .optional()
+          .describe("New target countries as two-letter codes, e.g. ['US', 'DE']. Replaces the current list."),
+      },
+    },
+    async ({ campaignId, name, status, dailyBudgetAmount, currency, countriesOrRegions }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Updating campaigns requires the team admin role.");
+      }
+      try {
+        const campaign = await updateAppleAdsCampaign(ctx.creds, campaignId, {
+          name,
+          status,
+          dailyBudgetAmount,
+          currency,
+          countriesOrRegions,
+        });
+        return jsonResult({ campaign });
+      } catch (err: any) {
+        if (err?.response == null) return textResult(`Invalid campaign update: ${err.message}`);
+        return adsError("update_ads_campaign", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "create_ads_ad_group",
+    {
+      description:
+        "Create an ad group with optional keywords and negative keywords in an existing Apple Search Ads campaign. " +
+        "Requires team admin rights. Use get_ads_campaign_detail first to see the campaign's current ad groups.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        name: z.string().min(1).describe("Ad group name, e.g. 'Brand Exact'."),
+        defaultBidAmount: z.number().positive().describe("Default bid per tap (CPC) or per 1k impressions (CPM)."),
+        currency: z.string().describe("Three-letter currency code, e.g. USD, EUR."),
+        cpaGoal: z.number().positive().optional().describe("Optional target cost per acquisition."),
+        status: z
+          .enum(["ENABLED", "PAUSED"])
+          .default("ENABLED")
+          .describe("ENABLED (default) or PAUSED."),
+        pricingModel: z
+          .enum(["CPC", "CPM"])
+          .default("CPC")
+          .describe("Must match the campaign's placements: CPC for Search Results, CPM for Search Tab / Today Tab."),
+        keywords: z
+          .array(targetingKeywordSchema)
+          .max(500)
+          .optional()
+          .describe("Keywords for the new ad group (Search Results placements only)."),
+        negativeKeywords: z
+          .array(negativeKeywordSchema)
+          .max(500)
+          .optional()
+          .describe("Negative keywords for the new ad group."),
+      },
+    },
+    async ({ campaignId, name, defaultBidAmount, currency, cpaGoal, status, pricingModel, keywords, negativeKeywords }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Creating ad groups requires the team admin role.");
+      }
+      if (!/^[A-Z]{3}$/i.test(currency)) return textResult("currency must be a three-letter code like USD or EUR.");
+      try {
+        const adGroup = await createAppleAdsAdGroup(ctx.creds, campaignId, currency.toUpperCase(), pricingModel, undefined, {
+          name,
+          defaultBidAmount,
+          cpaGoal,
+          status,
+        });
+        const keywordCount = await createAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroup.id, currency.toUpperCase(), keywords ?? []);
+        const negatives = await createAppleAdsNegativeKeywordsBulk(ctx.creds, campaignId, adGroup.id, negativeKeywords ?? []);
+        return jsonResult({ adGroup: { ...adGroup, keywordCount, negativeKeywordCount: negatives.length } });
+      } catch (err) {
+        return adsError("create_ads_ad_group", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_ads_ad_group",
+    {
+      description:
+        "Update an Apple Search Ads ad group: default bid, CPA goal, status and/or name. " +
+        "Only the passed fields change. Requires team admin rights. " +
+        "Use get_ads_campaign_detail first to find the ad group ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        name: z.string().optional().describe("New ad group name."),
+        status: z.enum(["ENABLED", "PAUSED"]).optional().describe("ENABLED or PAUSED."),
+        defaultBidAmount: z.number().positive().optional().describe("New default bid."),
+        cpaGoal: z.number().positive().optional().describe("New target cost per acquisition."),
+        currency: z
+          .string()
+          .optional()
+          .describe("Three-letter currency code, e.g. USD, EUR. Required when setting defaultBidAmount or cpaGoal."),
+      },
+    },
+    async ({ campaignId, adGroupId, name, status, defaultBidAmount, cpaGoal, currency }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Updating ad groups requires the team admin role.");
+      }
+      try {
+        const adGroup = await updateAppleAdsAdGroup(ctx.creds, campaignId, adGroupId, {
+          name,
+          status,
+          defaultBidAmount,
+          cpaGoal,
+          currency,
+        });
+        return jsonResult({ adGroup });
+      } catch (err: any) {
+        if (err?.response == null) return textResult(`Invalid ad group update: ${err.message}`);
+        return adsError("update_ads_ad_group", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_ads_ad_group",
+    {
+      description:
+        "Permanently delete an Apple Search Ads ad group with all its keywords. " +
+        "This cannot be undone — prefer update_ads_ad_group with PAUSED when the ad group might be needed again. " +
+        "Only delete when the user explicitly asks for deletion. Requires team admin rights.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+      },
+    },
+    async ({ campaignId, adGroupId }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Deleting ad groups requires the team admin role.");
+      }
+      try {
+        const adGroup = await deleteAppleAdsAdGroup(ctx.creds, campaignId, adGroupId);
+        return jsonResult({ adGroup });
+      } catch (err) {
+        return adsError("delete_ads_ad_group", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "add_ads_keywords",
+    {
+      description:
+        "Add targeting keywords to an existing Apple Search Ads ad group. " +
+        "Keywords only take effect for the APPSTORE_SEARCH_RESULTS placement. " +
+        "Requires team admin rights. Use get_ads_campaign_detail first to find campaign and ad group IDs.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        currency: z
+          .string()
+          .optional()
+          .describe("Three-letter currency code, e.g. USD, EUR. Required when any keyword sets a bidAmount."),
+        keywords: z
+          .array(targetingKeywordSchema)
+          .min(1)
+          .max(500)
+          .describe("Keywords to add."),
+      },
+    },
+    async ({ campaignId, adGroupId, currency, keywords }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Adding keywords requires the team admin role.");
+      }
+      if (keywords.some((k) => k.bidAmount != null) && !/^[A-Z]{3}$/i.test(currency ?? "")) {
+        return textResult("currency (e.g. USD, EUR) is required when setting keyword bids.");
+      }
+      try {
+        const count = await createAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroupId, (currency ?? "USD").toUpperCase(), keywords);
+        return jsonResult({ campaignId, adGroupId, added: count });
+      } catch (err) {
+        return adsError("add_ads_keywords", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_ads_keywords",
+    {
+      description:
+        "Update bids and/or status of targeting keywords in an Apple Search Ads ad group, by keyword ID. " +
+        "Only the passed fields change per keyword. Requires team admin rights. " +
+        "Use get_ads_campaign_detail first to find keyword IDs and current bids.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        currency: z
+          .string()
+          .optional()
+          .describe("Three-letter currency code, e.g. USD, EUR. Required when setting bids."),
+        updates: z
+          .array(
+            z.object({
+              keywordId: z.string().describe("Keyword ID (numeric string)."),
+              bidAmount: z.number().positive().optional().describe("New keyword-level bid."),
+              status: z.enum(["ACTIVE", "PAUSED"]).optional().describe("ACTIVE or PAUSED."),
+            }),
+          )
+          .min(1)
+          .max(500)
+          .describe("At least one keyword update with bidAmount and/or status each."),
+      },
+    },
+    async ({ campaignId, adGroupId, currency, updates }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Updating keywords requires the team admin role.");
+      }
+      try {
+        const updated = await updateAppleAdsKeywords(ctx.creds, campaignId, adGroupId, currency, updates);
+        return jsonResult({ campaignId, adGroupId, updated });
+      } catch (err: any) {
+        if (err?.response == null) return textResult(`Invalid keyword update: ${err.message}`);
+        return adsError("update_ads_keywords", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_ads_keywords",
+    {
+      description:
+        "Permanently delete targeting keywords from an Apple Search Ads ad group, by keyword ID. " +
+        "This cannot be undone — prefer update_ads_keywords with PAUSED when a keyword might be needed again. " +
+        "Only delete when the user explicitly asks for deletion. Requires team admin rights.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        keywordIds: z
+          .array(z.string())
+          .min(1)
+          .max(500)
+          .describe("IDs of the keywords to delete (numeric strings)."),
+      },
+    },
+    async ({ campaignId, adGroupId, keywordIds }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Deleting keywords requires the team admin role.");
+      }
+      try {
+        const deleted = await deleteAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroupId, keywordIds);
+        return jsonResult({ campaignId, adGroupId, deleted });
+      } catch (err) {
+        return adsError("delete_ads_keywords", err);
       }
     },
   );
@@ -305,6 +662,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
           listAppleAdsNegativeKeywords(ctx.creds, campaignId, null),
           listAppleAdsAdGroups(ctx.creds, campaignId),
         ]);
+
         const byAdGroup = await Promise.all(
           adGroups.map(async (g) => ({
             id: g.id,
@@ -312,6 +670,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
             negatives: await listAppleAdsNegativeKeywords(ctx.creds, campaignId, g.id),
           })),
         );
+
         return jsonResult({ campaignId, campaign, adGroups: byAdGroup });
       } catch (err) {
         return adsError("get_ads_negative_keywords", err);
@@ -332,30 +691,30 @@ export function registerAdsTools(server: McpServer, userId: string) {
           .string()
           .optional()
           .describe("Ad group ID for ad-group-level negatives. Omit for campaign-level negatives."),
-        add: z
-          .array(negativeKeywordSchema)
-          .max(500)
-          .optional()
-          .describe("Negative keywords to add."),
-        removeIds: z
-          .array(z.string())
-          .max(500)
-          .optional()
-          .describe("IDs of negative keywords to delete."),
+        add: z.array(negativeKeywordSchema).max(500).optional().describe("Negative keywords to add."),
+        removeIds: z.array(z.string()).max(500).optional().describe("IDs of negative keywords to delete."),
       },
     },
     async ({ campaignId, adGroupId, add, removeIds }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Editing negative keywords requires the team admin role.");
       }
+
       if ((!add || add.length === 0) && (!removeIds || removeIds.length === 0)) {
         return textResult("Nothing to do: pass add and/or removeIds.");
       }
+
       try {
         const added = await createAppleAdsNegativeKeywordsBulk(ctx.creds, campaignId, adGroupId ?? null, add ?? []);
-        const removed = await deleteAppleAdsNegativeKeywordsBulk(ctx.creds, campaignId, adGroupId ?? null, removeIds ?? []);
+        const removed = await deleteAppleAdsNegativeKeywordsBulk(
+          ctx.creds,
+          campaignId,
+          adGroupId ?? null,
+          removeIds ?? [],
+        );
         return jsonResult({ campaignId, adGroupId: adGroupId ?? null, added, removed });
       } catch (err) {
         return adsError("update_ads_negative_keywords", err);
@@ -383,19 +742,23 @@ export function registerAdsTools(server: McpServer, userId: string) {
     async ({ campaignId, days, period, startDate, endDate }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+
       try {
         const apps = await prisma.app.findMany({
           where: { teamId: ctx.teamId, revenueCatConnectedAt: { not: null } },
           select: { id: true, bundleId: true, displayName: true, name: true },
         });
+
         const allowedAppIds = await getMcpAllowedAppIds(userId, ctx.teamId);
         const accessibleApps = allowedAppIds ? apps.filter((app) => allowedAppIds.includes(app.id)) : apps;
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
         const { byCampaign } = await getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range);
+
         if (campaignId) {
           const bucket = byCampaign[campaignId] ?? { proceedsUsd: 0, transactions: [], byKeyword: {} };
           return jsonResult({ range, campaignId, ...bucket });
         }
+        
         return jsonResult({ range, byCampaign });
       } catch (err) {
         return adsError("get_ads_campaign_revenue", err);

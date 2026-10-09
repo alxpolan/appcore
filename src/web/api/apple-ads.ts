@@ -2,7 +2,24 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { encrypt, decryptNullable } from "../../config/encryption";
-import { listAppleAdsOrgs, listAppleAdsCampaigns, listAppleAdsAdGroups, getAppleAdsCampaignDetail, getAppleAdsCampaignDailySpend, resolveAppleAdsRange, listAppleAdsApps, createAppleAdsCampaignFull, validateCreateCampaignInput, listAppleAdsNegativeKeywords, createAppleAdsNegativeKeywordsBulk, deleteAppleAdsNegativeKeywordsBulk, type CreateAppleAdsCampaignInput, type CreateAppleAdsNegativeKeywordInput } from "../../services/apple-ads";
+import {
+  listAppleAdsOrgs,
+  listAppleAdsCampaigns,
+  listAppleAdsAdGroups,
+  getAppleAdsCampaignDetail,
+  getAppleAdsCampaignDailySpend,
+  resolveAppleAdsRange,
+  listAppleAdsApps,
+  createAppleAdsCampaignFull,
+  validateCreateCampaignInput,
+  listAppleAdsNegativeKeywords,
+  createAppleAdsNegativeKeywordsBulk,
+  deleteAppleAdsNegativeKeywordsBulk,
+  updateAppleAdsCampaignStatus,
+  deleteAppleAdsCampaign,
+  type CreateAppleAdsCampaignInput,
+  type CreateAppleAdsNegativeKeywordInput,
+} from "../../services/apple-ads";
 import { getAppleAdsCampaignRevenue } from "../../services/apple-ads-revenue";
 
 export const appleAdsRouter = Router();
@@ -11,12 +28,14 @@ appleAdsRouter.use(requireAuth);
 function appleWriteErrorMessage(err: any): string {
   const data = err?.response?.data;
   const appleErr = data?.error;
+
   if (appleErr) {
     const details = Array.isArray(appleErr.errors)
       ? appleErr.errors.map((e: any) => e.message ?? e.messageCode ?? JSON.stringify(e)).join("; ")
       : (appleErr.message ?? JSON.stringify(appleErr));
     return `Apple Search Ads rejected the request: ${details}`;
   }
+
   return String(err?.message ?? err);
 }
 
@@ -32,19 +51,29 @@ appleAdsRouter.get("/status", loadTeamSettings, async (req, res) => {
 
 appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
 
   try {
-    const campaigns = await listAppleAdsCampaigns({
-      orgId: s.appleAdsOrgId,
-      clientId: s.appleAdsClientId,
-      teamId: s.appleAdsTeamId,
-      keyId: s.appleAdsKeyId,
-      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, resolveAppleAdsRange(req.query));
+    const campaigns = await listAppleAdsCampaigns(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      resolveAppleAdsRange(req.query),
+    );
     res.json({ campaigns });
   } catch (err: any) {
     logger.error("[apple-ads] campaigns fetch error", {
@@ -52,6 +81,7 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
       status: err?.response?.status,
       body: err?.response?.data,
     });
+
     res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
   }
 });
@@ -60,7 +90,15 @@ appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
   try {
     if (!(await requireTeamAdmin(req, res))) return;
     const s = req.teamSettings;
-    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
       res.status(400).json({ error: "Apple Search Ads is not connected" });
       return;
     }
@@ -73,13 +111,17 @@ appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
       return;
     }
 
-    const created = await createAppleAdsCampaignFull({
-      orgId: s.appleAdsOrgId,
-      clientId: s.appleAdsClientId,
-      teamId: s.appleAdsTeamId,
-      keyId: s.appleAdsKeyId,
-      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, input);
+    const created = await createAppleAdsCampaignFull(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      input,
+    );
+
     res.json({ campaign: created });
   } catch (err: any) {
     logger.error("[apple-ads] campaign create error", {
@@ -88,6 +130,7 @@ appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
       body: err?.response?.data,
       partialResult: (err as any)?.partialResult,
     });
+
     const status = err?.response?.status;
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
@@ -95,7 +138,14 @@ appleAdsRouter.post("/campaigns", loadTeamSettings, async (req, res) => {
 
 appleAdsRouter.get("/apps", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
@@ -108,6 +158,7 @@ appleAdsRouter.get("/apps", loadTeamSettings, async (req, res) => {
 
   let storeAppsAvailable = true;
   let storeApps: { adamId: string; name: string }[] = [];
+
   try {
     storeApps = await listAppleAdsApps({
       orgId: s.appleAdsOrgId,
@@ -132,9 +183,101 @@ appleAdsRouter.get("/apps", loadTeamSettings, async (req, res) => {
   res.json({ apps: [...apps.values()], storeAppsAvailable });
 });
 
+appleAdsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    const status = req.body?.status;
+    if (status !== "ENABLED" && status !== "PAUSED") {
+      res.status(400).json({ error: 'status must be "ENABLED" or "PAUSED"' });
+      return;
+    }
+
+    const updated = await updateAppleAdsCampaignStatus(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId as string,
+      status,
+    );
+
+    res.json({ campaign: updated });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign status error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    
+    const status = err?.response?.status;
+    res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
+  }
+});
+
+appleAdsRouter.delete("/campaigns/:campaignId", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    const deleted = await deleteAppleAdsCampaign(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId as string,
+    );
+    res.json({ campaign: deleted });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaign delete error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    const status = err?.response?.status;
+    res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
+  }
+});
+
 appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
@@ -164,20 +307,31 @@ appleAdsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, async (re
 
 appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
 
   try {
     const range = resolveAppleAdsRange(req.query);
-    const days = await getAppleAdsCampaignDailySpend({
-      orgId: s.appleAdsOrgId,
-      clientId: s.appleAdsClientId,
-      teamId: s.appleAdsTeamId,
-      keyId: s.appleAdsKeyId,
-      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, req.params.campaignId as string, range);
+    const days = await getAppleAdsCampaignDailySpend(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId as string,
+      range,
+    );
     res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     logger.error("[apple-ads] campaign daily spend fetch error", {
@@ -189,7 +343,10 @@ appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async
   }
 });
 
-function validateNegativesBody(body: any): { adGroupId: string | null; keywords: CreateAppleAdsNegativeKeywordInput[] } {
+function validateNegativesBody(body: any): {
+  adGroupId: string | null;
+  keywords: CreateAppleAdsNegativeKeywordInput[];
+} {
   if (!body || typeof body !== "object") throw new Error("Request body is required");
   const adGroupId = body.adGroupId ?? null;
   if (adGroupId != null && (typeof adGroupId !== "string" || adGroupId.trim().length === 0)) {
@@ -214,7 +371,14 @@ function validateNegativesBody(body: any): { adGroupId: string | null; keywords:
 
 appleAdsRouter.get("/campaigns/:campaignId/negatives", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
@@ -254,7 +418,14 @@ appleAdsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings, async 
   try {
     if (!(await requireTeamAdmin(req, res))) return;
     const s = req.teamSettings;
-    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
       res.status(400).json({ error: "Apple Search Ads is not connected" });
       return;
     }
@@ -267,13 +438,18 @@ appleAdsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings, async 
       return;
     }
 
-    const added = await createAppleAdsNegativeKeywordsBulk({
-      orgId: s.appleAdsOrgId,
-      clientId: s.appleAdsClientId,
-      teamId: s.appleAdsTeamId,
-      keyId: s.appleAdsKeyId,
-      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, req.params.campaignId as string, validated.adGroupId, validated.keywords);
+    const added = await createAppleAdsNegativeKeywordsBulk(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId as string,
+      validated.adGroupId,
+      validated.keywords,
+    );
     res.json({ added });
   } catch (err: any) {
     logger.error("[apple-ads] negatives create error", {
@@ -290,7 +466,14 @@ appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asyn
   try {
     if (!(await requireTeamAdmin(req, res))) return;
     const s = req.teamSettings;
-    if (!s?.appleAdsConnectedAt || !s.appleAdsOrgId || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
       res.status(400).json({ error: "Apple Search Ads is not connected" });
       return;
     }
@@ -306,13 +489,18 @@ appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asyn
       return;
     }
 
-    const deleted = await deleteAppleAdsNegativeKeywordsBulk({
-      orgId: s.appleAdsOrgId,
-      clientId: s.appleAdsClientId,
-      teamId: s.appleAdsTeamId,
-      keyId: s.appleAdsKeyId,
-      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
-    }, req.params.campaignId as string, adGroupId?.trim() ?? null, ids);
+    const deleted = await deleteAppleAdsNegativeKeywordsBulk(
+      {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      },
+      req.params.campaignId as string,
+      adGroupId?.trim() ?? null,
+      ids,
+    );
     res.json({ deleted });
   } catch (err: any) {
     logger.error("[apple-ads] negatives delete error", {
@@ -337,10 +525,19 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
       where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
       select: { id: true, bundleId: true, displayName: true, name: true },
     });
-    const accessibleApps = req.user!.role === "ADMIN"
-      ? apps
-      : (await Promise.all(apps.map(async (app) => ({ app, allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id) }))))
-          .filter(({ allowed }) => allowed).map(({ app }) => app);
+    const accessibleApps =
+      req.user!.role === "ADMIN"
+        ? apps
+        : (
+            await Promise.all(
+              apps.map(async (app) => ({
+                app,
+                allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id),
+              })),
+            )
+          )
+            .filter(({ allowed }) => allowed)
+            .map(({ app }) => app);
 
     res.json(await getAppleAdsCampaignRevenue(accessibleApps, orgId, resolveAppleAdsRange(req.query)));
   } catch (err: any) {
@@ -380,7 +577,9 @@ appleAdsRouter.post("/connect", async (req, res) => {
         status: err?.response?.status,
         body: err?.response?.data,
       });
-      res.status(400).json({ error: "Could not verify these credentials with Apple Search Ads. Double-check them and try again." });
+      res
+        .status(400)
+        .json({ error: "Could not verify these credentials with Apple Search Ads. Double-check them and try again." });
       return;
     }
 
@@ -433,7 +632,13 @@ appleAdsRouter.post("/connect", async (req, res) => {
 
 appleAdsRouter.get("/orgs", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
-  if (!s?.appleAdsConnectedAt || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
     res.status(400).json({ error: "Apple Search Ads is not connected" });
     return;
   }
@@ -458,7 +663,13 @@ appleAdsRouter.post("/org", async (req, res) => {
     const teamId = req.user!.teamId!;
 
     const s = await prisma.teamSettings.findUnique({ where: { teamId } });
-    if (!s?.appleAdsConnectedAt || !s.appleAdsClientId || !s.appleAdsTeamId || !s.appleAdsKeyId || !s.appleAdsPrivateKey) {
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
       res.status(400).json({ error: "Apple Search Ads is not connected" });
       return;
     }

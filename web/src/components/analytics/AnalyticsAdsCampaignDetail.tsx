@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Megaphone, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
+import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
@@ -45,18 +45,25 @@ function statusBadge(status: string) {
 
 function statusDot(status: string) {
   const isOn = status === "ENABLED" || status === "ACTIVE";
-  const Icon = isOn ? Check : X;
+  const isPaused = status === "PAUSED";
   return (
     <span
       title={status.replace(/_/g, " ")}
       className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
-        isOn ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+        isOn
+          ? "bg-emerald-100 dark:bg-emerald-900/30"
+          : isPaused
+            ? "bg-gray-100 dark:bg-[#252b38]"
+            : "bg-red-100 dark:bg-red-900/30"
       }`}
     >
-      <Icon
-        className={`w-3 h-3 ${isOn ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
-        strokeWidth={3}
-      />
+      {isOn ? (
+        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
+      ) : isPaused ? (
+        <Pause className="w-3 h-3 text-gray-600 dark:text-[#8b93a5]" fill="currentColor" strokeWidth={0} />
+      ) : (
+        <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={3} />
+      )}
     </span>
   );
 }
@@ -153,7 +160,7 @@ export default function AnalyticsAdsCampaignDetail() {
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
 
-  const TEXT_SORT_COLS: KeywordSortCol[] = ["keyword", "matchType", "status"];
+  const TEXT_SORT_COLS: KeywordSortCol[] = ["keyword", "matchType"];
   function handleKwSort(col: KeywordSortCol) {
     if (kwSortCol === col) {
       setKwSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -424,7 +431,6 @@ export default function AnalyticsAdsCampaignDetail() {
                                       <th className={TH}></th>
                                       <KwSortTh col="keyword">Keyword</KwSortTh>
                                       <KwSortTh col="matchType">Match Type</KwSortTh>
-                                      <KwSortTh col="status">Status</KwSortTh>
                                       <KwSortTh col="bid" right>Bid</KwSortTh>
                                       <KwSortTh col="spend" right>Spend</KwSortTh>
                                       <KwSortTh col="impressions" right>Impressions</KwSortTh>
@@ -458,14 +464,6 @@ export default function AnalyticsAdsCampaignDetail() {
                                           <option value="">All</option>
                                           {[...new Set(g.keywords.map((k) => k.matchType))].sort().map((v) => (
                                             <option key={v} value={v}>{v}</option>
-                                          ))}
-                                        </select>
-                                      </th>
-                                      <th className={kwFilterCell}>
-                                        <select value={kwFilter.status} onChange={setKwFilterValue("status")} className={kwFilterInput}>
-                                          <option value="">All</option>
-                                          {[...new Set(g.keywords.map((k) => k.status))].sort().map((v) => (
-                                            <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
                                           ))}
                                         </select>
                                       </th>
@@ -521,9 +519,13 @@ export default function AnalyticsAdsCampaignDetail() {
                                                 />
                                               )}
                                             </td>
-                                            <td className={`${TD} font-medium ${textPrimary}`}>{k.text}</td>
+                                            <td className={TD}>
+                                              <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
+                                                {statusDot(k.status)}
+                                                {k.text}
+                                              </span>
+                                            </td>
                                             <td className={`${TD} ${textMuted}`}>{k.matchType}</td>
-                                            <td className={TD}>{statusBadge(k.status)}</td>
                                             <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                                               {fmtMoney(k.bidAmount, k.currency ?? g.currency ?? currency)}
                                             </td>
@@ -537,7 +539,7 @@ export default function AnalyticsAdsCampaignDetail() {
                                           </tr>
                                           {kwExpanded && kwRevenue && (
                                             <tr className="bg-[#fafbfc] dark:bg-[#161920]">
-                                              <td colSpan={15} className="px-4 py-3">
+                                              <td colSpan={14} className="px-4 py-3">
                                                 <table className="w-full text-[12px]">
                                                   <thead>
                                                     <tr>

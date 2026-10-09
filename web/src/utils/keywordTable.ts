@@ -3,7 +3,6 @@ import type { AppleAdsKeyword, AppleAdsRevenueBucket } from "../types";
 export type KeywordSortCol =
   | "keyword"
   | "matchType"
-  | "status"
   | "bid"
   | "spend"
   | "impressions"
@@ -23,7 +22,6 @@ export type RevenueByKeyword = Record<string, AppleAdsRevenueBucket>;
 export interface KeywordFilters {
   text: string;
   matchType: string;
-  status: string;
   bid: string;
   spend: string;
   impressions: string;
@@ -40,7 +38,6 @@ export interface KeywordFilters {
 export const EMPTY_KEYWORD_FILTERS: KeywordFilters = {
   text: "",
   matchType: "",
-  status: "",
   bid: "",
   spend: "",
   impressions: "",
@@ -68,8 +65,6 @@ export function keywordSortValue(
       return keyword.text;
     case "matchType":
       return keyword.matchType;
-    case "status":
-      return keyword.status;
     case "bid":
       return keyword.bidAmount;
     case "spend":
@@ -144,7 +139,6 @@ export function matchKeywordRow(
 ): boolean {
   if (filters.text !== "" && !keyword.text.toLowerCase().includes(filters.text.toLowerCase())) return false;
   if (filters.matchType !== "" && keyword.matchType !== filters.matchType) return false;
-  if (filters.status !== "" && keyword.status !== filters.status) return false;
   if (!meetsMin(keyword.bidAmount, filters.bid)) return false;
   if (!meetsMin(keyword.spend, filters.spend)) return false;
   if (!meetsMin(keyword.impressions, filters.impressions)) return false;
