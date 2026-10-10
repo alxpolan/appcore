@@ -51,7 +51,6 @@ function googleAdsKeyMissing(s: any): boolean {
     !s.googleAdsClientId ||
     !s.googleAdsClientSecret ||
     !s.googleAdsRefreshToken ||
-    !s.googleAdsDeveloperToken ||
     !s.googleAdsCustomerId
   );
 }
@@ -62,7 +61,7 @@ function googleAdsCreds(s: any): GoogleAdsCredentials {
     clientId: s.googleAdsClientId,
     clientSecret: decryptNullable(s.googleAdsClientSecret)!,
     refreshToken: decryptNullable(s.googleAdsRefreshToken)!,
-    developerToken: decryptNullable(s.googleAdsDeveloperToken)!,
+    developerToken: decryptNullable(s.googleAdsDeveloperToken) ?? undefined,
   };
 }
 
@@ -446,9 +445,9 @@ googleAdsRouter.post("/oauth/start", async (req, res) => {
       return;
     }
 
-    const { developerToken, customerId } = req.body as Record<string, string>;
-    if (!developerToken || !customerId) {
-      res.status(400).json({ error: "developerToken and customerId are both required" });
+    const { customerId } = req.body as Record<string, string>;
+    if (!customerId) {
+      res.status(400).json({ error: "customerId is required" });
       return;
     }
     const normalizedCustomerId = String(customerId).replace(/-/g, "");
@@ -460,7 +459,6 @@ googleAdsRouter.post("/oauth/start", async (req, res) => {
     const state = signGoogleAdsOAuthState({
       teamId: req.user!.teamId!,
       userId: req.user!.userId!,
-      developerToken,
       customerId: normalizedCustomerId,
     });
     res.json({ url: buildGoogleAdsAuthUrl(state) });
@@ -494,7 +492,6 @@ googleAdsRouter.get("/oauth/callback", async (req, res) => {
       clientId: env.GOOGLE_ADS_OAUTH_CLIENT_ID!,
       clientSecret: env.GOOGLE_ADS_OAUTH_CLIENT_SECRET!,
       refreshToken,
-      developerToken: parsed.developerToken,
     };
     try {
       const accessible = await googleAdsGateway(creds).listAccessibleCustomers();
@@ -513,7 +510,7 @@ googleAdsRouter.get("/oauth/callback", async (req, res) => {
         googleAdsClientId: creds.clientId,
         googleAdsClientSecret: encrypt(creds.clientSecret),
         googleAdsRefreshToken: encrypt(refreshToken),
-        googleAdsDeveloperToken: encrypt(parsed.developerToken),
+        googleAdsDeveloperToken: null,
         googleAdsCustomerId: parsed.customerId,
         googleAdsConnectedAt: connectedAt,
       },
@@ -521,7 +518,7 @@ googleAdsRouter.get("/oauth/callback", async (req, res) => {
         googleAdsClientId: creds.clientId,
         googleAdsClientSecret: encrypt(creds.clientSecret),
         googleAdsRefreshToken: encrypt(refreshToken),
-        googleAdsDeveloperToken: encrypt(parsed.developerToken),
+        googleAdsDeveloperToken: null,
         googleAdsCustomerId: parsed.customerId,
         googleAdsConnectedAt: connectedAt,
       },
@@ -540,11 +537,11 @@ googleAdsRouter.post("/connect", async (req, res) => {
     if (!(await requireTeamAdmin(req, res))) return;
     const teamId = req.user!.teamId!;
 
-    const { clientId, clientSecret, refreshToken, developerToken, customerId } = req.body as Record<string, string>;
+    const { clientId, clientSecret, refreshToken, customerId } = req.body as Record<string, string>;
 
-    if (!clientId || !clientSecret || !refreshToken || !developerToken || !customerId) {
+    if (!clientId || !clientSecret || !refreshToken || !customerId) {
       res.status(400).json({
-        error: "clientId, clientSecret, refreshToken, developerToken and customerId are all required",
+        error: "clientId, clientSecret, refreshToken and customerId are all required",
       });
       return;
     }
@@ -561,7 +558,6 @@ googleAdsRouter.post("/connect", async (req, res) => {
         clientId,
         clientSecret,
         refreshToken,
-        developerToken,
       }).listAccessibleCustomers();
       if (!accessible.some((name) => name.endsWith(`/${normalizedCustomerId}`))) {
         res.status(400).json({ error: "That customer ID isn't accessible with these credentials." });
@@ -581,7 +577,7 @@ googleAdsRouter.post("/connect", async (req, res) => {
         googleAdsClientId: clientId,
         googleAdsClientSecret: encrypt(clientSecret),
         googleAdsRefreshToken: encrypt(refreshToken),
-        googleAdsDeveloperToken: encrypt(developerToken),
+        googleAdsDeveloperToken: null,
         googleAdsCustomerId: normalizedCustomerId,
         googleAdsConnectedAt: connectedAt,
       },
@@ -589,7 +585,7 @@ googleAdsRouter.post("/connect", async (req, res) => {
         googleAdsClientId: clientId,
         googleAdsClientSecret: encrypt(clientSecret),
         googleAdsRefreshToken: encrypt(refreshToken),
-        googleAdsDeveloperToken: encrypt(developerToken),
+        googleAdsDeveloperToken: null,
         googleAdsCustomerId: normalizedCustomerId,
         googleAdsConnectedAt: connectedAt,
       },

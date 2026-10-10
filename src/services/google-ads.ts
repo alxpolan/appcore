@@ -8,7 +8,8 @@ export interface GoogleAdsCredentials {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
-  developerToken: string;
+  /** Sunset by Google on 2026-09-09: the header is optional and ignored. Kept for stored legacy values. */
+  developerToken?: string;
 }
 
 export interface GoogleAdsStats {
@@ -154,7 +155,7 @@ class RealGoogleAdsGateway implements GoogleAdsGateway {
     this.client = new GoogleAdsApi({
       client_id: creds.clientId,
       client_secret: creds.clientSecret,
-      developer_token: creds.developerToken,
+      developer_token: creds.developerToken ?? "",
     });
   }
 

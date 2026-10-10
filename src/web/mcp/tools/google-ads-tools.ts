@@ -357,7 +357,6 @@ async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpContext 
     !settings.googleAdsClientId ||
     !settings.googleAdsClientSecret ||
     !settings.googleAdsRefreshToken ||
-    !settings.googleAdsDeveloperToken ||
     !settings.googleAdsCustomerId
   ) {
     return { error: "Google Ads is not connected. Connect it in Marteso Integrations first." };
@@ -365,9 +364,8 @@ async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpContext 
 
   const clientSecret = decryptNullable(settings.googleAdsClientSecret);
   const refreshToken = decryptNullable(settings.googleAdsRefreshToken);
-  const developerToken = decryptNullable(settings.googleAdsDeveloperToken);
 
-  if (!clientSecret || !refreshToken || !developerToken) {
+  if (!clientSecret || !refreshToken) {
     return { error: "Google Ads credentials are unreadable. Reconnect them in Marteso Integrations." };
   }
 
@@ -378,7 +376,6 @@ async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpContext 
       clientId: settings.googleAdsClientId,
       clientSecret,
       refreshToken,
-      developerToken,
     },
   };
 }

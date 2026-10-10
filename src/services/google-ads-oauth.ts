@@ -12,7 +12,6 @@ export const GOOGLE_ADS_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 export interface GoogleAdsOAuthState {
   teamId: string;
   userId: string;
-  developerToken: string;
   customerId: string;
   ts: number;
 }
@@ -50,7 +49,7 @@ export function verifyGoogleAdsOAuthState(state: string): GoogleAdsOAuthState | 
 
   try {
     const parsed = JSON.parse(decrypt(Buffer.from(data, "base64url").toString())) as GoogleAdsOAuthState;
-    if (!parsed.teamId || !parsed.userId || !parsed.developerToken || !parsed.customerId || !parsed.ts) {
+    if (!parsed.teamId || !parsed.userId || !parsed.customerId || !parsed.ts) {
       return null;
     }
     if (Date.now() - parsed.ts > GOOGLE_ADS_OAUTH_STATE_TTL_MS) return null;

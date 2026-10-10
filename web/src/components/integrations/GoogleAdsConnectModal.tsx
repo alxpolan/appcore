@@ -14,20 +14,18 @@ interface Props {
 }
 
 export default function GoogleAdsConnectModal({ onClose, onConnected, addToast, oauthAvailable, oauthRedirectUri }: Props) {
-  const [developerToken, setDeveloperToken] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [starting, setStarting] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const [manual, setManual] = useState({ clientId: "", clientSecret: "", refreshToken: "", developerToken: "", customerId: "" });
+  const [manual, setManual] = useState({ clientId: "", clientSecret: "", refreshToken: "", customerId: "" });
   const [connecting, setConnecting] = useState(false);
 
-  const canOAuth = developerToken.trim().length > 0 && customerId.trim().length > 0;
+  const canOAuth = customerId.trim().length > 0;
 
   const startOAuth = async () => {
     setStarting(true);
     try {
       const { url } = await apiPost<{ url: string }>("/google-ads/oauth/start", {
-        developerToken: developerToken.trim(),
         customerId: customerId.trim(),
       });
       window.location.href = url;
@@ -74,23 +72,11 @@ export default function GoogleAdsConnectModal({ onClose, onConnected, addToast, 
           {oauthAvailable ? (
             <>
               <p className={`text-[13px] ${textSecondary} mb-4`}>
-                Enter your developer token and customer ID, then sign in with the Google account that has access
-                to your Google Ads account. Marteso fetches and stores the access tokens for you — no manual
-                token juggling.
+                Enter your customer ID, then sign in with the Google account that has access to your Google Ads
+                account. Marteso fetches and stores the access tokens for you — no manual token juggling. (Google
+                sunset developer tokens: API access now lives on the Cloud project, no MCC needed.)
               </p>
               <div className="grid grid-cols-1 gap-4">
-                <Field
-                  label="Developer Token"
-                  hint="Google Ads UI → Tools → Setup → API Center. Needs API access on your account."
-                >
-                  <input
-                    className={inputCls}
-                    type="password"
-                    value={developerToken}
-                    onChange={(e) => setDeveloperToken(e.target.value)}
-                    placeholder="…"
-                  />
-                </Field>
                 <Field label="Customer ID" hint="Your Google Ads account ID — dashes allowed.">
                   <input
                     className={inputCls}
@@ -159,15 +145,6 @@ export default function GoogleAdsConnectModal({ onClose, onConnected, addToast, 
                     value={manual.refreshToken}
                     onChange={(e) => onManualChange("refreshToken", e.target.value)}
                     placeholder="1//…"
-                  />
-                </Field>
-                <Field label="Developer Token" fullWidth>
-                  <input
-                    className={inputCls}
-                    type="password"
-                    value={manual.developerToken}
-                    onChange={(e) => onManualChange("developerToken", e.target.value)}
-                    placeholder="…"
                   />
                 </Field>
                 <Field label="Customer ID" hint="Dashes allowed." fullWidth>
