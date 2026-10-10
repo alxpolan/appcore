@@ -1,11 +1,11 @@
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
-import { useApi } from "../../hooks/useApi";
+import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
+import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
-import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_KEYWORD_FILTERS,
@@ -107,6 +107,117 @@ function fmtMoneyUsd(amount: number): string {
   );
 }
 
+/** Like useApi, but surfaces the server's error message (Apple's report
+ * errors carry the reason, e.g. when a grouping is unsupported). */
+function useCountryBreakdown(path: string | null) {
+  const [data, setData] = useState<AppleAdsCountryBreakdownResponse | null>(null);
+  const [loading, setLoading] = useState(path != null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (path == null) return;
+    let live = true;
+    setLoading(true);
+    setError(null);
+    apiGet<AppleAdsCountryBreakdownResponse>(path)
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        setLoading(false);
+      })
+      .catch((e) => {
+        if (!live) return;
+        setError(e.message);
+        setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+  return { data, loading, error };
+}
+
+function CountryStatsTable({
+  countries,
+  currency,
+  revenueAvailable,
+}: {
+  countries: AppleAdsCountryStats[];
+  currency: string | null;
+  revenueAvailable: boolean;
+}) {
+  return (
+    <table className="w-full text-[12px]">
+      <thead>
+        <tr>
+          <th className={TH}>Country</th>
+          {STAT_HEADERS.map((h) => (
+            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" && !revenueAvailable ? "pr-5" : ""}`}>
+              {h}
+            </th>
+          ))}
+          {revenueAvailable && (
+            <>
+              <th className={`${TH} text-right`}>Trials</th>
+              <th className={`${TH} text-right pr-5`}>Proceeds</th>
+            </>
+          )}
+        </tr>
+      </thead>
+      <tbody>
+        {countries.map((c) => (
+          <tr key={c.countryOrRegion}>
+            <td className={TD}>
+              {c.countryOrRegion === "unknown" ? (
+                <span className={textMuted}>Unknown</span>
+              ) : (
+                <>
+                  <span className={`font-medium ${textPrimary}`}>{countryName(c.countryOrRegion)}</span>{" "}
+                  <span className={textMuted}>{c.countryOrRegion}</span>
+                </>
+              )}
+            </td>
+            <StatCells stats={c} currency={currency} />
+            {revenueAvailable && (
+              <>
+                <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.trials)}</td>
+                <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
+                  {fmtMoneyUsd(c.proceedsUsd)}
+                </td>
+              </>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function KeywordCountries({
+  campaignId,
+  adGroupId,
+  keywordId,
+  currency,
+  query,
+}: {
+  campaignId: string;
+  adGroupId: string;
+  keywordId: string;
+  currency: string | null;
+  query: string;
+}) {
+  const { data, loading, error } = useCountryBreakdown(
+    `/apple-ads/campaigns/${campaignId}/adgroups/${adGroupId}/keywords/${keywordId}/countries${query}`,
+  );
+  if (loading) return <div className={`text-[12px] ${textMuted}`}>Loading…</div>;
+  if (error || !data) return <div className={`text-[12px] ${textMuted}`}>{error ?? "Failed to load country data"}</div>;
+  if (data.countries.length === 0) return <div className={`text-[12px] ${textMuted}`}>No country data for this period.</div>;
+  return (
+    <div className="overflow-x-auto">
+      <CountryStatsTable countries={data.countries} currency={currency} revenueAvailable={data.revenueAvailable} />
+    </div>
+  );
+}
+
 export default function AnalyticsAdsCampaignDetail() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
@@ -145,6 +256,12 @@ export default function AnalyticsAdsCampaignDetail() {
     loading: spendLoading,
     error: spendError,
   } = useApi<AppleAdsDailySpendResponse>(`/apple-ads/campaigns/${campaignId}/daily-spend${query}`, [campaignId, ...rangeDeps], true);
+
+  const {
+    data: countriesData,
+    loading: countriesLoading,
+    error: countriesError,
+  } = useCountryBreakdown(campaignId ? `/apple-ads/campaigns/${campaignId}/countries${query}` : null);
 
   const { canManageTeam } = usePermissions();
   const {
@@ -311,6 +428,37 @@ export default function AnalyticsAdsCampaignDetail() {
         error={!!spendError}
         revenueError={!!revenueError}
       />
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Countries</div>
+          <div className={`text-[12px] ${textMuted} mt-0.5`}>
+            Spend and performance by country for the selected period
+            {!countriesLoading && countriesData && !countriesData.revenueAvailable && (
+              <> · connect RevenueCat for trials &amp; proceeds</>
+            )}
+          </div>
+        </div>
+        {countriesLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : countriesError || !countriesData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {countriesError ?? "Failed to load country data"}
+          </div>
+        ) : countriesData.countries.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No country data for this period.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <CountryStatsTable
+              countries={countriesData.countries}
+              currency={currency}
+              revenueAvailable={countriesData.revenueAvailable}
+            />
+          </div>
+        )}
+      </div>
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
@@ -515,15 +663,13 @@ export default function AnalyticsAdsCampaignDetail() {
                                       return (
                                         <Fragment key={k.id}>
                                           <tr
-                                            onClick={() => kwRevenue && setExpandedKeyword(kwExpanded ? null : k.id)}
-                                            className={kwRevenue ? "cursor-pointer hover:bg-[#f7f8fa] dark:hover:bg-[#252b38]" : ""}
+                                            onClick={() => setExpandedKeyword(kwExpanded ? null : k.id)}
+                                            className="cursor-pointer hover:bg-[#f7f8fa] dark:hover:bg-[#252b38]"
                                           >
                                             <td className={`${TD} w-5`}>
-                                              {kwRevenue && (
-                                                <ChevronRight
-                                                  className={`w-3.5 h-3.5 ${textMuted} transition-transform shrink-0 ${kwExpanded ? "rotate-90" : ""}`}
-                                                />
-                                              )}
+                                              <ChevronRight
+                                                className={`w-3.5 h-3.5 ${textMuted} transition-transform shrink-0 ${kwExpanded ? "rotate-90" : ""}`}
+                                              />
                                             </td>
                                             <td className={TD}>
                                               <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
@@ -543,31 +689,52 @@ export default function AnalyticsAdsCampaignDetail() {
                                               {revenueLoading ? "…" : revenueError ? "—" : fmtMoneyUsd(kwRevenue?.proceedsUsd ?? 0)}
                                             </td>
                                           </tr>
-                                          {kwExpanded && kwRevenue && (
+                                          {kwExpanded && campaignId && (
                                             <tr className="bg-[#fafbfc] dark:bg-[#161920]">
                                               <td colSpan={14} className="px-4 py-3">
-                                                <table className="w-full text-[12px]">
-                                                  <thead>
-                                                    <tr>
-                                                      <th className={TH}>Date</th>
-                                                      <th className={TH}>App</th>
-                                                      <th className={TH}>Product</th>
-                                                      <th className={TH}>Event</th>
-                                                      <th className={`${TH} text-right`}>Proceeds (USD)</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody>
-                                                    {kwRevenue.transactions.map((t) => (
-                                                      <tr key={t.id}>
-                                                        <td className={TD}>{t.date.slice(0, 10)}</td>
-                                                        <td className={TD}>{t.app}</td>
-                                                        <td className={TD}>{t.product}</td>
-                                                        <td className={TD}>{t.eventType.replace(/_/g, " ")}</td>
-                                                        <td className={`${TD} text-right tabular-nums`}>{fmtMoneyUsd(t.proceedsUsd)}</td>
-                                                      </tr>
-                                                    ))}
-                                                  </tbody>
-                                                </table>
+                                                <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
+                                                  Countries
+                                                </div>
+                                                <div className={kwRevenue ? "mb-4" : ""}>
+                                                  <KeywordCountries
+                                                    campaignId={campaignId}
+                                                    adGroupId={g.id}
+                                                    keywordId={k.id}
+                                                    currency={k.currency ?? g.currency ?? currency}
+                                                    query={query}
+                                                  />
+                                                </div>
+                                                {kwRevenue && (
+                                                  <>
+                                                    <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
+                                                      Revenue
+                                                    </div>
+                                                    <table className="w-full text-[12px]">
+                                                      <thead>
+                                                        <tr>
+                                                          <th className={TH}>Date</th>
+                                                          <th className={TH}>App</th>
+                                                          <th className={TH}>Product</th>
+                                                          <th className={TH}>Event</th>
+                                                          <th className={TH}>Country</th>
+                                                          <th className={`${TH} text-right`}>Proceeds (USD)</th>
+                                                        </tr>
+                                                      </thead>
+                                                      <tbody>
+                                                        {kwRevenue.transactions.map((t) => (
+                                                          <tr key={t.id}>
+                                                            <td className={TD}>{t.date.slice(0, 10)}</td>
+                                                            <td className={TD}>{t.app}</td>
+                                                            <td className={TD}>{t.product}</td>
+                                                            <td className={TD}>{t.eventType.replace(/_/g, " ")}</td>
+                                                            <td className={TD}>{t.country ?? "—"}</td>
+                                                            <td className={`${TD} text-right tabular-nums`}>{fmtMoneyUsd(t.proceedsUsd)}</td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  </>
+                                                )}
                                               </td>
                                             </tr>
                                           )}

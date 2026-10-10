@@ -533,6 +533,19 @@ export interface AppleAdsDailySpendResponse {
   endDate: string;
 }
 
+export interface AppleAdsCountryStats extends AppleAdsStats {
+  countryOrRegion: string;
+  trials: number;
+  proceedsUsd: number;
+}
+
+export interface AppleAdsCountryBreakdownResponse {
+  countries: AppleAdsCountryStats[];
+  revenueAvailable: boolean;
+  startDate: string;
+  endDate: string;
+}
+
 export interface AppleAdsRevenueTransaction {
   id: string;
   date: string;
@@ -542,6 +555,7 @@ export interface AppleAdsRevenueTransaction {
   eventType: string;
   isTrial: boolean;
   isConvertedTrial: boolean;
+  country: string | null;
   proceedsUsd: number;
   potentialProceedsUsd: number;
 }
