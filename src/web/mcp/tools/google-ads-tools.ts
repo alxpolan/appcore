@@ -14,6 +14,7 @@ import {
   getGoogleAdsCampaignCountryBreakdown,
   getGoogleAdsCampaignDailySpend,
   getGoogleAdsCampaignDetail,
+  listGoogleAdsAdGroups,
   listGoogleAdsCampaigns,
   listGoogleAdsKeywords,
   listGoogleAdsNegativeKeywords,
@@ -108,7 +109,7 @@ async function previousGoogleCampaign(creds: GoogleAdsCredentials, campaignId: s
 }
 
 async function previousGoogleAdGroup(creds: GoogleAdsCredentials, campaignId: string, adGroupId: string) {
-  const detail = await bestEffort(() => getGoogleAdsCampaignDetail(creds, campaignId));
+  const detail = await bestEffort(() => listGoogleAdsAdGroups(creds, campaignId));
   const g = detail?.find((x) => String(x.id) === String(adGroupId));
   if (!g) return undefined;
   return {
@@ -514,7 +515,7 @@ export function registerGoogleAdsTools(server: McpServer, userId: string) {
       try {
         const [campaign, adGroups] = await Promise.all([
           listGoogleAdsNegativeKeywords(ctx.creds, campaignId, null),
-          getGoogleAdsCampaignDetail(ctx.creds, campaignId),
+          listGoogleAdsAdGroups(ctx.creds, campaignId),
         ]);
 
         const byAdGroup = await Promise.all(

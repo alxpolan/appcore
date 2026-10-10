@@ -313,7 +313,12 @@ class FakeGoogleAdsGateway implements GoogleAdsGateway {
           continue;
         }
         rows.push({
-          campaign: { id: c.id, name: c.name, status: c.status },
+          campaign: {
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            campaign_budget: `customers/${this.customerId}/campaignBudgets/${c.budgetId}`,
+          },
           campaign_budget: { amount_micros: c.budgetMicros != null ? String(c.budgetMicros) : null },
           ...(withMetrics ? { metrics: this.metricsRow(c.metrics) } : {}),
         });
@@ -671,6 +676,27 @@ export async function listGoogleAdsCampaigns(
 
 export interface GoogleAdsAdGroupWithKeywords extends GoogleAdsAdGroup {
   keywords: GoogleAdsKeyword[];
+}
+
+/** Light ad-group list (no metrics, no keywords) for negatives overviews. */
+export async function listGoogleAdsAdGroups(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+): Promise<{ id: string; name: string; status: string; defaultCpcBid: number | null }[]> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT ad_group.id, ad_group.name, ad_group.status, ad_group.cpc_bid_micros " +
+      `FROM ad_group WHERE campaign.id = ${campaignId} AND ad_group.status != 'REMOVED' ORDER BY ad_group.name`,
+  );
+  return rows.map((row) => {
+    const g = row.ad_group ?? {};
+    return {
+      id: String(g.id),
+      name: String(g.name ?? ""),
+      status: String(g.status ?? ""),
+      defaultCpcBid: g.cpc_bid_micros != null ? Number(g.cpc_bid_micros) / 1_000_000 : null,
+    };
+  });
 }
 
 export async function getGoogleAdsCampaignDetail(

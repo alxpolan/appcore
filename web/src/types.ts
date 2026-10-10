@@ -575,6 +575,84 @@ export interface AppleAdsCampaignRevenue {
   byCampaign: Record<string, AppleAdsRevenueBucket & { byKeyword: Record<string, AppleAdsRevenueBucket> }>;
 }
 
+export interface GoogleAdsStatus {
+  connected: boolean;
+  customerId: string | null;
+  connectedAt: string | null;
+}
+
+export interface GoogleAdsStats {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  avgCpc: number | null;
+  costPerConversion: number | null;
+  conversionRate: number | null;
+}
+
+export interface GoogleAdsCampaign extends GoogleAdsStats {
+  id: string;
+  name: string;
+  status: string;
+  dailyBudget: number | null;
+  currency: string | null;
+}
+
+export interface GoogleAdsKeyword extends GoogleAdsStats {
+  id: string;
+  adGroupId: string;
+  text: string;
+  matchType: string;
+  status: string;
+  cpcBid: number | null;
+  currency: string | null;
+}
+
+export interface GoogleAdsAdGroup extends GoogleAdsStats {
+  id: string;
+  campaignId: string;
+  name: string;
+  status: string;
+  defaultCpcBid: number | null;
+  currency: string | null;
+  keywords: GoogleAdsKeyword[];
+}
+
+export interface GoogleAdsCampaignDetail {
+  adGroups: GoogleAdsAdGroup[];
+}
+
+export interface GoogleAdsDailySpendResponse {
+  days: { date: string; spend: number }[];
+  startDate: string;
+  endDate: string;
+}
+
+export interface GoogleAdsCountryStats extends GoogleAdsStats {
+  countryOrRegion: string;
+  countryName: string | null;
+}
+
+export interface GoogleAdsCountryBreakdownResponse {
+  countries: GoogleAdsCountryStats[];
+  startDate: string;
+  endDate: string;
+}
+
+export interface GoogleAdsNegativeKeyword {
+  id: string;
+  text: string;
+  matchType: string;
+  status: string;
+}
+
+export interface GoogleAdsNegativesResponse {
+  campaign: GoogleAdsNegativeKeyword[];
+  adGroups: { id: string; name: string; negatives: GoogleAdsNegativeKeyword[] }[];
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;

@@ -36,6 +36,8 @@ import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
 import AnalyticsAds from "./components/analytics/AnalyticsAds";
 import AnalyticsAdsCampaignDetail from "./components/analytics/AnalyticsAdsCampaignDetail";
+import AnalyticsGoogleAds from "./components/analytics/AnalyticsGoogleAds";
+import AnalyticsGoogleAdsCampaignDetail from "./components/analytics/AnalyticsGoogleAdsCampaignDetail";
 import Versions from "./components/Versions";
 import Screenshots from "./components/Screenshots";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
@@ -121,6 +123,7 @@ const railLinks: SidebarLink[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/analytics", label: "Analytics", icon: BarChart2 },
   { to: "/analytics/ads", label: "Ads", icon: Megaphone },
+  { to: "/analytics/google-ads", label: "Google Ads", icon: Megaphone },
   { to: "/keywords", label: "Keywords", icon: Search },
   { to: "/competitors", label: "Competitors", icon: Users },
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
@@ -577,10 +580,16 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
   const location = useLocation();
   const navigate = useNavigate();
   const isAnyAnalyticsActive =
-    location.pathname.startsWith("/analytics") && !location.pathname.startsWith("/analytics/ads");
+    location.pathname.startsWith("/analytics") &&
+    !location.pathname.startsWith("/analytics/ads") &&
+    !location.pathname.startsWith("/analytics/google-ads");
 
   useEffect(() => {
-    if (location.pathname.startsWith("/analytics") && !location.pathname.startsWith("/analytics/ads")) {
+    if (
+      location.pathname.startsWith("/analytics") &&
+      !location.pathname.startsWith("/analytics/ads") &&
+      !location.pathname.startsWith("/analytics/google-ads")
+    ) {
       setExpanded(true);
     }
   }, []);
@@ -1401,6 +1410,10 @@ export default function App() {
                     <Megaphone />
                     Ads
                   </NavLink>
+                  <NavLink to="/analytics/google-ads" className={navLinkClass}>
+                    <Megaphone />
+                    Google Ads
+                  </NavLink>
                   {sidebarLinks
                     .slice(1)
                     .filter((link) => link.to !== "/suggestions" || user.isFringeloTeam)
@@ -1465,6 +1478,8 @@ export default function App() {
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/analytics/ads" element={<AnalyticsAds />} />
               <Route path="/analytics/ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
+              <Route path="/analytics/google-ads" element={<AnalyticsGoogleAds />} />
+              <Route path="/analytics/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />

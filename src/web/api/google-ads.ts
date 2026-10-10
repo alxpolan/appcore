@@ -13,6 +13,7 @@ import {
   getGoogleAdsCampaignDetail,
   googleAdsErrorMessage,
   googleAdsGateway,
+  listGoogleAdsAdGroups,
   listGoogleAdsCampaigns,
   listGoogleAdsNegativeKeywords,
   resolveGoogleAdsRange,
@@ -296,14 +297,20 @@ googleAdsRouter.get("/campaigns/:campaignId/negatives", loadTeamSettings, async 
   }
 
   try {
-    const adGroupId =
-      req.query.adGroupId != null && req.query.adGroupId !== "" ? String(req.query.adGroupId) : null;
-    const negatives = await listGoogleAdsNegativeKeywords(
-      googleAdsCreds(s),
-      req.params.campaignId as string,
-      adGroupId,
+    const creds = googleAdsCreds(s);
+    const campaignId = req.params.campaignId as string;
+    const [campaign, adGroups] = await Promise.all([
+      listGoogleAdsNegativeKeywords(creds, campaignId, null),
+      listGoogleAdsAdGroups(creds, campaignId),
+    ]);
+    const byAdGroup = await Promise.all(
+      adGroups.map(async (g) => ({
+        id: g.id,
+        name: g.name,
+        negatives: await listGoogleAdsNegativeKeywords(creds, campaignId, g.id),
+      })),
     );
-    res.json({ negatives });
+    res.json({ campaign, adGroups: byAdGroup });
   } catch (err: any) {
     logger.error("[google-ads] negatives fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "negatives list") });
