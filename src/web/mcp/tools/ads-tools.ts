@@ -11,8 +11,10 @@ import {
   deleteAppleAdsCampaign,
   deleteAppleAdsKeywordsBulk,
   deleteAppleAdsNegativeKeywordsBulk,
+  getAppleAdsCampaignCountryBreakdown,
   getAppleAdsCampaignDailySpend,
   getAppleAdsCampaignDetail,
+  getAppleAdsKeywordCountryBreakdown,
   listAppleAdsAdGroups,
   listAppleAdsCampaigns,
   listAppleAdsKeywords,
@@ -25,7 +27,7 @@ import {
   validateCreateCampaignInput,
   type AppleAdsCredentials,
 } from "../../../services/apple-ads";
-import { getAppleAdsCampaignRevenue } from "../../../services/apple-ads-revenue";
+import { getAppleAdsCampaignRevenue, mergeCountryRevenue } from "../../../services/apple-ads-revenue";
 import { getMcpAllowedAppIds, getMcpUserTeamId, registerMutatingTool, type ToolSummary } from "./shared";
 
 const rangeSchema = {
@@ -415,6 +417,15 @@ async function isTeamAdmin(userId: string, teamId: string): Promise<boolean> {
   return member?.role === "OWNER" || member?.role === "ADMIN";
 }
 
+async function getMcpRevenueApps(userId: string, teamId: string) {
+  const apps = await prisma.app.findMany({
+    where: { teamId, revenueCatConnectedAt: { not: null } },
+    select: { id: true, bundleId: true, displayName: true, name: true },
+  });
+  const allowedAppIds = await getMcpAllowedAppIds(userId, teamId);
+  return allowedAppIds ? apps.filter((app) => allowedAppIds.includes(app.id)) : apps;
+}
+
 export function registerAdsTools(server: McpServer, userId: string) {
   server.registerTool(
     "list_ads_campaigns",
@@ -484,6 +495,80 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return jsonResult({ range, campaignId, days: daysSeries });
       } catch (err) {
         return adsError("get_ads_campaign_daily_spend", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_ads_campaign_country_breakdown",
+    {
+      description:
+        "Get per-country performance for one Apple Search Ads campaign: spend, impressions, taps, TTR, " +
+        "installs, average CPT/CPA and conversion rate broken out by countryOrRegion, plus attributed " +
+        "RevenueCat trials and proceeds (USD) per country when RevenueCat is connected. " +
+        "Use list_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        ...rangeSchema,
+      },
+    },
+    async ({ campaignId, days, period, startDate, endDate }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      try {
+        const range = resolveAppleAdsRange({ days, period, startDate, endDate });
+        const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
+        const [apple, revenue] = await Promise.all([
+          getAppleAdsCampaignCountryBreakdown(ctx.creds, campaignId, range),
+          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range),
+        ]);
+        const countries = mergeCountryRevenue(apple, revenue.byCampaign[campaignId]?.byCountry);
+        return jsonResult({ range, campaignId, revenueAvailable: accessibleApps.length > 0, countries });
+      } catch (err) {
+        return adsError("get_ads_campaign_country_breakdown", err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_ads_keyword_country_breakdown",
+    {
+      description:
+        "Get per-country performance for one targeting keyword in an Apple Search Ads ad group: spend, " +
+        "impressions, taps, TTR, installs and conversion rate broken out by countryOrRegion, plus attributed " +
+        "RevenueCat trials and proceeds (USD) per country when RevenueCat is connected. " +
+        "Use get_ads_campaign_detail first to find campaign, ad group and keyword IDs.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        keywordId: z.string().describe("Keyword ID (numeric string)."),
+        ...rangeSchema,
+      },
+    },
+    async ({ campaignId, adGroupId, keywordId, days, period, startDate, endDate }) => {
+      const ctx = await getAppleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      try {
+        const range = resolveAppleAdsRange({ days, period, startDate, endDate });
+        const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
+        const [apple, revenue] = await Promise.all([
+          getAppleAdsKeywordCountryBreakdown(ctx.creds, campaignId, adGroupId, keywordId, range),
+          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range),
+        ]);
+        const keywordBucket = revenue.byCampaign[campaignId]?.byKeyword[keywordId];
+        const countries = mergeCountryRevenue(apple, keywordBucket?.byCountry);
+        return jsonResult({
+          range,
+          campaignId,
+          adGroupId,
+          keywordId,
+          revenueAvailable: accessibleApps.length > 0,
+          countries,
+        });
+      } catch (err) {
+        return adsError("get_ads_keyword_country_breakdown", err);
       }
     },
   );
@@ -1077,18 +1162,12 @@ export function registerAdsTools(server: McpServer, userId: string) {
       if ("error" in ctx) return textResult(ctx.error);
 
       try {
-        const apps = await prisma.app.findMany({
-          where: { teamId: ctx.teamId, revenueCatConnectedAt: { not: null } },
-          select: { id: true, bundleId: true, displayName: true, name: true },
-        });
-
-        const allowedAppIds = await getMcpAllowedAppIds(userId, ctx.teamId);
-        const accessibleApps = allowedAppIds ? apps.filter((app) => allowedAppIds.includes(app.id)) : apps;
+        const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
         const { byCampaign } = await getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range);
 
         if (campaignId) {
-          const bucket = byCampaign[campaignId] ?? { proceedsUsd: 0, transactions: [], byKeyword: {} };
+          const bucket = byCampaign[campaignId] ?? { proceedsUsd: 0, transactions: [], byKeyword: {}, byCountry: {} };
           return jsonResult({ range, campaignId, ...bucket });
         }
         

@@ -18,10 +18,12 @@ import {
   deleteAppleAdsNegativeKeywordsBulk,
   updateAppleAdsCampaignStatus,
   deleteAppleAdsCampaign,
+  getAppleAdsCampaignCountryBreakdown,
+  getAppleAdsKeywordCountryBreakdown,
   type CreateAppleAdsCampaignInput,
   type CreateAppleAdsNegativeKeywordInput,
 } from "../../services/apple-ads";
-import { getAppleAdsCampaignRevenue } from "../../services/apple-ads-revenue";
+import { getAppleAdsCampaignRevenue, mergeCountryRevenue } from "../../services/apple-ads-revenue";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
@@ -402,6 +404,104 @@ appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async
   }
 });
 
+function countryBreakdownError(res: any, err: any, logCtx: string) {
+  logger.error(logCtx, {
+    err: String(err?.message ?? err),
+    status: err?.response?.status,
+    body: err?.response?.data,
+  });
+  // Apple reports failures as HTTP 200 with a body-level error; pass the
+  // message through so the UI can show why (e.g. grouping unsupported).
+  const message = String(err?.message ?? "");
+  if (message.includes("reports error")) {
+    res.status(400).json({ error: message });
+    return;
+  }
+  res.status(500).json({ error: "Failed to load country breakdown from Apple Search Ads" });
+}
+
+appleAdsRouter.get("/campaigns/:campaignId/countries", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (
+    !s?.appleAdsConnectedAt ||
+    !s.appleAdsOrgId ||
+    !s.appleAdsClientId ||
+    !s.appleAdsTeamId ||
+    !s.appleAdsKeyId ||
+    !s.appleAdsPrivateKey
+  ) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const range = resolveAppleAdsRange(req.query);
+    const creds = {
+      orgId: s.appleAdsOrgId,
+      clientId: s.appleAdsClientId,
+      teamId: s.appleAdsTeamId,
+      keyId: s.appleAdsKeyId,
+      privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+    };
+    const accessibleApps = await accessibleRevenueApps(req);
+    const [apple, revenue] = await Promise.all([
+      getAppleAdsCampaignCountryBreakdown(creds, req.params.campaignId as string, range),
+      getAppleAdsCampaignRevenue(accessibleApps, s.appleAdsOrgId, range),
+    ]);
+    const countries = mergeCountryRevenue(apple, revenue.byCampaign[req.params.campaignId as string]?.byCountry);
+    res.json({ countries, revenueAvailable: accessibleApps.length > 0, startDate: range.startDate, endDate: range.endDate });
+  } catch (err: any) {
+    countryBreakdownError(res, err, "[apple-ads] campaign country breakdown fetch error");
+  }
+});
+
+appleAdsRouter.get(
+  "/campaigns/:campaignId/adgroups/:adGroupId/keywords/:keywordId/countries",
+  loadTeamSettings,
+  async (req, res) => {
+    const s = req.teamSettings;
+    if (
+      !s?.appleAdsConnectedAt ||
+      !s.appleAdsOrgId ||
+      !s.appleAdsClientId ||
+      !s.appleAdsTeamId ||
+      !s.appleAdsKeyId ||
+      !s.appleAdsPrivateKey
+    ) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+      return;
+    }
+
+    try {
+      const range = resolveAppleAdsRange(req.query);
+      const creds = {
+        orgId: s.appleAdsOrgId,
+        clientId: s.appleAdsClientId,
+        teamId: s.appleAdsTeamId,
+        keyId: s.appleAdsKeyId,
+        privateKey: decryptNullable(s.appleAdsPrivateKey)!,
+      };
+      const accessibleApps = await accessibleRevenueApps(req);
+      const [apple, revenue] = await Promise.all([
+        getAppleAdsKeywordCountryBreakdown(
+          creds,
+          req.params.campaignId as string,
+          req.params.adGroupId as string,
+          req.params.keywordId as string,
+          range,
+        ),
+        getAppleAdsCampaignRevenue(accessibleApps, s.appleAdsOrgId, range),
+      ]);
+      const keywordBucket =
+        revenue.byCampaign[req.params.campaignId as string]?.byKeyword[req.params.keywordId as string];
+      const countries = mergeCountryRevenue(apple, keywordBucket?.byCountry);
+      res.json({ countries, revenueAvailable: accessibleApps.length > 0, startDate: range.startDate, endDate: range.endDate });
+    } catch (err: any) {
+      countryBreakdownError(res, err, "[apple-ads] keyword country breakdown fetch error");
+    }
+  },
+);
+
 function validateNegativesBody(body: any): {
   adGroupId: string | null;
   keywords: CreateAppleAdsNegativeKeywordInput[];
@@ -610,6 +710,21 @@ appleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asyn
   }
 });
 
+async function accessibleRevenueApps(req: Request) {
+  const apps = await prisma.app.findMany({
+    where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
+    select: { id: true, bundleId: true, displayName: true, name: true },
+  });
+  if (req.user!.role === "ADMIN") return apps;
+  const checked = await Promise.all(
+    apps.map(async (app) => ({
+      app,
+      allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id),
+    })),
+  );
+  return checked.filter(({ allowed }) => allowed).map(({ app }) => app);
+}
+
 appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
   const orgId = req.teamSettings?.appleAdsOrgId;
   if (!req.teamSettings?.appleAdsConnectedAt || !orgId) {
@@ -618,24 +733,7 @@ appleAdsRouter.get("/campaign-revenue", loadTeamSettings, async (req, res) => {
   }
 
   try {
-    const apps = await prisma.app.findMany({
-      where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
-      select: { id: true, bundleId: true, displayName: true, name: true },
-    });
-    const accessibleApps =
-      req.user!.role === "ADMIN"
-        ? apps
-        : (
-            await Promise.all(
-              apps.map(async (app) => ({
-                app,
-                allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id),
-              })),
-            )
-          )
-            .filter(({ allowed }) => allowed)
-            .map(({ app }) => app);
-
+    const accessibleApps = await accessibleRevenueApps(req);
     res.json(await getAppleAdsCampaignRevenue(accessibleApps, orgId, resolveAppleAdsRange(req.query)));
   } catch (err: any) {
     logger.error("[apple-ads] campaign revenue error", { err: String(err?.message ?? err) });

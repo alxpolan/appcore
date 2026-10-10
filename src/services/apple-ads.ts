@@ -401,6 +401,102 @@ export async function getAppleAdsCampaignDailySpend(
   return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, spend]) => ({ date, spend }));
 }
 
+export interface AppleAdsCountryStats extends AppleAdsStats {
+  countryOrRegion: string;
+}
+
+function countryStatsFromRows(rows: any[]): AppleAdsCountryStats[] {
+  return rows
+    .map((row) => {
+      const meta = row.metadata ?? {};
+      return {
+        countryOrRegion: String(meta.countryOrRegion ?? ""),
+        ...statsFromTotal(totalsFromRow(row)),
+      };
+    })
+    .filter((r) => r.countryOrRegion !== "")
+    .sort((a, b) => b.spend - a.spend);
+}
+
+/** Per-country metrics for one campaign: spend, TTR, installs, … per
+ * countryOrRegion, via a grouped campaign report. */
+export async function getAppleAdsCampaignCountryBreakdown(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
+): Promise<AppleAdsCountryStats[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const headers = authedHeaders(accessToken, creds.orgId);
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
+          conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        groupBy: ["countryOrRegion"],
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: true,
+        returnGrandTotals: false,
+      },
+      { headers },
+    );
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.countryOrRegion != null ? String(row.metadata.countryOrRegion) : undefined,
+  );
+  return countryStatsFromRows(rows);
+}
+
+/** Per-country metrics for one keyword, via a grouped keyword report.
+ * Whether Apple supports groupBy on the keyword report is unverified
+ * against the live API — callers should surface Apple's error message. */
+export async function getAppleAdsKeywordCountryBreakdown(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  adGroupId: string,
+  keywordId: string,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
+): Promise<AppleAdsCountryStats[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const headers = authedHeaders(accessToken, creds.orgId);
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          orderBy: [{ field: "keywordId", sortOrder: "ASCENDING" }],
+          conditions: [{ field: "keywordId", operator: "EQUALS", values: [keywordId] }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        groupBy: ["countryOrRegion"],
+        timeZone: "UTC",
+        returnRecordsWithNoMetrics: true,
+        returnRowTotals: true,
+        returnGrandTotals: false,
+      },
+      { headers },
+    );
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(chunks.flat(), (row) =>
+    row.metadata?.countryOrRegion != null ? String(row.metadata.countryOrRegion) : undefined,
+  );
+  return countryStatsFromRows(rows);
+}
+
 export async function listAppleAdsAdGroups(
   creds: AppleAdsCredentials,
   campaignId: string,
