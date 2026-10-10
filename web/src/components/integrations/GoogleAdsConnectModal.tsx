@@ -9,20 +9,41 @@ interface Props {
   onClose: () => void;
   onConnected: () => void;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
+  oauthAvailable: boolean;
+  oauthRedirectUri: string;
 }
 
-export default function GoogleAdsConnectModal({ onClose, onConnected, addToast }: Props) {
-  const [form, setForm] = useState({ clientId: "", clientSecret: "", refreshToken: "", developerToken: "", customerId: "" });
+export default function GoogleAdsConnectModal({ onClose, onConnected, addToast, oauthAvailable, oauthRedirectUri }: Props) {
+  const [developerToken, setDeveloperToken] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manual, setManual] = useState({ clientId: "", clientSecret: "", refreshToken: "", developerToken: "", customerId: "" });
   const [connecting, setConnecting] = useState(false);
 
-  const onChange = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const canOAuth = developerToken.trim().length > 0 && customerId.trim().length > 0;
 
-  const canSubmit = Object.values(form).every((v) => v.trim().length > 0);
+  const startOAuth = async () => {
+    setStarting(true);
+    try {
+      const { url } = await apiPost<{ url: string }>("/google-ads/oauth/start", {
+        developerToken: developerToken.trim(),
+        customerId: customerId.trim(),
+      });
+      window.location.href = url;
+    } catch (err: any) {
+      addToast(err.message ?? "Failed to start Google sign-in", "error");
+      setStarting(false);
+    }
+  };
 
-  const submit = async () => {
+  const onManualChange = (key: keyof typeof manual, value: string) => setManual((f) => ({ ...f, [key]: value }));
+  const canManual = Object.values(manual).every((v) => v.trim().length > 0);
+
+  const submitManual = async () => {
     setConnecting(true);
     try {
-      await apiPost<{ ok?: boolean }>("/google-ads/connect", form);
+      await apiPost<{ ok?: boolean }>("/google-ads/connect", manual);
       addToast("Connected to Google Ads.", "success");
       onConnected();
       onClose();
@@ -50,70 +71,136 @@ export default function GoogleAdsConnectModal({ onClose, onConnected, addToast }
           </button>
         </div>
         <div className="p-6 overflow-y-auto">
-          <p className={`text-[13px] ${textSecondary} mb-4`}>
-            Marteso uses the Google Ads API to pull your campaign data. You need API access on your Google Ads
-            account: create OAuth2 credentials in the{" "}
-            <span className={`font-medium ${textPrimary}`}>Google Cloud Console</span>, generate a refresh token,
-            and copy your <span className={`font-medium ${textPrimary}`}>developer token</span> from the Google Ads
-            UI under <span className={`font-medium ${textPrimary}`}>Tools → Setup → API Center</span>.
-          </p>
+          {oauthAvailable ? (
+            <>
+              <p className={`text-[13px] ${textSecondary} mb-4`}>
+                Enter your developer token and customer ID, then sign in with the Google account that has access
+                to your Google Ads account. Marteso fetches and stores the access tokens for you — no manual
+                token juggling.
+              </p>
+              <div className="grid grid-cols-1 gap-4">
+                <Field
+                  label="Developer Token"
+                  hint="Google Ads UI → Tools → Setup → API Center. Needs API access on your account."
+                >
+                  <input
+                    className={inputCls}
+                    type="password"
+                    value={developerToken}
+                    onChange={(e) => setDeveloperToken(e.target.value)}
+                    placeholder="…"
+                  />
+                </Field>
+                <Field label="Customer ID" hint="Your Google Ads account ID — dashes allowed.">
+                  <input
+                    className={inputCls}
+                    type="text"
+                    inputMode="numeric"
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    placeholder="123-456-7890"
+                  />
+                </Field>
+              </div>
+              <button
+                onClick={() => startOAuth()}
+                disabled={!canOAuth || starting}
+                className={`${btnPrimary} w-full mt-5`}
+              >
+                {starting ? "Redirecting to Google…" : "Connect with Google"}
+              </button>
+              <div className="mt-4 text-center">
+                <button onClick={() => setShowManual((v) => !v)} className={`text-[12px] font-medium text-[#595DD2] hover:underline`}>
+                  {showManual ? "Hide manual setup" : "Or connect manually with your own OAuth client"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className={`text-[13px] ${textSecondary} mb-4`}>
+              One-click sign-in isn't configured on this server yet. To enable it, create a{" "}
+              <span className={`font-medium ${textPrimary}`}>Web application</span> OAuth client with the Google
+              Ads API enabled, register this redirect URI on it, and set{" "}
+              <span className={`font-medium ${textPrimary}`}>GOOGLE_ADS_OAUTH_CLIENT_ID/SECRET</span>:
+              <code className="block mt-2 text-[11px] font-mono bg-[#f3f4f6] dark:bg-[#252b38] px-2 py-1.5 rounded-lg break-all">
+                {oauthRedirectUri}
+              </code>
+            </p>
+          )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Client ID" fullWidth>
-              <input
-                className={inputCls}
-                type="text"
-                value={form.clientId}
-                onChange={(e) => onChange("clientId", e.target.value)}
-                placeholder="xxxx.apps.googleusercontent.com"
-              />
-            </Field>
-            <Field label="Client Secret" fullWidth>
-              <input
-                className={inputCls}
-                type="password"
-                value={form.clientSecret}
-                onChange={(e) => onChange("clientSecret", e.target.value)}
-                placeholder="GOCSPX-…"
-              />
-            </Field>
-            <Field label="Refresh Token" fullWidth>
-              <input
-                className={inputCls}
-                type="password"
-                value={form.refreshToken}
-                onChange={(e) => onChange("refreshToken", e.target.value)}
-                placeholder="1//…"
-              />
-            </Field>
-            <Field label="Developer Token" fullWidth>
-              <input
-                className={inputCls}
-                type="password"
-                value={form.developerToken}
-                onChange={(e) => onChange("developerToken", e.target.value)}
-                placeholder="…"
-              />
-            </Field>
-            <Field label="Customer ID" hint="Your Google Ads account ID — dashes allowed." fullWidth>
-              <input
-                className={inputCls}
-                type="text"
-                inputMode="numeric"
-                value={form.customerId}
-                onChange={(e) => onChange("customerId", e.target.value)}
-                placeholder="123-456-7890"
-              />
-            </Field>
-          </div>
+          {(!oauthAvailable || showManual) && (
+            <div className={oauthAvailable ? "mt-4 pt-4 border-t border-[#f3f4f6] dark:border-[#2a2f3d]" : ""}>
+              <p className={`text-[13px] ${textSecondary} mb-4`}>
+                Use your own OAuth credentials: create them in the Google Cloud Console, generate a refresh
+                token (e.g. via the OAuth Playground with your own credentials), and enter everything below.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Client ID" fullWidth>
+                  <input
+                    className={inputCls}
+                    type="text"
+                    value={manual.clientId}
+                    onChange={(e) => onManualChange("clientId", e.target.value)}
+                    placeholder="xxxx.apps.googleusercontent.com"
+                  />
+                </Field>
+                <Field label="Client Secret" fullWidth>
+                  <input
+                    className={inputCls}
+                    type="password"
+                    value={manual.clientSecret}
+                    onChange={(e) => onManualChange("clientSecret", e.target.value)}
+                    placeholder="GOCSPX-…"
+                  />
+                </Field>
+                <Field label="Refresh Token" fullWidth>
+                  <input
+                    className={inputCls}
+                    type="password"
+                    value={manual.refreshToken}
+                    onChange={(e) => onManualChange("refreshToken", e.target.value)}
+                    placeholder="1//…"
+                  />
+                </Field>
+                <Field label="Developer Token" fullWidth>
+                  <input
+                    className={inputCls}
+                    type="password"
+                    value={manual.developerToken}
+                    onChange={(e) => onManualChange("developerToken", e.target.value)}
+                    placeholder="…"
+                  />
+                </Field>
+                <Field label="Customer ID" hint="Dashes allowed." fullWidth>
+                  <input
+                    className={inputCls}
+                    type="text"
+                    inputMode="numeric"
+                    value={manual.customerId}
+                    onChange={(e) => onManualChange("customerId", e.target.value)}
+                    placeholder="123-456-7890"
+                  />
+                </Field>
+              </div>
 
-          <p className={`text-[11px] ${textMuted} mt-3 mb-5`}>
-            Your secrets are encrypted at rest and only used to call the Google Ads API on your behalf.
-          </p>
+              <p className={`text-[11px] ${textMuted} mt-3 mb-5`}>
+                Your secrets are encrypted at rest and only used to call the Google Ads API on your behalf.
+              </p>
 
-          <button onClick={() => submit()} disabled={!canSubmit || connecting} className={`${btnPrimary} w-full`}>
-            {connecting ? "Verifying…" : "Connect"}
-          </button>
+              <button
+                onClick={() => submitManual()}
+                disabled={!canManual || connecting}
+                className={`${btnPrimary} w-full ${oauthAvailable ? "" : ""}`}
+              >
+                {connecting ? "Verifying…" : "Connect"}
+              </button>
+            </div>
+          )}
+
+          {oauthAvailable && !showManual && (
+            <p className={`text-[11px] ${textMuted} mt-4 text-center`}>
+              Tokens are encrypted at rest and only used for Google Ads API calls.
+            </p>
+          )}
         </div>
       </div>
     </div>,

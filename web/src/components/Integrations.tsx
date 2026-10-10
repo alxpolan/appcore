@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { BarChart2, Megaphone, DollarSign, CheckCircle2 } from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../hooks/useApi";
 import { borderDefault, btnPrimary, cardCls, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
@@ -21,6 +22,28 @@ export default function Integrations({ addToast }: Props) {
   const { data: googleAds, refetch: refetchGoogleAds } = useApi<GoogleAdsStatus>("/google-ads/status", [], true);
   const [showGoogleAdsModal, setShowGoogleAdsModal] = useState(false);
   const [disconnectingGoogleAds, setDisconnectingGoogleAds] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const result = searchParams.get("googleAds");
+    if (!result) return;
+    if (result === "connected") {
+      addToast("Connected to Google Ads.", "success");
+      refetchGoogleAds();
+    } else {
+      const reason = searchParams.get("reason");
+      addToast(
+        reason === "customer_not_accessible"
+          ? "Connected, but that customer ID isn't accessible with this Google account."
+          : reason === "session_mismatch"
+            ? "Google sign-in session didn't match — please try again."
+            : "Google Ads connection failed. Please try again.",
+        "error",
+      );
+    }
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const bundleId = getActiveBundleId();
   const { data: dash } = useApi<DashboardData>("/dashboard");
@@ -276,6 +299,8 @@ export default function Integrations({ addToast }: Props) {
           onClose={() => setShowGoogleAdsModal(false)}
           onConnected={refetchGoogleAds}
           addToast={addToast}
+          oauthAvailable={googleAds?.oauthAvailable ?? false}
+          oauthRedirectUri={googleAds?.oauthRedirectUri ?? ""}
         />
       )}
 

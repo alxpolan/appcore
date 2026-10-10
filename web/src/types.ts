@@ -579,6 +579,8 @@ export interface GoogleAdsStatus {
   connected: boolean;
   customerId: string | null;
   connectedAt: string | null;
+  oauthAvailable: boolean;
+  oauthRedirectUri: string;
 }
 
 export interface GoogleAdsStats {

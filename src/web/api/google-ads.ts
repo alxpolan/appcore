@@ -1,6 +1,14 @@
 import { Router, type Request } from "express";
-import { prisma, logger } from "../../config";
+import { prisma, logger, env } from "../../config";
 import { requireTeamAdmin, loadTeamSettings } from "../auth";
+import {
+  buildGoogleAdsAuthUrl,
+  exchangeGoogleAdsCode,
+  googleAdsOAuthAvailable,
+  googleAdsOAuthRedirectUri,
+  signGoogleAdsOAuthState,
+  verifyGoogleAdsOAuthState,
+} from "../../services/google-ads-oauth";
 import { encrypt, decryptNullable } from "../../config/encryption";
 import { logActivity } from "../../services/activity-log";
 import {
@@ -64,6 +72,8 @@ googleAdsRouter.get("/status", loadTeamSettings, async (req, res) => {
     connected: !googleAdsKeyMissing(s),
     customerId: s?.googleAdsCustomerId ?? null,
     connectedAt: s?.googleAdsConnectedAt?.toISOString() ?? null,
+    oauthAvailable: googleAdsOAuthAvailable(),
+    oauthRedirectUri: googleAdsOAuthRedirectUri(),
   });
 });
 
@@ -425,6 +435,103 @@ googleAdsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettings, asy
   } catch (err: any) {
     logger.error("[google-ads] negatives delete error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "negatives delete") });
+  }
+});
+
+googleAdsRouter.post("/oauth/start", async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    if (!googleAdsOAuthAvailable()) {
+      res.status(500).json({ error: "Google Ads OAuth is not configured on this server" });
+      return;
+    }
+
+    const { developerToken, customerId } = req.body as Record<string, string>;
+    if (!developerToken || !customerId) {
+      res.status(400).json({ error: "developerToken and customerId are both required" });
+      return;
+    }
+    const normalizedCustomerId = String(customerId).replace(/-/g, "");
+    if (!/^\d+$/.test(normalizedCustomerId)) {
+      res.status(400).json({ error: "customerId must be the numeric Google Ads customer ID (dashes allowed)" });
+      return;
+    }
+
+    const state = signGoogleAdsOAuthState({
+      teamId: req.user!.teamId!,
+      userId: req.user!.userId!,
+      developerToken,
+      customerId: normalizedCustomerId,
+    });
+    res.json({ url: buildGoogleAdsAuthUrl(state) });
+  } catch (err: any) {
+    logger.error("[google-ads] oauth start error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+googleAdsRouter.get("/oauth/callback", async (req, res) => {
+  const appUrl = env.APP_URL;
+  const fail = (reason: string) =>
+    res.redirect(`${appUrl}/integrations?googleAds=error&reason=${encodeURIComponent(reason)}`);
+
+  try {
+    if (req.query.error) return fail(String(req.query.error_description ?? req.query.error));
+    const code = req.query.code as string | undefined;
+    const stateRaw = req.query.state as string | undefined;
+    if (!code || !stateRaw) return fail("missing_code_or_state");
+
+    const parsed = verifyGoogleAdsOAuthState(stateRaw);
+    if (!parsed) return fail("invalid_or_expired_state");
+    if (parsed.userId !== req.user?.userId || parsed.teamId !== req.user?.teamId) {
+      return fail("session_mismatch");
+    }
+
+    const { refreshToken } = await exchangeGoogleAdsCode(code);
+
+    const creds = {
+      customerId: parsed.customerId,
+      clientId: env.GOOGLE_ADS_OAUTH_CLIENT_ID!,
+      clientSecret: env.GOOGLE_ADS_OAUTH_CLIENT_SECRET!,
+      refreshToken,
+      developerToken: parsed.developerToken,
+    };
+    try {
+      const accessible = await googleAdsGateway(creds).listAccessibleCustomers();
+      if (!accessible.some((name) => name.endsWith(`/${parsed.customerId}`))) {
+        return fail("customer_not_accessible");
+      }
+    } catch {
+      return fail("verification_failed");
+    }
+
+    const connectedAt = new Date();
+    await prisma.teamSettings.upsert({
+      where: { teamId: parsed.teamId },
+      create: {
+        teamId: parsed.teamId,
+        googleAdsClientId: creds.clientId,
+        googleAdsClientSecret: encrypt(creds.clientSecret),
+        googleAdsRefreshToken: encrypt(refreshToken),
+        googleAdsDeveloperToken: encrypt(parsed.developerToken),
+        googleAdsCustomerId: parsed.customerId,
+        googleAdsConnectedAt: connectedAt,
+      },
+      update: {
+        googleAdsClientId: creds.clientId,
+        googleAdsClientSecret: encrypt(creds.clientSecret),
+        googleAdsRefreshToken: encrypt(refreshToken),
+        googleAdsDeveloperToken: encrypt(parsed.developerToken),
+        googleAdsCustomerId: parsed.customerId,
+        googleAdsConnectedAt: connectedAt,
+      },
+    });
+
+    logger.info("[google-ads] connected via OAuth", { teamId: parsed.teamId });
+    res.redirect(`${appUrl}/integrations?googleAds=connected`);
+  } catch (err: any) {
+    logger.error("[google-ads] oauth callback error", { err: String(err?.message ?? err) });
+    fail("callback_failed");
   }
 });
 

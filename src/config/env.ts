@@ -43,6 +43,11 @@ const envSchema = z.object({
   GOOGLE_AUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_AUTH_CLIENT_SECRET: z.string().optional(),
 
+  // Google Ads OAuth — "Connect with Google" flow (own OAuth client with the
+  // Google Ads API enabled; redirect URI is ${APP_URL}/api/google-ads/oauth/callback)
+  GOOGLE_ADS_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_ADS_OAUTH_CLIENT_SECRET: z.string().optional(),
+
   // Fastlane Worker (MacOS)
   FASTLANE_WORKER_URL: z.string().url().optional(),
   // Comma-separated list of worker base URLs; overrides FASTLANE_WORKER_URL for
