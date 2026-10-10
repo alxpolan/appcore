@@ -385,7 +385,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           {negativesLoading ? (
             <div className={`text-[13px] ${textMuted}`}>Loading…</div>
           ) : negativesError || !negativesData || !campaignId ? (
-            <div className={`text-[13px] ${textMuted}`}>Failed to load negative keywords</div>
+            <div className={`text-[13px] ${textMuted}`}>{negativesError}</div>
           ) : (
             <GoogleNegativeKeywordManager
               campaignId={campaignId}
@@ -407,7 +407,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         {loading ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
         ) : error ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Failed to load ad groups</div>
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>{error}</div>
         ) : adGroups.length === 0 ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No ad groups found</div>
         ) : (
@@ -459,7 +459,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
                               {negativesLoading ? (
                                 <div className={`text-[12px] ${textMuted}`}>Loading…</div>
                               ) : negativesError || !campaignId ? (
-                                <div className={`text-[12px] ${textMuted}`}>Failed to load negative keywords</div>
+                                <div className={`text-[12px] ${textMuted}`}>{negativesError}</div>
                               ) : (
                                 <GoogleNegativeKeywordManager
                                   campaignId={campaignId}

@@ -687,7 +687,7 @@ export async function listGoogleAdsAdGroups(
 ): Promise<{ id: string; name: string; status: string; defaultCpcBid: number | null }[]> {
   const gw = googleAdsGateway(creds);
   const rows = await gw.query(
-    "SELECT ad_group.id, ad_group.name, ad_group.status, ad_group.cpc_bid_micros " +
+    "SELECT ad_group.id, ad_group.name, ad_group.status, ad_group.cpc_bid_micros, campaign.id " +
       `FROM ad_group WHERE campaign.id = ${campaignId} AND ad_group.status != 'REMOVED' ORDER BY ad_group.name`,
   );
   return rows.map((row) => {
@@ -713,7 +713,7 @@ export async function getGoogleAdsCampaignDetail(
         `FROM ad_group WHERE campaign.id = ${campaignId} AND ad_group.status != 'REMOVED' ORDER BY ad_group.name`,
     ),
     gw.query(
-      "SELECT ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
+      "SELECT ad_group.id, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
         `FROM ad_group WHERE campaign.id = ${campaignId} AND ad_group.status != 'REMOVED' AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}'`,
     ),
     getGoogleAdsCurrency(creds),
@@ -748,13 +748,13 @@ export async function listGoogleAdsKeywords(
   const gw = googleAdsGateway(creds);
   const [attrs, metrics, ccy] = await Promise.all([
     gw.query(
-      "SELECT ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, " +
+      "SELECT ad_group_criterion.criterion_id, ad_group.id, ad_group_criterion.keyword.text, " +
         "ad_group_criterion.keyword.match_type, ad_group_criterion.status, ad_group_criterion.cpc_bid_micros " +
         `FROM ad_group_criterion WHERE ad_group.id = ${adGroupId} AND ad_group_criterion.type = 'KEYWORD' ` +
         "AND ad_group_criterion.negative = false AND ad_group_criterion.status != 'REMOVED'",
     ),
     gw.query(
-      "SELECT ad_group_criterion.criterion_id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
+      "SELECT ad_group_criterion.criterion_id, ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
         `FROM ad_group_criterion WHERE ad_group.id = ${adGroupId} AND ad_group_criterion.type = 'KEYWORD' ` +
         `AND ad_group_criterion.negative = false AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}'`,
     ),
@@ -785,7 +785,7 @@ export async function getGoogleAdsCampaignDailySpend(
 ): Promise<{ date: string; spend: number }[]> {
   const gw = googleAdsGateway(creds);
   const rows = await gw.query(
-    "SELECT segments.date, metrics.cost_micros " +
+    "SELECT segments.date, campaign.id, metrics.cost_micros " +
       `FROM campaign WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}' ORDER BY segments.date`,
   );
   const byDay = new Map<string, number>();
@@ -812,7 +812,7 @@ export async function getGoogleAdsCampaignCountryBreakdown(
 ): Promise<GoogleAdsCountryStats[]> {
   const gw = googleAdsGateway(creds);
   const rows = await gw.query(
-    "SELECT geographic_view.country_criterion_id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
+    "SELECT geographic_view.country_criterion_id, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
       `FROM geographic_view WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}'`,
   );
   const geoIds = [...new Set(rows.map((r) => String(r.geographic_view?.country_criterion_id ?? "")).filter(Boolean))];
@@ -850,7 +850,7 @@ export async function listGoogleAdsNegativeKeywords(
   const gw = googleAdsGateway(creds);
   if (adGroupId) {
     const rows = await gw.query(
-      "SELECT ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, " +
+      "SELECT ad_group_criterion.criterion_id, ad_group.id, ad_group_criterion.keyword.text, " +
         "ad_group_criterion.keyword.match_type, ad_group_criterion.status " +
         `FROM ad_group_criterion WHERE ad_group.id = ${adGroupId} AND ad_group_criterion.type = 'KEYWORD' ` +
         "AND ad_group_criterion.negative = true AND ad_group_criterion.status != 'REMOVED'",
@@ -866,7 +866,7 @@ export async function listGoogleAdsNegativeKeywords(
     });
   }
   const rows = await gw.query(
-    "SELECT campaign_criterion.criterion_id, campaign_criterion.keyword.text, " +
+    "SELECT campaign_criterion.criterion_id, campaign.id, campaign_criterion.keyword.text, " +
       "campaign_criterion.keyword.match_type, campaign_criterion.status " +
       `FROM campaign_criterion WHERE campaign.id = ${campaignId} AND campaign_criterion.type = 'KEYWORD' ` +
       "AND campaign_criterion.negative = true AND campaign_criterion.status != 'REMOVED'",
@@ -1155,7 +1155,7 @@ export async function updateGoogleAdsCampaign(
   const campaignName = ResourceNames.campaign(creds.customerId, campaignId);
   if (patch.dailyBudgetAmount != null) {
     const rows = await gw.query(
-      `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = ${campaignId} LIMIT 1`,
+      `SELECT campaign.id, campaign.campaign_budget FROM campaign WHERE campaign.id = ${campaignId} LIMIT 1`,
     );
     const budgetName = String(rows[0]?.campaign?.campaign_budget ?? "");
     if (!budgetName) throw new Error(`Campaign ${campaignId} has no budget to update`);

@@ -170,7 +170,7 @@ export default function AnalyticsGoogleAds() {
             {loading ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
             ) : error ? (
-              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Failed to load campaigns</div>
+              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>{error}</div>
             ) : campaigns.length === 0 ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No campaigns found</div>
             ) : (
