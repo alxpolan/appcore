@@ -371,6 +371,24 @@ class FakeGoogleAdsGateway implements GoogleAdsGateway {
       return rows;
     }
 
+    if (from === "keyword_view") {
+      const rows: any[] = [];
+      for (const k of this.store.criteria.values()) {
+        if (k.adGroupId == null) continue;
+        if (ids["ad_group"] && k.adGroupId !== ids["ad_group"]) continue;
+        if (k.negative) continue;
+        if (k.removed) continue;
+        rows.push({
+          keyword_view: {
+            resource_name: `customers/${this.customerId}/keywordViews/${k.adGroupId}~${k.id}`,
+          },
+          ad_group: { id: k.adGroupId },
+          metrics: this.metricsRow(k.metrics),
+        });
+      }
+      return rows;
+    }
+
     if (from === "campaign_criterion") {
       const rows: any[] = [];
       for (const k of this.store.criteria.values()) {
@@ -753,15 +771,20 @@ export async function listGoogleAdsKeywords(
         `FROM ad_group_criterion WHERE ad_group.id = ${adGroupId} AND ad_group_criterion.type = 'KEYWORD' ` +
         "AND ad_group_criterion.negative = false AND ad_group_criterion.status != 'REMOVED'",
     ),
+    // Metrics are incompatible with FROM ad_group_criterion — keyword stats live on keyword_view.
     gw.query(
-      "SELECT ad_group_criterion.criterion_id, ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
-        `FROM ad_group_criterion WHERE ad_group.id = ${adGroupId} AND ad_group_criterion.type = 'KEYWORD' ` +
-        `AND ad_group_criterion.negative = false AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}'`,
+      "SELECT keyword_view.resource_name, ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
+        `FROM keyword_view WHERE ad_group.id = ${adGroupId} ` +
+        `AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}'`,
     ),
     currency ?? getGoogleAdsCurrency(creds),
   ]);
   const metricsById = new Map<string, any>();
-  for (const row of metrics) metricsById.set(String(row.ad_group_criterion?.criterion_id), row.metrics ?? {});
+  // keyword_view resource names look like customers/{cid}/keywordViews/{adGroupId}~{criterionId}.
+  for (const row of metrics) {
+    const criterionId = String(row.keyword_view?.resource_name ?? "").split("~").pop();
+    if (criterionId) metricsById.set(criterionId, row.metrics ?? {});
+  }
   return attrs.map((row) => {
     const k = row.ad_group_criterion ?? {};
     const id = String(k.criterion_id);
