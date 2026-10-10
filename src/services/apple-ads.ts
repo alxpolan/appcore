@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import axios from "./utils/http";
+import { prisma } from "../config";
 
 // Overridable for tests/stubs; production always uses Apple's endpoints.
 const TOKEN_URL = process.env.APPLE_ADS_TOKEN_URL ?? "https://appleid.apple.com/auth/oauth2/token";
@@ -43,6 +44,7 @@ export interface AppleAdsStats {
 
 export interface AppleAdsCampaign extends AppleAdsStats {
   id: string;
+  orgId: string;
   name: string;
   status: string;
   servingStatus: string;
@@ -239,6 +241,94 @@ export async function listAppleAdsOrgs(creds: AppleAdsOrgCredentials): Promise<A
   return orgs.map((o) => ({ orgId: String(o.orgId), orgName: o.orgName }));
 }
 
+/** Distinct campaign groups mapped to the team's own apps, ordered by orgId. */
+export async function listTeamAppleAdsOrgs(teamId: string): Promise<AppleAdsOrgOption[]> {
+  const apps = await prisma.app.findMany({
+    where: { teamId, isOwnApp: true, appleAdsOrgId: { not: null } },
+    select: { appleAdsOrgId: true, appleAdsOrgName: true },
+  });
+  const byId = new Map<string, string>();
+  for (const app of apps) {
+    if (app.appleAdsOrgId && !byId.has(app.appleAdsOrgId)) {
+      byId.set(app.appleAdsOrgId, app.appleAdsOrgName ?? app.appleAdsOrgId);
+    }
+  }
+  return [...byId]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([orgId, orgName]) => ({ orgId, orgName }));
+}
+
+/** Resolve the campaign group for a campaign creation via the advertised
+ * app (adamId → trackId → app mapping). Returns null when the app is
+ * unknown to the team or has no group mapped. */
+export async function resolveAppOrgByAdamId(
+  teamId: string,
+  adamId: number | string,
+): Promise<AppleAdsOrgOption | null> {
+  let trackId: bigint;
+  try {
+    trackId = BigInt(adamId);
+  } catch {
+    return null;
+  }
+  const app = await prisma.app.findFirst({ where: { teamId, trackId } });
+  if (!app?.appleAdsOrgId) return null;
+  return { orgId: app.appleAdsOrgId, orgName: app.appleAdsOrgName ?? app.appleAdsOrgId };
+}
+
+export class AppleAdsCampaignNotFoundError extends Error {
+  constructor(campaignId: string) {
+    super(`Campaign ${campaignId} was not found in any mapped campaign group`);
+    this.name = "AppleAdsCampaignNotFoundError";
+  }
+}
+
+export interface AppleAdsCampaignObject {
+  id: string;
+  name: string;
+  status: string;
+  adamId: number | null;
+}
+
+/** Fetch one campaign via the management API (single object, no report range). */
+export async function getAppleAdsCampaign(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+): Promise<AppleAdsCampaignObject> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const res = await axios.get<any>(`${API_BASE}/campaigns/${campaignId}`, {
+    headers: authedHeaders(accessToken, creds.orgId),
+  });
+  throwIfAppleError(res.data, "campaign fetch");
+  const data = res.data?.data;
+  if (data?.id == null) throw new Error("Apple Search Ads campaign fetch returned no campaign");
+  return {
+    id: String(data.id),
+    name: String(data.name ?? ""),
+    status: String(data.status ?? ""),
+    adamId: data.adamId != null ? Number(data.adamId) : null,
+  };
+}
+
+/** Find which mapped campaign group contains a campaign, trying each in
+ * order. Only 404 moves on to the next group — anything else throws. */
+export async function resolveCampaignOrgId(
+  keyCreds: AppleAdsOrgCredentials,
+  orgIds: string[],
+  campaignId: string,
+): Promise<string> {
+  for (const orgId of orgIds) {
+    try {
+      await getAppleAdsCampaign({ ...keyCreds, orgId }, campaignId);
+      return orgId;
+    } catch (err: any) {
+      if (err?.response?.status === 404) continue;
+      throw err;
+    }
+  }
+  throw new AppleAdsCampaignNotFoundError(campaignId);
+}
+
 function statsFromTotal(total: any): AppleAdsStats {
   const spend = total.localSpend?.amount != null ? Number(total.localSpend.amount) : 0;
   const impressions = total.impressions != null ? Number(total.impressions) : 0;
@@ -317,12 +407,14 @@ export async function listAppleAdsCampaigns(
     row.metadata?.campaignId != null ? String(row.metadata.campaignId) : undefined,
   );
 
+  const orgId = creds.orgId;
   return rows
     .filter((row) => !row.metadata?.deleted)
     .map((row) => {
       const meta = row.metadata ?? {};
       return {
         id: String(meta.campaignId),
+        orgId,
         name: meta.campaignName,
         status: meta.campaignStatus,
         servingStatus: meta.servingStatus,

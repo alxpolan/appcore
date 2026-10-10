@@ -19,13 +19,18 @@ import {
   listAppleAdsCampaigns,
   listAppleAdsKeywords,
   listAppleAdsNegativeKeywords,
+  listTeamAppleAdsOrgs,
   resolveAppleAdsRange,
+  resolveAppOrgByAdamId,
+  resolveCampaignOrgId,
+  AppleAdsCampaignNotFoundError,
   updateAppleAdsAdGroup,
   updateAppleAdsCampaign,
   updateAppleAdsCampaignStatus,
   updateAppleAdsKeywords,
   validateCreateCampaignInput,
   type AppleAdsCredentials,
+  type AppleAdsOrgCredentials,
 } from "../../../services/apple-ads";
 import { getAppleAdsCampaignRevenue, mergeCountryRevenue } from "../../../services/apple-ads-revenue";
 import { getMcpAllowedAppIds, getMcpUserTeamId, registerMutatingTool, type ToolSummary } from "./shared";
@@ -363,15 +368,19 @@ const summarizeUpdateNegatives = (args: any, text: string): ToolSummary => {
   };
 };
 
-async function getAppleAdsContext(
-  userId: string,
-): Promise<{ teamId: string; orgId: string; creds: AppleAdsCredentials } | { error: string }> {
+interface AppleAdsMcpContext {
+  teamId: string;
+  keyCreds: AppleAdsOrgCredentials;
+  orgIds: string[];
+  orgNameById: Map<string, string>;
+}
+
+async function getAppleAdsContext(userId: string): Promise<AppleAdsMcpContext | { error: string }> {
   const teamId = await getMcpUserTeamId(userId);
   if (!teamId) return { error: "No team found for this user." };
   const settings = await prisma.teamSettings.findUnique({ where: { teamId } });
   if (
     !settings?.appleAdsConnectedAt ||
-    !settings.appleAdsOrgId ||
     !settings.appleAdsClientId ||
     !settings.appleAdsTeamId ||
     !settings.appleAdsKeyId ||
@@ -386,17 +395,35 @@ async function getAppleAdsContext(
     return { error: "Apple Search Ads credentials are unreadable. Reconnect them in Marteso Integrations." };
   }
 
+  const mappedOrgs = await listTeamAppleAdsOrgs(teamId);
   return {
     teamId,
-    orgId: settings.appleAdsOrgId,
-    creds: {
-      orgId: settings.appleAdsOrgId,
+    keyCreds: {
       clientId: settings.appleAdsClientId,
       teamId: settings.appleAdsTeamId,
       keyId: settings.appleAdsKeyId,
       privateKey,
     },
+    orgIds: mappedOrgs.map((o) => o.orgId),
+    orgNameById: new Map(mappedOrgs.map((o) => [o.orgId, o.orgName])),
   };
+}
+
+/** Context for campaign-scoped tools: resolves the campaign group holding
+ * the campaign so callers keep using `ctx.creds` unchanged. */
+async function getCampaignAppleAdsContext(
+  userId: string,
+  campaignId: string,
+): Promise<(AppleAdsMcpContext & { orgId: string; creds: AppleAdsCredentials }) | { error: string }> {
+  const ctx = await getAppleAdsContext(userId);
+  if ("error" in ctx) return ctx;
+  try {
+    const orgId = await resolveCampaignOrgId(ctx.keyCreds, ctx.orgIds, campaignId);
+    return { ...ctx, orgId, creds: { ...ctx.keyCreds, orgId } };
+  } catch (err) {
+    if (err instanceof AppleAdsCampaignNotFoundError) return { error: err.message };
+    throw err;
+  }
 }
 
 function adsError(tool: string, err: unknown) {
@@ -438,10 +465,18 @@ export function registerAdsTools(server: McpServer, userId: string) {
     async ({ days, period, startDate, endDate }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
+      if (ctx.orgIds.length === 0) {
+        return textResult("No campaign group is mapped to any app yet — map one per app in Marteso Integrations.");
+      }
 
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
-        const campaigns = await listAppleAdsCampaigns(ctx.creds, range);
+        const lists = await Promise.all(
+          ctx.orgIds.map((orgId) => listAppleAdsCampaigns({ ...ctx.keyCreds, orgId }, range)),
+        );
+        const campaigns = lists
+          .flat()
+          .map((c) => ({ ...c, orgName: ctx.orgNameById.get(c.orgId) ?? c.orgId }));
         return jsonResult({ range, campaigns });
       } catch (err) {
         return adsError("list_ads_campaigns", err);
@@ -461,7 +496,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, days, period, startDate, endDate }) => {
-      const ctx = await getAppleAdsContext(userId);
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
       if ("error" in ctx) return textResult(ctx.error);
 
       try {
@@ -486,7 +521,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, days, period, startDate, endDate }) => {
-      const ctx = await getAppleAdsContext(userId);
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
       if ("error" in ctx) return textResult(ctx.error);
 
       try {
@@ -513,7 +548,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, days, period, startDate, endDate }) => {
-      const ctx = await getAppleAdsContext(userId);
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
       if ("error" in ctx) return textResult(ctx.error);
 
       try {
@@ -521,7 +556,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
         const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
         const [apple, revenue] = await Promise.all([
           getAppleAdsCampaignCountryBreakdown(ctx.creds, campaignId, range),
-          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range),
+          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgIds, range),
         ]);
         const countries = mergeCountryRevenue(apple, revenue.byCampaign[campaignId]?.byCountry);
         return jsonResult({ range, campaignId, revenueAvailable: accessibleApps.length > 0, countries });
@@ -547,7 +582,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, keywordId, days, period, startDate, endDate }) => {
-      const ctx = await getAppleAdsContext(userId);
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
       if ("error" in ctx) return textResult(ctx.error);
 
       try {
@@ -555,7 +590,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
         const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
         const [apple, revenue] = await Promise.all([
           getAppleAdsKeywordCountryBreakdown(ctx.creds, campaignId, adGroupId, keywordId, range),
-          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range),
+          getAppleAdsCampaignRevenue(accessibleApps, ctx.orgIds, range),
         ]);
         const keywordBucket = revenue.byCampaign[campaignId]?.byKeyword[keywordId];
         const countries = mergeCountryRevenue(apple, keywordBucket?.byCountry);
@@ -673,9 +708,14 @@ export function registerAdsTools(server: McpServer, userId: string) {
         return textResult(`Invalid campaign input: ${err.message}`);
       }
 
+      const mapping = await resolveAppOrgByAdamId(ctx.teamId, input.adamId);
+      if (!mapping) {
+        return textResult("No campaign group mapped for the advertised app — map one in Marteso Integrations.");
+      }
+
       try {
-        const campaign = await createAppleAdsCampaignFull(ctx.creds, input);
-        return jsonResult({ campaign });
+        const campaign = await createAppleAdsCampaignFull({ ...ctx.keyCreds, orgId: mapping.orgId }, input);
+        return jsonResult({ campaign, orgId: mapping.orgId });
       } catch (err) {
         return adsError("create_ads_campaign", err);
       }
@@ -700,11 +740,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, status }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Publishing campaigns requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
 
       const previous = await previousCampaign(ctx.creds, campaignId);
       try {
@@ -732,11 +774,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Deleting campaigns requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
 
       const previous = await previousCampaign(ctx.creds, campaignId);
       try {
@@ -775,11 +819,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, name, status, dailyBudgetAmount, currency, countriesOrRegions }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Updating campaigns requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       const previous = await previousCampaign(ctx.creds, campaignId);
       try {
         const campaign = await updateAppleAdsCampaign(ctx.creds, campaignId, {
@@ -833,11 +879,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, name, defaultBidAmount, currency, cpaGoal, status, pricingModel, keywords, negativeKeywords }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Creating ad groups requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       if (!/^[A-Z]{3}$/i.test(currency)) return textResult("currency must be a three-letter code like USD or EUR.");
       try {
         const adGroup = await createAppleAdsAdGroup(ctx.creds, campaignId, currency.toUpperCase(), pricingModel, undefined, {
@@ -879,11 +927,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, name, status, defaultBidAmount, cpaGoal, currency }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Updating ad groups requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       const previous = await previousAdGroup(ctx.creds, campaignId, adGroupId);
       try {
         const adGroup = await updateAppleAdsAdGroup(ctx.creds, campaignId, adGroupId, {
@@ -917,11 +967,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Deleting ad groups requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       const previous = await previousAdGroup(ctx.creds, campaignId, adGroupId);
       try {
         const adGroup = await deleteAppleAdsAdGroup(ctx.creds, campaignId, adGroupId);
@@ -957,11 +1009,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, currency, keywords }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Adding keywords requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       if (keywords.some((k: any) => k.bidAmount != null) && !/^[A-Z]{3}$/i.test(currency ?? "")) {
         return textResult("currency (e.g. USD, EUR) is required when setting keyword bids.");
       }
@@ -1005,11 +1059,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, currency, updates }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Updating keywords requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       try {
         const updated = await updateAppleAdsKeywords(ctx.creds, campaignId, adGroupId, currency, updates);
         return jsonResult({ campaignId, adGroupId, updated });
@@ -1041,11 +1097,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, keywordIds }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Deleting keywords requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
       const previous = await previousKeywordTexts(ctx.creds, campaignId, adGroupId, keywordIds);
       try {
         const deleted = await deleteAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroupId, keywordIds);
@@ -1068,7 +1126,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId }) => {
-      const ctx = await getAppleAdsContext(userId);
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
       if ("error" in ctx) return textResult(ctx.error);
       try {
         const [campaign, adGroups] = await Promise.all([
@@ -1111,12 +1169,13 @@ export function registerAdsTools(server: McpServer, userId: string) {
       },
     },
     async ({ campaignId, adGroupId, add, removeIds }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-
-      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+      const base = await getAppleAdsContext(userId);
+      if ("error" in base) return textResult(base.error);
+      if (!(await isTeamAdmin(userId, base.teamId))) {
         return textResult("Editing negative keywords requires the team admin role.");
       }
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
 
       if ((!add || add.length === 0) && (!removeIds || removeIds.length === 0)) {
         return textResult("Nothing to do: pass add and/or removeIds.");
@@ -1164,7 +1223,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
       try {
         const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
-        const { byCampaign } = await getAppleAdsCampaignRevenue(accessibleApps, ctx.orgId, range);
+        const { byCampaign } = await getAppleAdsCampaignRevenue(accessibleApps, ctx.orgIds, range);
 
         if (campaignId) {
           const bucket = byCampaign[campaignId] ?? { proceedsUsd: 0, transactions: [], byKeyword: {}, byCountry: {} };

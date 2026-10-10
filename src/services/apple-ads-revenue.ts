@@ -85,11 +85,9 @@ export type AppleAdsCampaignRevenueMap = Record<
   AppleAdsRevenueBucket & { byKeyword: Record<string, AppleAdsRevenueBucket> }
 >;
 
-/** RevenueCat transactions attributed to Apple Search Ads campaigns via the
- * customer's Apple attribution. Shared by the HTTP API and the MCP tools. */
 export async function getAppleAdsCampaignRevenue(
   accessibleApps: AppleAdsRevenueApp[],
-  orgId: string,
+  orgIds: string[],
   range: AppleAdsReportRange,
 ): Promise<{ byCampaign: AppleAdsCampaignRevenueMap }> {
   const bundleIds = accessibleApps.map((app) => app.bundleId);
@@ -97,13 +95,9 @@ export async function getAppleAdsCampaignRevenue(
     return { byCampaign: {} };
   }
 
-  // Evaluation window follows the selected range; pricing and cohort
-  // lookbacks stay fixed since they need history beyond the window.
   const start = new Date(`${range.startDate}T00:00:00Z`);
   const until = new Date(`${range.endDate}T00:00:00Z`);
   until.setUTCDate(until.getUTCDate() + 1);
-  // Trial pricing looks further back so new trials still find a paid
-  // reference for their product even without recent conversions.
   const priceStart = new Date();
   priceStart.setUTCDate(priceStart.getUTCDate() - 90);
   priceStart.setUTCHours(0, 0, 0, 0);
@@ -114,12 +108,28 @@ export async function getAppleAdsCampaignRevenue(
     }),
     prisma.revenueCatTransaction.findMany({
       where: { bundleId: { in: bundleIds }, occurredAt: { gte: start, lt: until }, environment: "production" },
-      select: { rcId: true, bundleId: true, customerId: true, productId: true, eventType: true, periodType: true, isTrialConversion: true, occurredAt: true, proceedsUsd: true, country: true },
+      select: {
+        rcId: true,
+        bundleId: true,
+        customerId: true,
+        productId: true,
+        eventType: true,
+        periodType: true,
+        isTrialConversion: true,
+        occurredAt: true,
+        proceedsUsd: true,
+        country: true,
+      },
       orderBy: { occurredAt: "desc" },
     }),
     prisma.revenueCatTransaction.groupBy({
       by: ["bundleId", "productId"],
-      where: { bundleId: { in: bundleIds }, occurredAt: { gte: priceStart }, environment: "production", proceedsUsd: { gt: 0 } },
+      where: {
+        bundleId: { in: bundleIds },
+        occurredAt: { gte: priceStart },
+        environment: "production",
+        proceedsUsd: { gt: 0 },
+      },
       _avg: { proceedsUsd: true },
     }),
   ]);
@@ -144,28 +154,40 @@ export async function getAppleAdsCampaignRevenue(
   if (cohortCustomerIds.length > 0) {
     [trialStarts, trialConversions] = await Promise.all([
       prisma.revenueCatTransaction.findMany({
-        where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, eventType: "INITIAL_PURCHASE", periodType: "TRIAL", occurredAt: { gte: cohortLookback, lt: until } },
+        where: {
+          bundleId: { in: bundleIds },
+          customerId: { in: cohortCustomerIds },
+          eventType: "INITIAL_PURCHASE",
+          periodType: "TRIAL",
+          occurredAt: { gte: cohortLookback, lt: until },
+        },
         select: cohortSelect,
       }),
       prisma.revenueCatTransaction.findMany({
-        where: { bundleId: { in: bundleIds }, customerId: { in: cohortCustomerIds }, isTrialConversion: true, occurredAt: { gte: cohortLookback, lt: until } },
+        where: {
+          bundleId: { in: bundleIds },
+          customerId: { in: cohortCustomerIds },
+          isTrialConversion: true,
+          occurredAt: { gte: cohortLookback, lt: until },
+        },
         select: cohortSelect,
       }),
     ]);
   }
 
-  const attributionByCustomer = new Map(customers.map((customer) => [
-    `${customer.bundleId}\0${customer.customerId}`,
-    appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
-  ]));
-  const countryByCustomer = new Map(customers.map((customer) => [
-    `${customer.bundleId}\0${customer.customerId}`,
-    normalizeCountry(customer.country),
-  ]));
+  const attributionByCustomer = new Map(
+    customers.map((customer) => [
+      `${customer.bundleId}\0${customer.customerId}`,
+      appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
+    ]),
+  );
+  const countryByCustomer = new Map(
+    customers.map((customer) => [`${customer.bundleId}\0${customer.customerId}`, normalizeCountry(customer.country)]),
+  );
 
   function addCountry(bucket: AppleAdsRevenueBucket, country: string | null, isTrial: boolean, proceedsUsd: number) {
     const code = country ?? "unknown";
-    const entry = bucket.byCountry[code] ??= { trials: 0, proceedsUsd: 0 };
+    const entry = (bucket.byCountry[code] ??= { trials: 0, proceedsUsd: 0 });
     if (isTrial) entry.trials += 1;
     entry.proceedsUsd += proceedsUsd;
   }
@@ -175,10 +197,15 @@ export async function getAppleAdsCampaignRevenue(
   for (const transaction of transactions) {
     const customerKey = `${transaction.bundleId}\0${transaction.customerId}`;
     const attribution = attributionByCustomer.get(customerKey);
-    if (!attribution || (attribution.orgId && attribution.orgId !== orgId)) continue;
+    if (!attribution || (attribution.orgId && !orgIds.includes(attribution.orgId))) continue;
 
     const isTrial = transaction.periodType === "TRIAL" && transaction.eventType === "INITIAL_PURCHASE";
-    const cohortEvent = { bundleId: transaction.bundleId, customerId: transaction.customerId, productId: transaction.productId, occurredAt: transaction.occurredAt };
+    const cohortEvent = {
+      bundleId: transaction.bundleId,
+      customerId: transaction.customerId,
+      productId: transaction.productId,
+      occurredAt: transaction.occurredAt,
+    };
     const convertedTrial = isTrial && isTrialConverted(trialConversions, cohortEvent);
     const cohortStart = transaction.isTrialConversion ? findCohortStart(trialStarts, cohortEvent) : null;
     const country = normalizeCountry(transaction.country) ?? countryByCustomer.get(customerKey) ?? null;
@@ -193,10 +220,17 @@ export async function getAppleAdsCampaignRevenue(
       isConvertedTrial: convertedTrial,
       country,
       proceedsUsd: transaction.proceedsUsd,
-      potentialProceedsUsd: convertedTrial ? 0 : trialPotentialFor(trialPrices, transaction.bundleId, transaction.productId, isTrial),
+      potentialProceedsUsd: convertedTrial
+        ? 0
+        : trialPotentialFor(trialPrices, transaction.bundleId, transaction.productId, isTrial),
     };
 
-    const campaign = byCampaign[attribution.campaignId] ??= { proceedsUsd: 0, transactions: [], byKeyword: {}, byCountry: {} };
+    const campaign = (byCampaign[attribution.campaignId] ??= {
+      proceedsUsd: 0,
+      transactions: [],
+      byKeyword: {},
+      byCountry: {},
+    });
     campaign.proceedsUsd += transaction.proceedsUsd;
     campaign.transactions.push(entry);
     addCountry(campaign, country, isTrial, transaction.proceedsUsd);
@@ -205,7 +239,11 @@ export async function getAppleAdsCampaignRevenue(
     // placements) — those still count toward the campaign total above, but
     // can't be attributed to one specific keyword below.
     if (attribution.keywordId) {
-      const keyword = campaign.byKeyword[attribution.keywordId] ??= { proceedsUsd: 0, transactions: [], byCountry: {} };
+      const keyword = (campaign.byKeyword[attribution.keywordId] ??= {
+        proceedsUsd: 0,
+        transactions: [],
+        byCountry: {},
+      });
       keyword.proceedsUsd += transaction.proceedsUsd;
       keyword.transactions.push(entry);
       addCountry(keyword, country, isTrial, transaction.proceedsUsd);
