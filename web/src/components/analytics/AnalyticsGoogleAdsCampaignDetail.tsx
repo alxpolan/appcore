@@ -419,7 +419,8 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
               <StatTile label="Proceeds" value={fmtMoney(attributionData.proceedsUsd, "USD")} />
             </div>
             <div className={`text-[12px] ${textMuted} mb-4`}>
-              Click precision: {attributionData.hourPrecision ? "hour" : "day"} · install delay:{" "}
+              Click precision: {attributionData.hourPrecision ? "hour" : "day"} ·{" "}
+              {attributionData.hourPrecision ? "install delay" : "install time of day"}:{" "}
               {attributionData.gapBuckets.map((b) => `${b.label} ${fmtNumber(b.count)}`).join(" · ")}
             </div>
             {attributionData.byKeyword.length === 0 ? (

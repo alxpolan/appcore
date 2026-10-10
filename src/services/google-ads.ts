@@ -1,4 +1,5 @@
 import { GoogleAdsApi, ResourceNames, enums, errors, toMicros } from "google-ads-api";
+import { logger } from "../config";
 
 // Runtime enum lookup (verified: enums.CampaignStatus.ENABLED === 2).
 const E: any = enums;
@@ -938,6 +939,9 @@ export async function listGoogleAdsClicks(
     rows = await gw.query(`SELECT ${select}, segments.hour ${where}`);
   } catch (err: any) {
     if (!/hour/i.test(googleAdsErrorMessage(err, ""))) throw err;
+    logger.warn("[google-ads] click_view rejected segments.hour, falling back to day precision", {
+      err: googleAdsErrorMessage(err, ""),
+    });
     rows = await gw.query(`SELECT ${select} ${where}`);
     hourPrecision = false;
   }

@@ -47,20 +47,28 @@ export function matchClicksToInstalls(
 ): { matches: ClickMatch[]; organic: InstallCandidate[] } {
   const pool = [...clicks].sort((a, b) => clickStart(a) - clickStart(b));
   const ordered = [...customers].sort((a, b) => a.firstSeenAt.getTime() - b.firstSeenAt.getTime());
+  const dayCounts = new Map<string, number>();
+  for (const c of clicks) dayCounts.set(c.date, (dayCounts.get(c.date) ?? 0) + 1);
   const matches: ClickMatch[] = [];
   const organic: InstallCandidate[] = [];
 
   for (const customer of ordered) {
     const seen = customer.firstSeenAt.getTime();
+    const customerCountry = (customer.country ?? "").toUpperCase();
     const candidates = pool
       .map((click) => ({ click, gapMinutes: (seen - clickStart(click)) / 60000 }))
-      .filter(({ gapMinutes }) => gapMinutes >= 0 && gapMinutes <= MATCH_WINDOW_MIN);
+      .filter(({ click, gapMinutes }) => {
+        if (gapMinutes < 0 || gapMinutes > MATCH_WINDOW_MIN) return false;
+        // A known country on both sides that disagrees rules the click out.
+        const cc = (click.countryCode ?? "").toUpperCase();
+        if (customerCountry && cc && cc !== customerCountry) return false;
+        return true;
+      });
     if (candidates.length === 0) {
       organic.push(customer);
       continue;
     }
 
-    const customerCountry = (customer.country ?? "").toUpperCase();
     const scored = candidates.map((c) => {
       const clickCountry = (c.click.countryCode ?? "").toUpperCase();
       const countryBonus = customerCountry && clickCountry && customerCountry === clickCountry ? 30 : 0;
@@ -72,15 +80,20 @@ export function matchClicksToInstalls(
     const poolIndex = pool.indexOf(best.click);
     pool.splice(poolIndex, 1);
 
-    // Uniqueness ignores candidates whose known country contradicts the install's.
-    const nearby = candidates.filter((c) => {
-      if (Math.abs(c.gapMinutes - best.gapMinutes) > HIGH_CONFIDENCE_GAP_MIN) return false;
-      const cc = (c.click.countryCode ?? "").toUpperCase();
-      if (customerCountry && cc && cc !== customerCountry) return false;
-      return true;
-    });
-    const confidence: MatchConfidence =
-      best.gapMinutes <= HIGH_CONFIDENCE_GAP_MIN && nearby.length === 1 ? "high" : "medium";
+    const bestCountry = (best.click.countryCode ?? "").toUpperCase();
+    const countryKnownMatch = Boolean(customerCountry && bestCountry && customerCountry === bestCountry);
+    let confidence: MatchConfidence;
+    if (best.click.hour != null) {
+      const nearby = candidates.filter(
+        (c) => Math.abs(c.gapMinutes - best.gapMinutes) <= HIGH_CONFIDENCE_GAP_MIN,
+      );
+      confidence = best.gapMinutes <= HIGH_CONFIDENCE_GAP_MIN && nearby.length === 1 ? "high" : "medium";
+    } else {
+      // Day precision: gaps measure time since midnight, so trust quiet same-day matches instead.
+      const sameDay = best.click.date === customer.firstSeenAt.toISOString().slice(0, 10);
+      confidence =
+        sameDay && (dayCounts.get(best.click.date) ?? 0) <= 3 && countryKnownMatch ? "high" : "medium";
+    }
 
     matches.push({
       customerId: customer.customerId,
