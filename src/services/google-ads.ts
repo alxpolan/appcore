@@ -926,18 +926,20 @@ export async function listGoogleAdsClicks(
   creds: GoogleAdsCredentials,
   campaignId: string,
   date: string,
-): Promise<GoogleAdsClick[]> {
+): Promise<{ clicks: GoogleAdsClick[]; hourPrecision: boolean }> {
   const gw = googleAdsGateway(creds);
   const select =
     "click_view.gclid, click_view.keyword, click_view.keyword_info.text, click_view.keyword_info.match_type, " +
     "click_view.location_of_presence.country, campaign.id, segments.date";
   const where = `FROM click_view WHERE campaign.id = ${campaignId} AND segments.date = '${date}'`;
   let rows: any[];
+  let hourPrecision = true;
   try {
     rows = await gw.query(`SELECT ${select}, segments.hour ${where}`);
   } catch (err: any) {
     if (!/hour/i.test(googleAdsErrorMessage(err, ""))) throw err;
     rows = await gw.query(`SELECT ${select} ${where}`);
+    hourPrecision = false;
   }
 
   const geoIds = [
@@ -961,7 +963,7 @@ export async function listGoogleAdsClicks(
     );
   }
 
-  return rows.map((row) => {
+  const clicks = rows.map((row) => {
     const cv = row.click_view ?? {};
     const parts = String(cv.keyword ?? "").split("~");
     const geoId = String(cv.location_of_presence?.country ?? "").split("/").pop() ?? "";
@@ -980,6 +982,7 @@ export async function listGoogleAdsClicks(
       countryCode: codes.get(geoId) || null,
     };
   });
+  return { clicks, hourPrecision };
 }
 
 export async function listGoogleAdsNegativeKeywords(

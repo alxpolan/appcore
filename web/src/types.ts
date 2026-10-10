@@ -678,14 +678,22 @@ export interface GoogleAdsAttributionKeyword {
   proceedsUsd: number;
 }
 
+export interface GoogleAdsAttributionGapBucket {
+  label: string;
+  maxMinutes: number;
+  count: number;
+}
+
 export interface GoogleAdsAttributionResponse {
   clicks: number;
+  hourPrecision: boolean;
   installsMatched: number;
   highConfidenceInstalls: number;
   installsOrganic: number;
   installsUnknownDate: number;
   trials: number;
   proceedsUsd: number;
+  gapBuckets: GoogleAdsAttributionGapBucket[];
   byKeyword: GoogleAdsAttributionKeyword[];
   matches: GoogleAdsAttributionMatch[];
   revenueAvailable: boolean;

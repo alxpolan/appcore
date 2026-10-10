@@ -109,15 +109,23 @@ export interface GoogleAdsAttributionKeyword {
   proceedsUsd: number;
 }
 
+export interface GoogleAdsAttributionGapBucket {
+  label: string;
+  maxMinutes: number;
+  count: number;
+}
+
 export interface GoogleAdsAttribution {
   range: GoogleAdsReportRange;
   clicks: number;
+  hourPrecision: boolean;
   installsMatched: number;
   highConfidenceInstalls: number;
   installsOrganic: number;
   installsUnknownDate: number;
   trials: number;
   proceedsUsd: number;
+  gapBuckets: GoogleAdsAttributionGapBucket[];
   byKeyword: GoogleAdsAttributionKeyword[];
   matches: ClickMatch[];
 }
@@ -148,7 +156,8 @@ export async function getGoogleAdsAttribution(
   const days = eachDay(clickStartDay, range.endDate);
 
   const perDay = await Promise.all(days.map((day) => listGoogleAdsClicks(creds, campaignId, day)));
-  const clicks = perDay.flat();
+  const clicks = perDay.flatMap((d) => d.clicks);
+  const hourPrecision = perDay.every((d) => d.hourPrecision);
 
   const installLookback = new Date(`${clickStartDay}T00:00:00Z`);
   const installEnd = new Date(`${range.endDate}T00:00:00Z`);
@@ -228,15 +237,28 @@ export async function getGoogleAdsAttribution(
     byKeywordMap.set(ck, bucket);
   }
 
+  const gapBuckets: GoogleAdsAttributionGapBucket[] = [
+    { label: "≤1h", maxMinutes: 60, count: 0 },
+    { label: "≤2h", maxMinutes: 120, count: 0 },
+    { label: "≤6h", maxMinutes: 360, count: 0 },
+    { label: "≤24h", maxMinutes: 1440, count: 0 },
+  ];
+  for (const m of matches) {
+    const bucket = gapBuckets.find((b) => m.gapMinutes <= b.maxMinutes);
+    if (bucket) bucket.count += 1;
+  }
+
   return {
     range,
     clicks: clicks.length,
+    hourPrecision,
     installsMatched: matches.length,
     highConfidenceInstalls: matches.filter((m) => m.confidence === "high").length,
     installsOrganic: organic.length,
     installsUnknownDate: unknownDate,
     trials,
     proceedsUsd,
+    gapBuckets,
     byKeyword: [...byKeywordMap.values()].sort((a, b) => b.installs - a.installs),
     matches: matches.slice(0, 200),
   };
