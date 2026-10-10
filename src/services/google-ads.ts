@@ -155,7 +155,8 @@ class RealGoogleAdsGateway implements GoogleAdsGateway {
     this.client = new GoogleAdsApi({
       client_id: creds.clientId,
       client_secret: creds.clientSecret,
-      developer_token: creds.developerToken ?? "",
+      // Undefined when unset: the library omits the header (the API rejects an empty one).
+      developer_token: creds.developerToken,
     });
   }
 
