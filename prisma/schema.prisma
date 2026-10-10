@@ -159,8 +159,6 @@ model TeamSettings {
   ascAutoKeyId                String?
   ascAutoPrivateKey           String?
   ascAutoConnectedAt          DateTime?
-  appleAdsOrgId               String?
-  appleAdsOrgName             String?
   appleAdsClientId            String?
   appleAdsTeamId              String?
   appleAdsKeyId               String?
@@ -223,6 +221,8 @@ model App {
   revenueCatProjectName      String?
   revenueCatApiKey           String?
   revenueCatConnectedAt      DateTime?
+  appleAdsOrgId              String?
+  appleAdsOrgName            String?
   accentColor                String?
   accentColorIconUrl         String?
   supportedLanguages         String[]                  @default([])
