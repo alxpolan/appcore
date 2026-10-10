@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { BarChart2, Megaphone, DollarSign, CheckCircle2 } from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../hooks/useApi";
-import { borderDefault, btnPrimary, cardCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
+import { borderDefault, btnPrimary, cardCls, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
 import { fmtRelativeDateTime } from "../utils/formatters";
-import type { AppleAdsStatus, DashboardData, RevenueCatStatus } from "../types";
+import type { AppleAdsOrgsResponse, AppleAdsStatus, DashboardData, RevenueCatStatus } from "../types";
 import AppleAdsConnectModal from "./integrations/AppleAdsConnectModal";
 import RevenueCatConnectModal from "./integrations/RevenueCatConnectModal";
 
@@ -13,8 +13,10 @@ interface Props {
 
 export default function Integrations({ addToast }: Props) {
   const { data: appleAds, refetch: refetchAppleAds } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
+  const { data: appleAdsOrgs } = useApi<AppleAdsOrgsResponse>("/apple-ads/orgs", [appleAds?.connected], true);
   const [showAppleAdsModal, setShowAppleAdsModal] = useState(false);
   const [disconnectingAppleAds, setDisconnectingAppleAds] = useState(false);
+  const [mappingAppId, setMappingAppId] = useState<string | null>(null);
 
   const bundleId = getActiveBundleId();
   const { data: dash } = useApi<DashboardData>("/dashboard");
@@ -34,6 +36,22 @@ export default function Integrations({ addToast }: Props) {
       addToast(err.message ?? "Failed to disconnect", "error");
     } finally {
       setDisconnectingAppleAds(false);
+    }
+  };
+
+  const handleAppOrgChange = async (appId: string, appName: string, orgId: string) => {
+    setMappingAppId(appId);
+    try {
+      await apiPost("/apple-ads/app-org", { appId, orgId: orgId === "" ? null : orgId });
+      addToast(
+        orgId === "" ? `Campaign group removed for ${appName}` : `Campaign group saved for ${appName}`,
+        "success",
+      );
+      refetchAppleAds();
+    } catch (err: any) {
+      addToast(err.message ?? "Failed to save campaign group", "error");
+    } finally {
+      setMappingAppId(null);
     }
   };
 
@@ -62,23 +80,52 @@ export default function Integrations({ addToast }: Props) {
       iconColor: "text-white",
       render: () =>
         appleAds?.connected ? (
-          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-emerald-800 dark:text-emerald-400 truncate">
-                {appleAds.orgName ?? "Connected"}
+          <div>
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium text-emerald-800 dark:text-emerald-400 truncate">
+                  Connected
+                </div>
+                <div className={`text-[11px] ${textMuted} mt-0.5`}>
+                  Connected {appleAds.connectedAt ? fmtRelativeDateTime(appleAds.connectedAt) : ""}
+                </div>
+                <button
+                  onClick={handleDisconnectAppleAds}
+                  disabled={disconnectingAppleAds}
+                  className="mt-1.5 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
+                >
+                  {disconnectingAppleAds ? "Disconnecting…" : "Disconnect"}
+                </button>
               </div>
-              <div className={`text-[11px] ${textMuted} mt-0.5`}>
-                Connected {appleAds.connectedAt ? fmtRelativeDateTime(appleAds.connectedAt) : ""}
-              </div>
-              <button
-                onClick={handleDisconnectAppleAds}
-                disabled={disconnectingAppleAds}
-                className="mt-1.5 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
-              >
-                {disconnectingAppleAds ? "Disconnecting…" : "Disconnect"}
-              </button>
             </div>
+            <div className={`mt-3 mb-1.5 text-[12px] font-semibold ${textPrimary}`}>Campaign group per app</div>
+            {(appleAds.apps ?? []).length === 0 ? (
+              <div className={`text-[12px] ${textMuted}`}>Add an app first to map a campaign group.</div>
+            ) : (
+              <div className="space-y-2">
+                {(appleAds.apps ?? []).map((app) => (
+                  <div key={app.id} className="flex items-center gap-2 min-w-0">
+                    <span className={`text-[12px] ${textSecondary} truncate flex-1`} title={app.name}>
+                      {app.name}
+                    </span>
+                    <select
+                      className={`${inputCls} !w-auto max-w-[55%] text-[12px] shrink-0`}
+                      value={app.orgId ?? ""}
+                      disabled={mappingAppId === app.id || !appleAdsOrgs}
+                      onChange={(e) => handleAppOrgChange(app.id, app.name, e.target.value)}
+                    >
+                      <option value="">No group</option>
+                      {(appleAdsOrgs?.orgs ?? []).map((o) => (
+                        <option key={o.orgId} value={o.orgId}>
+                          {o.orgName} ({o.orgId})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <button onClick={() => setShowAppleAdsModal(true)} className={btnPrimary}>

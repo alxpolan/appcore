@@ -1,10 +1,10 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Megaphone, ArrowRight, Check, ChevronRight, ExternalLink, Pause, Plus, X } from "lucide-react";
-import { useApi, apiPost } from "../../hooks/useApi";
+import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsOrgsResponse, AppleAdsStatus } from "../../types";
-import { TD, TH, borderDefault, btnSecSm, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
+import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsStatus } from "../../types";
+import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
@@ -46,13 +46,16 @@ export default function AnalyticsAds() {
   const navigate = useNavigate();
   const { canManageTeam } = usePermissions();
   const [showCreate, setShowCreate] = useState(false);
-  const { data: status, refetch: refetchStatus } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
-  const { data: orgsData, refetch: refetchOrgs } = useApi<AppleAdsOrgsResponse>(
-    "/apple-ads/orgs",
-    [status?.connected],
-    true,
-  );
-  const [switchingOrg, setSwitchingOrg] = useState(false);
+  const { data: status } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
+  const [bundleId, setBundleId] = useState<string | null>(() => getActiveBundleId());
+  useEffect(() => {
+    const handler = () => {
+      setBundleId(getActiveBundleId());
+      setExpandedCampaign(null);
+    };
+    window.addEventListener("app-changed", handler);
+    return () => window.removeEventListener("app-changed", handler);
+  }, []);
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
@@ -69,32 +72,18 @@ export default function AnalyticsAds() {
     refetch: refetchCampaigns,
   } = useApi<{ campaigns: AppleAdsCampaign[] }>(
     `/apple-ads/campaigns${query}`,
-    [status?.connected, status?.orgId, ...rangeDeps],
-    true,
+    [status?.connected, bundleId, ...rangeDeps],
+    false,
   );
   const {
     data: revenueData,
     loading: revenueLoading,
     error: revenueError,
-    refetch: refetchRevenue,
   } = useApi<AppleAdsCampaignRevenue>(
     `/apple-ads/campaign-revenue${query}`,
-    [status?.connected, status?.orgId, ...rangeDeps],
-    true,
+    [status?.connected, bundleId, ...rangeDeps],
+    false,
   );
-
-  const handleOrgChange = async (orgId: string) => {
-    setSwitchingOrg(true);
-    try {
-      await apiPost("/apple-ads/org", { orgId });
-      await Promise.all([refetchStatus(), refetchOrgs()]);
-      refetchCampaigns();
-      refetchRevenue();
-      setExpandedCampaign(null);
-    } finally {
-      setSwitchingOrg(false);
-    }
-  };
 
   const campaigns = campaignsData?.campaigns ?? [];
   const totals = campaigns.reduce(
@@ -170,23 +159,6 @@ export default function AnalyticsAds() {
                 />
               </div>
             )}
-            {status?.connected && orgsData && orgsData.orgs.length > 0 && (
-              <label className="flex items-center gap-2 ml-auto shrink-0">
-                <span className={`text-[12px] ${textMuted} whitespace-nowrap`}>Campaign Group</span>
-                <select
-                  className={`${inputCls} min-w-[220px]`}
-                  value={status.orgId ?? ""}
-                  disabled={switchingOrg}
-                  onChange={(e) => handleOrgChange(e.target.value)}
-                >
-                  {orgsData.orgs.map((o) => (
-                    <option key={o.orgId} value={o.orgId}>
-                      {o.orgName} ({o.orgId})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
@@ -218,10 +190,20 @@ export default function AnalyticsAds() {
                 </button>
               )}
             </div>
-            {loading ? (
+            {!bundleId ? (
+              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+                Select an app to see its Apple Search Ads campaigns.
+              </div>
+            ) : loading ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
             ) : error ? (
-              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Failed to load campaigns</div>
+              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+                Failed to load campaigns — map a campaign group for this app in{" "}
+                <Link to="/integrations" className="font-medium text-[#595DD2] hover:underline">
+                  Integrations
+                </Link>
+                .
+              </div>
             ) : campaigns.length === 0 ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No campaigns found</div>
             ) : (

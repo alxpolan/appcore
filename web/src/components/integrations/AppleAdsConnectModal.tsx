@@ -11,34 +11,19 @@ interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
 
-interface OrgOption {
-  orgId: string;
-  orgName: string;
-}
-
 export default function AppleAdsConnectModal({ onClose, onConnected, addToast }: Props) {
   const [form, setForm] = useState({ clientId: "", teamId: "", keyId: "", privateKey: "" });
   const [connecting, setConnecting] = useState(false);
-  const [orgOptions, setOrgOptions] = useState<OrgOption[] | null>(null);
-  const [selectedOrgId, setSelectedOrgId] = useState("");
 
   const onChange = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   const canSubmit = Object.values(form).every((v) => v.trim().length > 0);
 
-  const submit = async (orgId?: string) => {
+  const submit = async () => {
     setConnecting(true);
     try {
-      const result = await apiPost<{ ok?: boolean; orgName?: string; needsOrgSelection?: boolean; orgs?: OrgOption[] }>(
-        "/apple-ads/connect",
-        { ...form, orgId },
-      );
-      if (result.needsOrgSelection && result.orgs) {
-        setOrgOptions(result.orgs);
-        setSelectedOrgId(result.orgs[0]?.orgId ?? "");
-        return;
-      }
-      addToast(`Connected to Apple Search Ads (${result.orgName})`, "success");
+      await apiPost<{ ok?: boolean }>("/apple-ads/connect", form);
+      addToast("Connected to Apple Search Ads — now map a campaign group per app below.", "success");
       onConnected();
       onClose();
     } catch (err: any) {
@@ -65,35 +50,6 @@ export default function AppleAdsConnectModal({ onClose, onConnected, addToast }:
           </button>
         </div>
         <div className="p-6 overflow-y-auto">
-          {orgOptions ? (
-            <>
-              <p className={`text-[13px] ${textSecondary} mb-4`}>
-                This API key can see more than one Apple Search Ads organization (campaign group). Pick the one you
-                want to connect — you can switch later from the Ads page.
-              </p>
-              <Field label="Organization / Campaign Group">
-                <select
-                  className={inputCls}
-                  value={selectedOrgId}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                >
-                  {orgOptions.map((o) => (
-                    <option key={o.orgId} value={o.orgId}>
-                      {o.orgName} ({o.orgId})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <button
-                onClick={() => submit(selectedOrgId)}
-                disabled={connecting}
-                className={`${btnPrimary} w-full mt-5`}
-              >
-                {connecting ? "Connecting…" : "Connect this organization"}
-              </button>
-            </>
-          ) : (
-            <>
               <p className={`text-[13px] ${textSecondary} mb-4`}>
                 Marteso uses Apple's Search Ads API to pull your campaign data. Apple API keys work differently
                 from most services:{" "}
@@ -120,7 +76,7 @@ export default function AppleAdsConnectModal({ onClose, onConnected, addToast }:
                 <li>
                   Apple shows you a Client ID, Team ID and Key ID for that key — enter those below, along with the
                   contents of <span className={`font-medium ${textPrimary}`}>private.pem</span> (which you keep,
-                  never upload). We'll detect which organization(s) the key can access.
+                  never upload). After connecting, map a campaign group per app in the Integrations card.
                 </li>
               </ol>
 
@@ -179,8 +135,6 @@ export default function AppleAdsConnectModal({ onClose, onConnected, addToast }:
               >
                 {connecting ? "Verifying…" : "Connect"}
               </button>
-            </>
-          )}
         </div>
       </div>
     </div>,

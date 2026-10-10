@@ -409,11 +409,18 @@ export interface GitHubStatus {
   connectedAt: string | null;
 }
 
-export interface AppleAdsStatus {
-  connected: boolean;
+export interface AppleAdsAppMapping {
+  id: string;
+  bundleId: string;
+  name: string;
   orgId: string | null;
   orgName: string | null;
+}
+
+export interface AppleAdsStatus {
+  connected: boolean;
   connectedAt: string | null;
+  apps: AppleAdsAppMapping[];
 }
 
 export interface RevenueCatStatus {
@@ -430,7 +437,6 @@ export interface AppleAdsOrgOption {
 
 export interface AppleAdsOrgsResponse {
   orgs: AppleAdsOrgOption[];
-  selectedOrgId: string | null;
 }
 
 export interface AppleAdsAppOption {
