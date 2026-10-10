@@ -19,7 +19,7 @@ import { oauthRouter } from "./api/oauth";
 import { submissionsRouter } from "./api/submissions";
 import { githubRouter } from "./api/github";
 import { appleAdsRouter } from "./api/apple-ads";
-import { googleAdsRouter } from "./api/google-ads";
+import { googleAdsRouter, googleAdsOAuthCallbackRouter } from "./api/google-ads";
 import { activityRouter } from "./api/activity";
 import { revenueCatRouter } from "./api/revenuecat";
 import { requireAuth, loadTeamRole, requireWriteRole, demoGuard } from "./auth";
@@ -104,6 +104,7 @@ app.use("/api/boss", requireAuth, demoGuard, loadTeamRole, requireWriteRole, bos
 app.use("/api/submissions", requireAuth, demoGuard, loadTeamRole, requireWriteRole, submissionsRouter);
 app.use("/api/github", githubRouter);
 app.use("/api/apple-ads", requireAuth, demoGuard, loadTeamRole, appleAdsRouter);
+app.use("/api/google-ads", googleAdsOAuthCallbackRouter);
 app.use("/api/google-ads", requireAuth, demoGuard, loadTeamRole, googleAdsRouter);
 app.use("/api/revenuecat", requireAuth, demoGuard, loadTeamRole, revenueCatRouter);
 app.use("/api/mcp", mcpRouter);

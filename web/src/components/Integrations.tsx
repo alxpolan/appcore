@@ -35,8 +35,8 @@ export default function Integrations({ addToast }: Props) {
       addToast(
         reason === "customer_not_accessible"
           ? "Connected, but that customer ID isn't accessible with this Google account."
-          : reason === "session_mismatch"
-            ? "Google sign-in session didn't match — please try again."
+          : reason === "not_admin"
+            ? "Connecting Google Ads requires the team admin role."
             : "Google Ads connection failed. Please try again.",
         "error",
       );

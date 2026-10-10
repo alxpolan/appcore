@@ -468,7 +468,13 @@ googleAdsRouter.post("/oauth/start", async (req, res) => {
   }
 });
 
-googleAdsRouter.get("/oauth/callback", async (req, res) => {
+/** Public callback router (mounted without requireAuth): Google redirects the
+ * browser here without our auth cookie. Security comes from the signed state
+ * (created by an admin via /oauth/start, 10-min expiry) plus the admin
+ * re-check below — same shape as the sign-in callback. */
+export const googleAdsOAuthCallbackRouter = Router();
+
+googleAdsOAuthCallbackRouter.get("/oauth/callback", async (req, res) => {
   const appUrl = env.APP_URL;
   const fail = (reason: string) =>
     res.redirect(`${appUrl}/integrations?googleAds=error&reason=${encodeURIComponent(reason)}`);
@@ -481,9 +487,17 @@ googleAdsRouter.get("/oauth/callback", async (req, res) => {
 
     const parsed = verifyGoogleAdsOAuthState(stateRaw);
     if (!parsed) return fail("invalid_or_expired_state");
-    if (parsed.userId !== req.user?.userId || parsed.teamId !== req.user?.teamId) {
-      return fail("session_mismatch");
-    }
+
+    const [oauthUser, oauthMember] = await Promise.all([
+      prisma.user.findUnique({ where: { id: parsed.userId }, select: { role: true } }),
+      prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId: parsed.teamId, userId: parsed.userId } },
+        select: { role: true },
+      }),
+    ]);
+    const isAdmin =
+      oauthUser?.role === "ADMIN" || oauthMember?.role === "OWNER" || oauthMember?.role === "ADMIN";
+    if (!isAdmin) return fail("not_admin");
 
     const { refreshToken } = await exchangeGoogleAdsCode(code);
 
