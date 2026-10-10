@@ -593,11 +593,13 @@ model RevenueCatCustomer {
   platformVersion String?
   appVersion      String?
   country         String?
+  firstSeenAt     DateTime?
   attributes      Json?
   appleAttribution Json?
   syncedAt        DateTime @default(now())
 
   @@unique([bundleId, customerId], name: "revenueCatCustomerKey")
+  @@index([bundleId, firstSeenAt])
 }
 
 // A subscriber who turned off auto-renew during their free trial. Apple still

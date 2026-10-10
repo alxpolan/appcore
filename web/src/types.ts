@@ -655,6 +655,41 @@ export interface GoogleAdsNegativesResponse {
   adGroups: { id: string; name: string; negatives: GoogleAdsNegativeKeyword[] }[];
 }
 
+export interface GoogleAdsAttributionMatch {
+  customerId: string;
+  bundleId: string;
+  firstSeenAt: string;
+  gclid: string;
+  clickDate: string;
+  clickHour: number | null;
+  criterionId: string | null;
+  keywordText: string | null;
+  adGroupId: string | null;
+  gapMinutes: number;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface GoogleAdsAttributionKeyword {
+  criterionId: string;
+  keywordText: string | null;
+  installs: number;
+  highConfidenceInstalls: number;
+  trials: number;
+  proceedsUsd: number;
+}
+
+export interface GoogleAdsAttributionResponse {
+  clicks: number;
+  installsMatched: number;
+  installsOrganic: number;
+  installsUnknownDate: number;
+  trials: number;
+  proceedsUsd: number;
+  byKeyword: GoogleAdsAttributionKeyword[];
+  matches: GoogleAdsAttributionMatch[];
+  revenueAvailable: boolean;
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;

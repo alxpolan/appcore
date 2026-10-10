@@ -36,6 +36,7 @@ interface RevenueCatList<T> {
 interface RevenueCatCustomerRaw {
   id: string;
   object: string;
+  first_seen_at: number | null;
   last_seen_app_version: string | null;
   last_seen_country: string | null;
   last_seen_platform: string | null;
@@ -196,11 +197,14 @@ export async function syncRevenueCatTransactions(
     ]);
 
     const customerDims = { bundleId, customerId };
+    // first_seen_at is unix millis; guard against a seconds variant.
+    const firstSeenMs = customer.first_seen_at ?? customerDetail.first_seen_at ?? null;
     const customerFields = {
       platform: customer.last_seen_platform,
       platformVersion: customer.last_seen_platform_version,
       appVersion: customer.last_seen_app_version,
       country: customer.last_seen_country,
+      firstSeenAt: firstSeenMs != null ? new Date(firstSeenMs < 1e11 ? firstSeenMs * 1000 : firstSeenMs) : null,
       attributes,
       appleAttribution: ((customerDetail.apple_attribution ?? customer.apple_attribution) as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
       syncedAt: new Date(),

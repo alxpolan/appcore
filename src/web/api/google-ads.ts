@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { prisma, logger, env } from "../../config";
-import { requireTeamAdmin, loadTeamSettings } from "../auth";
+import { requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
+import { getGoogleAdsAttribution } from "../../services/google-ads-attribution";
 import {
   buildGoogleAdsAuthUrl,
   exchangeGoogleAdsCode,
@@ -189,6 +190,44 @@ googleAdsRouter.get("/campaigns/:campaignId/countries", loadTeamSettings, async 
   } catch (err: any) {
     logger.error("[google-ads] campaign country breakdown fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "country breakdown") });
+  }
+});
+
+async function accessibleAttributionBundleIds(req: Request): Promise<string[]> {
+  const apps = await prisma.app.findMany({
+    where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
+    select: { id: true, bundleId: true },
+  });
+  if (req.user!.role === "ADMIN") return apps.map((a) => a.bundleId);
+  const checked = await Promise.all(
+    apps.map(async (app) => ({
+      bundleId: app.bundleId,
+      allowed: await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id),
+    })),
+  );
+  return checked.filter(({ allowed }) => allowed).map(({ bundleId }) => bundleId);
+}
+
+googleAdsRouter.get("/campaigns/:campaignId/attribution", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (googleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Google Ads is not connected" });
+    return;
+  }
+
+  try {
+    const range = resolveGoogleAdsRange(req.query);
+    const bundleIds = await accessibleAttributionBundleIds(req);
+    const attribution = await getGoogleAdsAttribution(
+      googleAdsCreds(s),
+      bundleIds,
+      req.params.campaignId as string,
+      range,
+    );
+    res.json({ ...attribution, revenueAvailable: bundleIds.length > 0 });
+  } catch (err: any) {
+    logger.error("[google-ads] attribution fetch error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: googleAdsErrorMessage(err, "attribution") });
   }
 });
 

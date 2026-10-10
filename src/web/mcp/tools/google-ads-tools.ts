@@ -26,7 +26,8 @@ import {
   validateGoogleAdsCreateCampaignInput,
   type GoogleAdsCredentials,
 } from "../../../services/google-ads";
-import { getMcpUserTeamId, registerMutatingTool, type ToolSummary } from "./shared";
+import { getMcpAllowedAppIds, getMcpUserTeamId, registerMutatingTool, type ToolSummary } from "./shared";
+import { getGoogleAdsAttribution } from "../../../services/google-ads-attribution";
 
 const rangeSchema = {
   days: z
@@ -995,5 +996,40 @@ export function registerGoogleAdsTools(server: McpServer, userId: string) {
       }
     },
     { summarize: summarizeGoogleUpdateNegatives },
+  );
+
+  server.registerTool(
+    "get_google_ads_attribution",
+    {
+      description:
+        "Attribute RevenueCat installs, trials and proceeds to Google Ads clicks by matching click timestamps " +
+        "against first app opens (click_view, hour precision when the API allows it). Returns matched installs " +
+        "with confidence levels plus per-keyword installs, trials and proceeds. " +
+        "Use list_google_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Google Ads campaign ID (numeric string)."),
+        ...rangeSchema,
+      },
+    },
+    async ({ campaignId, days, startDate, endDate }) => {
+      const ctx = await getGoogleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      try {
+        const range = resolveGoogleAdsRange({ days, startDate, endDate });
+        const apps = await prisma.app.findMany({
+          where: { teamId: ctx.teamId, revenueCatConnectedAt: { not: null } },
+          select: { id: true, bundleId: true },
+        });
+        const allowedAppIds = await getMcpAllowedAppIds(userId, ctx.teamId);
+        const bundleIds = (allowedAppIds ? apps.filter((a) => allowedAppIds.includes(a.id)) : apps).map(
+          (a) => a.bundleId,
+        );
+        const attribution = await getGoogleAdsAttribution(ctx.creds, bundleIds, campaignId, range);
+        return jsonResult({ ...attribution, revenueAvailable: bundleIds.length > 0 });
+      } catch (err) {
+        return googleAdsError("get_google_ads_attribution", err);
+      }
+    },
   );
 }
