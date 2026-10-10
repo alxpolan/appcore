@@ -164,6 +164,12 @@ model TeamSettings {
   appleAdsKeyId               String?
   appleAdsPrivateKey          String?
   appleAdsConnectedAt         DateTime?
+  googleAdsClientId           String?
+  googleAdsClientSecret       String?
+  googleAdsRefreshToken       String?
+  googleAdsDeveloperToken     String?
+  googleAdsCustomerId         String?
+  googleAdsConnectedAt        DateTime?
   mcpEnabled                  Boolean   @default(false)
   githubAccessToken           String?
   githubUsername              String?
