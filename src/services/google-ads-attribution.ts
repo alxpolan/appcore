@@ -13,7 +13,7 @@ export interface InstallCandidate {
   country: string | null;
 }
 
-export type MatchConfidence = "high" | "medium" | "low";
+export type MatchConfidence = "high" | "medium";
 
 export interface ClickMatch {
   customerId: string;
@@ -29,9 +29,9 @@ export interface ClickMatch {
   confidence: MatchConfidence;
 }
 
-const MATCH_WINDOW_DAYS = 7;
+/** Matches beyond 24h are noise at real install densities — those installs are organic. */
+const MATCH_WINDOW_MIN = 24 * 60;
 const HIGH_CONFIDENCE_GAP_MIN = 120;
-const MEDIUM_CONFIDENCE_GAP_MIN = 24 * 60;
 
 /** Earliest possible click time. With hour precision the click happened
  * somewhere within that hour, so the true gap can only be smaller. */
@@ -54,7 +54,7 @@ export function matchClicksToInstalls(
     const seen = customer.firstSeenAt.getTime();
     const candidates = pool
       .map((click) => ({ click, gapMinutes: (seen - clickStart(click)) / 60000 }))
-      .filter(({ gapMinutes }) => gapMinutes >= 0 && gapMinutes <= MATCH_WINDOW_DAYS * 24 * 60);
+      .filter(({ gapMinutes }) => gapMinutes >= 0 && gapMinutes <= MATCH_WINDOW_MIN);
     if (candidates.length === 0) {
       organic.push(customer);
       continue;
@@ -80,11 +80,7 @@ export function matchClicksToInstalls(
       return true;
     });
     const confidence: MatchConfidence =
-      best.gapMinutes <= HIGH_CONFIDENCE_GAP_MIN && nearby.length === 1
-        ? "high"
-        : best.gapMinutes <= MEDIUM_CONFIDENCE_GAP_MIN
-          ? "medium"
-          : "low";
+      best.gapMinutes <= HIGH_CONFIDENCE_GAP_MIN && nearby.length === 1 ? "high" : "medium";
 
     matches.push({
       customerId: customer.customerId,
@@ -117,6 +113,7 @@ export interface GoogleAdsAttribution {
   range: GoogleAdsReportRange;
   clicks: number;
   installsMatched: number;
+  highConfidenceInstalls: number;
   installsOrganic: number;
   installsUnknownDate: number;
   trials: number;
@@ -235,6 +232,7 @@ export async function getGoogleAdsAttribution(
     range,
     clicks: clicks.length,
     installsMatched: matches.length,
+    highConfidenceInstalls: matches.filter((m) => m.confidence === "high").length,
     installsOrganic: organic.length,
     installsUnknownDate: unknownDate,
     trials,

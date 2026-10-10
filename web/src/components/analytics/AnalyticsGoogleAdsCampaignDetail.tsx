@@ -69,13 +69,14 @@ function statusDot(status: string) {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
     >
       <div className={`text-[11px] ${textMuted} mb-1.5`}>{label}</div>
       <div className={`text-[20px] font-bold leading-none truncate ${textPrimary}`} title={value}>{value}</div>
+      {sub != null && <div className={`text-[11px] ${textMuted} mt-1.5 truncate`}>{sub}</div>}
     </div>
   );
 }
@@ -390,7 +391,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Attribution</div>
           <div className={`text-[12px] ${textMuted} mt-0.5`}>
-            Ad clicks matched to first app opens by timestamp (7-day window) — installs link to trials and
+            Ad clicks matched to first app opens by timestamp (24-hour window) — installs link to trials and
             proceeds via RevenueCat
           </div>
         </div>
@@ -408,7 +409,11 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           <div className="px-5 py-4">
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
               <StatTile label="Clicks" value={fmtNumber(attributionData.clicks)} />
-              <StatTile label="Matched installs" value={fmtNumber(attributionData.installsMatched)} />
+              <StatTile
+                label="Matched installs"
+                value={fmtNumber(attributionData.installsMatched)}
+                sub={`${fmtNumber(attributionData.highConfidenceInstalls)} high confidence`}
+              />
               <StatTile label="Organic installs" value={fmtNumber(attributionData.installsOrganic)} />
               <StatTile label="Trials" value={fmtNumber(attributionData.trials)} />
               <StatTile label="Proceeds" value={fmtMoney(attributionData.proceedsUsd, "USD")} />

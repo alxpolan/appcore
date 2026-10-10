@@ -666,7 +666,7 @@ export interface GoogleAdsAttributionMatch {
   keywordText: string | null;
   adGroupId: string | null;
   gapMinutes: number;
-  confidence: "high" | "medium" | "low";
+  confidence: "high" | "medium";
 }
 
 export interface GoogleAdsAttributionKeyword {
@@ -681,6 +681,7 @@ export interface GoogleAdsAttributionKeyword {
 export interface GoogleAdsAttributionResponse {
   clicks: number;
   installsMatched: number;
+  highConfidenceInstalls: number;
   installsOrganic: number;
   installsUnknownDate: number;
   trials: number;
