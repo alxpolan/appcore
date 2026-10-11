@@ -1,5 +1,4 @@
 import { GoogleAdsApi, ResourceNames, enums, errors, toMicros } from "google-ads-api";
-import { logger } from "../config";
 
 // Runtime enum lookup (verified: enums.CampaignStatus.ENABLED === 2).
 const E: any = enums;
@@ -232,24 +231,11 @@ interface FakeCriterion {
   removed: boolean;
 }
 
-export interface FakeClick {
-  campaignId: string;
-  date: string;
-  hour: number | null;
-  gclid: string;
-  adGroupId: string | null;
-  criterionId: string | null;
-  text: string | null;
-  matchType: string | null;
-  countryCode: string | null;
-}
-
 interface FakeStore {
   campaigns: Map<string, FakeCampaign>;
   adGroups: Map<string, FakeAdGroup>;
   criteria: Map<string, FakeCriterion>;
   countries: Map<string, { code: string; name: string; metrics: FakeMetrics }[]>;
-  clicks: FakeClick[];
   nextId: number;
 }
 
@@ -263,7 +249,6 @@ function fakeStoreFor(customerId: string): FakeStore {
       adGroups: new Map(),
       criteria: new Map(),
       countries: new Map(),
-      clicks: [],
       nextId: 1000,
     };
     fakeStores.set(customerId, store);
@@ -438,28 +423,6 @@ class FakeGoogleAdsGateway implements GoogleAdsGateway {
         campaign: { id: ids["campaign"] },
         ...(withMetrics ? { metrics: this.metricsRow(c.metrics) } : {}),
       }));
-    }
-
-    if (from === "click_view") {
-      const day = gaql.match(/segments\.date\s*=\s*'(\d{4}-\d{2}-\d{2})'/)?.[1];
-      const withHour = /segments\.hour/.test(gaql);
-      return this.store.clicks
-        .filter((c) => (!ids["campaign"] || c.campaignId === ids["campaign"]) && (!day || c.date === day))
-        .map((c) => ({
-          click_view: {
-            gclid: c.gclid,
-            keyword:
-              c.adGroupId && c.criterionId
-                ? `customers/${this.customerId}/adGroupCriteria/${c.adGroupId}~${c.criterionId}`
-                : "",
-            keyword_info: { text: c.text ?? "", match_type: c.matchType ?? "" },
-            location_of_presence: {
-              country: c.countryCode ? `geoTargetConstants/${geoIdForCountry(c.countryCode)}` : "",
-            },
-          },
-          campaign: { id: c.campaignId },
-          segments: { date: c.date, ...(withHour ? { hour: c.hour ?? 0 } : {}) },
-        }));
     }
 
     if (from === "geo_target_constant") {
@@ -906,87 +869,6 @@ export async function getGoogleAdsCampaignCountryBreakdown(
       };
     })
     .sort((a, b) => b.spend - a.spend);
-}
-
-export interface GoogleAdsClick {
-  gclid: string;
-  date: string;
-  hour: number | null;
-  campaignId: string;
-  adGroupId: string | null;
-  criterionId: string | null;
-  keywordText: string | null;
-  matchType: string | null;
-  countryCode: string | null;
-}
-
-/** Per-click rows for one day. click_view queries must be limited to a single
- * day and only go 90 days back. Falls back to date precision when the API
- * rejects segments.hour. */
-export async function listGoogleAdsClicks(
-  creds: GoogleAdsCredentials,
-  campaignId: string,
-  date: string,
-): Promise<{ clicks: GoogleAdsClick[]; hourPrecision: boolean }> {
-  const gw = googleAdsGateway(creds);
-  const select =
-    "click_view.gclid, click_view.keyword, click_view.keyword_info.text, click_view.keyword_info.match_type, " +
-    "click_view.location_of_presence.country, campaign.id, segments.date";
-  const where = `FROM click_view WHERE campaign.id = ${campaignId} AND segments.date = '${date}'`;
-  let rows: any[];
-  let hourPrecision = true;
-  try {
-    rows = await gw.query(`SELECT ${select}, segments.hour ${where}`);
-  } catch (err: any) {
-    if (!/hour/i.test(googleAdsErrorMessage(err, ""))) throw err;
-    logger.warn("[google-ads] click_view rejected segments.hour, falling back to day precision", {
-      err: googleAdsErrorMessage(err, ""),
-    });
-    rows = await gw.query(`SELECT ${select} ${where}`);
-    hourPrecision = false;
-  }
-
-  const geoIds = [
-    ...new Set(
-      rows
-        .map((r) => String(r.click_view?.location_of_presence?.country ?? "").split("/").pop())
-        .filter((id) => /^\d+$/.test(id ?? "")),
-    ),
-  ];
-  let codes = new Map<string, string>();
-  if (geoIds.length > 0) {
-    const geoRows = await gw.query(
-      "SELECT geo_target_constant.id, geo_target_constant.country_code " +
-        `FROM geo_target_constant WHERE geo_target_constant.id IN (${geoIds.join(",")})`,
-    );
-    codes = new Map(
-      geoRows.map((r) => [
-        String(r.geo_target_constant?.id),
-        String(r.geo_target_constant?.country_code ?? ""),
-      ]),
-    );
-  }
-
-  const clicks = rows.map((row) => {
-    const cv = row.click_view ?? {};
-    const parts = String(cv.keyword ?? "").split("~");
-    const geoId = String(cv.location_of_presence?.country ?? "").split("/").pop() ?? "";
-    return {
-      gclid: String(cv.gclid ?? ""),
-      date: String(row.segments?.date ?? date).slice(0, 10),
-      hour: row.segments?.hour != null && row.segments.hour !== "" ? Number(row.segments.hour) : null,
-      campaignId: String(campaignId),
-      adGroupId: parts.length === 2 ? parts[0].split("/").pop()! : null,
-      criterionId: parts.length === 2 ? parts[1] : null,
-      keywordText: cv.keyword_info?.text != null && cv.keyword_info.text !== "" ? String(cv.keyword_info.text) : null,
-      matchType:
-        cv.keyword_info?.match_type != null && cv.keyword_info.match_type !== ""
-          ? String(cv.keyword_info.match_type)
-          : null,
-      countryCode: codes.get(geoId) || null,
-    };
-  });
-  return { clicks, hourPrecision };
 }
 
 export async function listGoogleAdsNegativeKeywords(
@@ -1537,7 +1419,6 @@ export function seedFakeGoogleAdsMetrics(
     adGroups?: Record<string, Partial<FakeMetrics>>;
     criteria?: Record<string, Partial<FakeMetrics>>;
     countries?: Record<string, { code: string; name: string; metrics: Partial<FakeMetrics> }[]>;
-    clicks?: FakeClick[];
   },
 ): void {
   const store = fakeStoreFor(customerId);
@@ -1560,5 +1441,4 @@ export function seedFakeGoogleAdsMetrics(
       list.map((c) => ({ code: c.code, name: c.name, metrics: { ...blankMetrics(), ...c.metrics } })),
     );
   }
-  if (seed.clicks) store.clicks.push(...seed.clicks);
 }

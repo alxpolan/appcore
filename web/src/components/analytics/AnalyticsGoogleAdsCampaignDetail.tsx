@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { GoogleAdsAttributionResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
+import type { GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
@@ -69,14 +69,13 @@ function statusDot(status: string) {
   );
 }
 
-function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
     >
       <div className={`text-[11px] ${textMuted} mb-1.5`}>{label}</div>
       <div className={`text-[20px] font-bold leading-none truncate ${textPrimary}`} title={value}>{value}</div>
-      {sub != null && <div className={`text-[11px] ${textMuted} mt-1.5 truncate`}>{sub}</div>}
     </div>
   );
 }
@@ -194,16 +193,6 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     loading: countriesLoading,
     error: countriesError,
   } = useCountryBreakdown(campaignId ? `/google-ads/campaigns/${campaignId}/countries${query}` : null);
-
-  const {
-    data: attributionData,
-    loading: attributionLoading,
-    error: attributionError,
-  } = useApi<GoogleAdsAttributionResponse>(
-    `/google-ads/campaigns/${campaignId}/attribution${query}`,
-    [campaignId, ...rangeDeps],
-    true,
-  );
 
   const { canManageTeam } = usePermissions();
   const {
@@ -381,82 +370,6 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         ) : (
           <div className="overflow-x-auto">
             <CountryStatsTable countries={countriesData.countries} currency={currency} />
-          </div>
-        )}
-      </div>
-
-      <div
-        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
-      >
-        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
-          <div className={`text-[16px] font-semibold ${textPrimary}`}>Attribution</div>
-          <div className={`text-[12px] ${textMuted} mt-0.5`}>
-            Ad clicks matched to first app opens by timestamp (24-hour window) — installs link to trials and
-            proceeds via RevenueCat
-          </div>
-        </div>
-        {attributionLoading ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
-        ) : attributionError || !attributionData ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
-            {attributionError ?? "Failed to load attribution"}
-          </div>
-        ) : !attributionData.revenueAvailable ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
-            Connect RevenueCat to match installs to ad clicks.
-          </div>
-        ) : (
-          <div className="px-5 py-4">
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-              <StatTile label="Clicks" value={fmtNumber(attributionData.clicks)} />
-              <StatTile
-                label="Matched installs"
-                value={fmtNumber(attributionData.installsMatched)}
-                sub={`${fmtNumber(attributionData.highConfidenceInstalls)} high confidence`}
-              />
-              <StatTile label="Organic installs" value={fmtNumber(attributionData.installsOrganic)} />
-              <StatTile label="Trials" value={fmtNumber(attributionData.trials)} />
-              <StatTile label="Proceeds" value={fmtMoney(attributionData.proceedsUsd, "USD")} />
-            </div>
-            <div className={`text-[12px] ${textMuted} mb-4`}>
-              Click precision: {attributionData.hourPrecision ? "hour" : "day"} ·{" "}
-              {attributionData.hourPrecision ? "install delay" : "install time of day"}:{" "}
-              {attributionData.gapBuckets.map((b) => `${b.label} ${fmtNumber(b.count)}`).join(" · ")}
-            </div>
-            {attributionData.byKeyword.length === 0 ? (
-              <div className={`text-[12px] ${textMuted}`}>No installs matched to clicks in this period.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr>
-                      <th className={TH}>Keyword</th>
-                      <th className={`${TH} text-right`}>Installs</th>
-                      <th className={`${TH} text-right`}>High conf.</th>
-                      <th className={`${TH} text-right`}>Trials</th>
-                      <th className={`${TH} text-right pr-5`}>Proceeds (USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {attributionData.byKeyword.map((k) => (
-                      <tr key={k.criterionId}>
-                        <td className={TD}>
-                          <span className={`font-medium ${textPrimary}`}>{k.keywordText ?? k.criterionId}</span>
-                        </td>
-                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(k.installs)}</td>
-                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                          {fmtNumber(k.highConfidenceInstalls)}
-                        </td>
-                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(k.trials)}</td>
-                        <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
-                          {fmtMoney(k.proceedsUsd, "USD")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         )}
       </div>
