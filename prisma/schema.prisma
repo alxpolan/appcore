@@ -15,6 +15,7 @@ model Team {
   settings     TeamSettings?
   subscription Subscription?
   activityLogs ActivityLog[]
+  googleAdsCampaignTokens GoogleAdsCampaignToken[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -247,6 +248,7 @@ model App {
   inAppPurchases             AppInAppPurchase[]
   keywordSuggestions         KeywordSuggestion[]
   quickScanAi                AppQuickScanAi?
+  googleAdsCampaignTokens    GoogleAdsCampaignToken[]
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
 
@@ -470,6 +472,36 @@ model AppStoreAnalytics {
 
   @@unique([bundleId, reportDate, country])
   @@index([bundleId, reportDate])
+}
+
+model AppStoreCampaignMetrics {
+  id         String   @id @default(cuid())
+  bundleId   String
+  campaign   String
+  reportDate DateTime
+  downloads  Int      @default(0)
+  purchases  Int      @default(0)
+  trials     Int      @default(0)
+  proceedsUsd Float   @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([bundleId, campaign, reportDate])
+  @@index([bundleId, campaign, reportDate])
+}
+
+model GoogleAdsCampaignToken {
+  id               String   @id @default(cuid())
+  teamId           String
+  team             Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  googleCampaignId String
+  appId            String
+  app              App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  ctToken          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([teamId, googleCampaignId])
+  @@index([teamId])
 }
 
 model AppStoreAnalyticsPlatform {

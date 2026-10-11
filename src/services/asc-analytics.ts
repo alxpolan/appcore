@@ -22,7 +22,7 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-type ReportKind = "engagement" | "usage" | "downloads" | "purchases" | "installDeletion";
+type ReportKind = "engagement" | "usage" | "downloads" | "purchases" | "installDeletion" | "downloadsDetailed" | "purchasesDetailed";
 
 const TRACKED_ANALYTICS_REPORTS: { category: string; name: string; kind: ReportKind; namePattern?: RegExp }[] = [
   { category: "APP_STORE_ENGAGEMENT", name: "App Store Discovery and Engagement Standard", kind: "engagement" },
@@ -36,6 +36,8 @@ const TRACKED_ANALYTICS_REPORTS: { category: string; name: string; kind: ReportK
   },
   { category: "COMMERCE", name: "App Downloads Standard", kind: "downloads" },
   { category: "COMMERCE", name: "App Store Purchases Standard", kind: "purchases" },
+  { category: "COMMERCE", name: "App Downloads Detailed", kind: "downloadsDetailed" },
+  { category: "COMMERCE", name: "App Store Purchases Detailed", kind: "purchasesDetailed" },
 ];
 
 type AnalyticsMetrics = { impressions: number; pageViews: number; taps: number; sessions: number };
@@ -288,6 +290,110 @@ async function storePurchasesSegment(bundleId: string, rows: PurchaseRow[]): Pro
       return prisma.appStoreCommercePurchase.upsert({
         where: { purchaseDimensions: dims },
         create: { ...dims, ...metrics },
+        update: metrics,
+      });
+    }),
+  );
+  return rows.length;
+}
+
+export interface CampaignMetricsRow {
+  dateStr: string;
+  campaign: string;
+  downloads: number;
+  purchases: number;
+  trials: number;
+  proceedsUsd: number;
+}
+
+/** Aggregate Detailed downloads rows by (day, campaign token). Prefers
+ * first-time downloads; falls back to all counts when no first-time rows exist. */
+export function parseCampaignDownloadsSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
+  const byKey = new Map<string, CampaignMetricsRow & { firstTime: number; total: number }>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+    const campaign = (row["Campaign"] ?? "").trim();
+    if (!campaign) continue;
+
+    const key = `${dateStr}::${campaign}`;
+    const counts = parseInt(row["Counts"] ?? "0", 10) || 0;
+    const isFirstTime = /first/i.test(row["Download Type"] ?? "");
+    const bucket = byKey.get(key) ?? {
+      dateStr,
+      campaign,
+      downloads: 0,
+      purchases: 0,
+      trials: 0,
+      proceedsUsd: 0,
+      firstTime: 0,
+      total: 0,
+    };
+    bucket.total += counts;
+    if (isFirstTime) bucket.firstTime += counts;
+    byKey.set(key, bucket);
+  }
+
+  return [...byKey.values()].map(({ firstTime, total, ...rest }) => ({
+    ...rest,
+    downloads: firstTime > 0 ? firstTime : total,
+  }));
+}
+
+/** Aggregate Detailed purchases rows by (day, campaign token). Trials are
+ * best-effort: purchase rows whose type mentions a trial. */
+export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
+  const byKey = new Map<string, CampaignMetricsRow>();
+  const seenTypes = new Set<string>();
+
+  for (const row of rows) {
+    const dateStr = (row["Date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+    const campaign = (row["Campaign"] ?? "").trim();
+    if (!campaign) continue;
+
+    const purchaseType = (row["Purchase Type"] ?? "").trim();
+    if (purchaseType) seenTypes.add(purchaseType);
+    const key = `${dateStr}::${campaign}`;
+    const purchases = parseInt(row["Purchases"] ?? "0", 10) || 0;
+    const proceedsUsd = parseFloat(row["Proceeds in USD"] ?? "0") || 0;
+    const trials = /trial/i.test(purchaseType) ? purchases : 0;
+
+    const bucket = byKey.get(key) ?? {
+      dateStr,
+      campaign,
+      downloads: 0,
+      purchases: 0,
+      trials: 0,
+      proceedsUsd: 0,
+    };
+    bucket.purchases += purchases;
+    bucket.trials += trials;
+    bucket.proceedsUsd += proceedsUsd;
+    byKey.set(key, bucket);
+  }
+
+  if (seenTypes.size > 0) {
+    logger.debug(`Campaign purchases purchase types: ${[...seenTypes].join(" | ")}`);
+  }
+  return [...byKey.values()];
+}
+
+async function storeCampaignMetricsSegment(
+  bundleId: string,
+  rows: CampaignMetricsRow[],
+  fields: (keyof CampaignMetricsRow)[],
+): Promise<number> {
+  await Promise.all(
+    rows.map((r) => {
+      const reportDate = new Date(r.dateStr);
+      const dims = { bundleId, campaign: r.campaign, reportDate };
+      const metrics = Object.fromEntries(fields.map((f) => [f, r[f]]));
+
+      return prisma.appStoreCampaignMetrics.upsert({
+        where: { bundleId_campaign_reportDate: dims },
+        create: { ...dims, downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0, ...metrics },
         update: metrics,
       });
     }),
@@ -970,6 +1076,16 @@ export class AscAnalyticsService {
             } else if (reportItem.kind === "purchases") {
               const purchaseRows = parsePurchasesSegment(rows);
               storedRows += await storePurchasesSegment(bundleId, purchaseRows);
+            } else if (reportItem.kind === "downloadsDetailed") {
+              const campaignRows = parseCampaignDownloadsSegment(rows);
+              storedRows += await storeCampaignMetricsSegment(bundleId, campaignRows, ["downloads"]);
+            } else if (reportItem.kind === "purchasesDetailed") {
+              const campaignRows = parseCampaignPurchasesSegment(rows);
+              storedRows += await storeCampaignMetricsSegment(bundleId, campaignRows, [
+                "purchases",
+                "trials",
+                "proceedsUsd",
+              ]);
             }
           } catch (err: any) {
             logger.warn(`Downloading/parsing ${reportItem.kind} segment: ${err?.message ?? err}`);

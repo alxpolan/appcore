@@ -655,6 +655,22 @@ export interface GoogleAdsNegativesResponse {
   adGroups: { id: string; name: string; negatives: GoogleAdsNegativeKeyword[] }[];
 }
 
+export interface GoogleAdsAppleRevenueDay {
+  date: string;
+  downloads: number;
+  purchases: number;
+  trials: number;
+  proceedsUsd: number;
+}
+
+export interface GoogleAdsAppleRevenueResponse {
+  mapped: boolean;
+  app?: { id: string; bundleId: string; displayName: string | null; name: string };
+  ctToken?: string;
+  totals?: { downloads: number; purchases: number; trials: number; proceedsUsd: number };
+  days?: GoogleAdsAppleRevenueDay[];
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;

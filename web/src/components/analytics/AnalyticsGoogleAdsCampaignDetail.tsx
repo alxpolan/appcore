@@ -17,6 +17,7 @@ import {
   type GoogleSortDir,
 } from "../../utils/googleKeywordTable";
 import GoogleAdsCampaignChart from "./GoogleAdsCampaignChart";
+import GoogleAdsAppleRevenue from "./GoogleAdsAppleRevenue";
 import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
 
@@ -351,6 +352,15 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         loading={spendLoading}
         error={!!spendError}
       />
+
+      {campaignId && (
+        <GoogleAdsAppleRevenue
+          campaignId={campaignId}
+          query={query}
+          rangeDeps={rangeDeps}
+          canManageTeam={canManageTeam}
+        />
+      )}
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
