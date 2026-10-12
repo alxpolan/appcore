@@ -806,6 +806,37 @@ export interface VersionsData {
   localizations: VersionLocalization[];
 }
 
+export interface ProductPageVersion {
+  id: string;
+  version: string | null;
+  state: string | null;
+  deepLink: string | null;
+  isEditable: boolean;
+}
+
+export interface ProductPage {
+  id: string;
+  name: string;
+  url: string | null;
+  visible: boolean | null;
+  versions: ProductPageVersion[];
+}
+
+export interface ProductPageLocalization {
+  id: string;
+  locale: string;
+  promotionalText: string;
+}
+
+export interface ProductPageScreenshot {
+  id: string;
+  displayType: string;
+  url: string;
+  thumbUrl: string;
+  width: number;
+  height: number;
+}
+
 export interface CompetitorReview {
   id: string;
   rating: number;

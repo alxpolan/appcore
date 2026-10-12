@@ -39,6 +39,7 @@ import AnalyticsAdsCampaignDetail from "./components/analytics/AnalyticsAdsCampa
 import AnalyticsGoogleAds from "./components/analytics/AnalyticsGoogleAds";
 import AnalyticsGoogleAdsCampaignDetail from "./components/analytics/AnalyticsGoogleAdsCampaignDetail";
 import Versions from "./components/Versions";
+import ProductPages from "./components/ProductPages";
 import Screenshots from "./components/Screenshots";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
 import MonetizationProducts from "./components/monetization/Products";
@@ -85,6 +86,7 @@ import {
   Camera,
   Hammer,
   Megaphone,
+  AppWindow,
 } from "lucide-react";
 
 const sidebarLinks = [
@@ -129,6 +131,7 @@ const railLinks: SidebarLink[] = [
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
   { to: "/monetization/subscriptions", label: "Monetization", icon: DollarSign },
   { to: "/versions", label: "Versions", icon: FileText },
+  { to: "/product-pages", label: "Product Pages", icon: AppWindow },
   { to: "/screenshots", label: "Screenshots", icon: Camera },
   { to: "/builds", label: "Builds", icon: Hammer },
   { to: "/game-center/leaderboards", label: "Game Center", icon: Swords, fringeloOnly: true },
@@ -146,6 +149,11 @@ const ASC_REQUIRED_VIEWS: { prefix: string; description: string }[] = [
   {
     prefix: "/monetization",
     description: "Connect your App Store Connect API key to manage subscriptions and in-app purchases.",
+  },
+  {
+    prefix: "/product-pages",
+    description:
+      "Connect your App Store Connect API key to create and edit custom product pages with their own screenshots and promotional text.",
   },
   {
     prefix: "/game-center",
@@ -1425,6 +1433,10 @@ export default function App() {
                     ))}
                   <MonetizationSidebarSection navLinkClass={navLinkClass} />
                   <VersionsSidebarSection navLinkClass={navLinkClass} />
+                  <NavLink to="/product-pages" className={navLinkClass}>
+                    <AppWindow />
+                    Product Pages
+                  </NavLink>
                   <NavLink to="/screenshots" className={navLinkClass}>
                     <Camera />
                     Screenshots
@@ -1482,6 +1494,7 @@ export default function App() {
               <Route path="/analytics/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
+              <Route path="/product-pages" element={<ProductPages addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />
               <Route path="/builds" element={<Builds addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />
