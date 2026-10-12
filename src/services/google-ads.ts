@@ -100,16 +100,26 @@ const ZERO_STATS: GoogleAdsStats = {
   conversionRate: null,
 };
 
+/** Earliest date we ever query back to for period=all: predates any app/campaign in this system. */
+const ALL_TIME_START = "2015-01-01";
+
 export function resolveGoogleAdsRange(query: {
   days?: unknown;
   startDate?: unknown;
   endDate?: unknown;
+  period?: unknown;
 }): GoogleAdsReportRange {
   const today = new Date();
   const toISODate = (d: Date) => d.toISOString().slice(0, 10);
   const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   if (typeof query.startDate === "string" && typeof query.endDate === "string") {
     return { startDate: query.startDate.slice(0, 10), endDate: query.endDate.slice(0, 10) };
+  }
+  if (query.period === "all") {
+    return { startDate: ALL_TIME_START, endDate: toISODate(end) };
+  }
+  if (query.period === "ytd") {
+    return { startDate: `${end.getUTCFullYear()}-01-01`, endDate: toISODate(end) };
   }
   const days = Math.max(1, Math.min(365, Number(query.days ?? 30) || 30));
   const start = new Date(end.getTime() - (days - 1) * 86_400_000);

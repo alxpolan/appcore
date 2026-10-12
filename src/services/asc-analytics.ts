@@ -1010,13 +1010,40 @@ export class AscAnalyticsService {
       let instances: any[] = [];
 
       try {
-        const instResp = await axios.get(`${this.BASE}/analyticsReports/${reportId}/instances`, {
-          headers,
-          params: { "filter[granularity]": "DAILY", limit: 200 },
-        });
+        // Paginate: a single page (limit 200) silently drops instances once a
+        // report has more than 200 DAILY entries, which breaks any backfill
+        // requesting more than ~200 days of history. Apple's documented order
+        // for this endpoint isn't guaranteed, so page through everything
+        // (bounded by maxPages) rather than assuming newest/oldest-first.
+        const all: any[] = [];
+        let cursor: string | null = null;
+        const maxPages = 10;
 
-        this.logRateLimit(instResp.headers);
-        const all: any[] = instResp.data?.data ?? [];
+        for (let page = 0; page < maxPages; page++) {
+          const params: Record<string, any> = {
+            "filter[granularity]": "DAILY",
+            limit: 200,
+          };
+          if (cursor) params["cursor"] = cursor;
+
+          const instResp = await axios.get(`${this.BASE}/analyticsReports/${reportId}/instances`, {
+            headers,
+            params,
+          });
+          this.logRateLimit(instResp.headers);
+
+          const pageItems: any[] = instResp.data?.data ?? [];
+          all.push(...pageItems);
+
+          const nextLink = instResp.data?.links?.next;
+          if (!nextLink || pageItems.length === 0) break;
+          try {
+            cursor = new URL(nextLink).searchParams.get("cursor");
+          } catch {
+            break;
+          }
+          if (!cursor) break;
+        }
 
         instances = all.filter((inst: any) => {
           const pd: string | undefined = inst.attributes?.processingDate;
@@ -1024,7 +1051,7 @@ export class AscAnalyticsService {
         });
 
         logger.debug(
-          `Report ${reportId}: ${all.length} total instances, ${instances.length} within daysBack=${kindDaysBack}`,
+          `Report ${reportId}: ${all.length} total instances fetched, ${instances.length} within daysBack=${kindDaysBack}`,
         );
       } catch (err: any) {
         logger.warn(
@@ -1098,6 +1125,84 @@ export class AscAnalyticsService {
     return storedRows;
   }
 
+  /**
+   * Creates a ONE_TIME_SNAPSHOT analytics report request (or recovers the one
+   * already created this month, since Apple allows at most one per app per
+   * calendar month) and processes it immediately. This is the only way to
+   * pull report history predating an ONGOING request's creation date, so it
+   * must be retried whenever a report kind (e.g. newly tracked campaign-token
+   * reports) still has no snapshot of its own, not only on an app's very
+   * first-ever sync.
+   */
+  private async createAndProcessSnapshot(
+    ascAppId: string,
+    bundleId: string,
+    daysBack: number,
+    daysBackByKind?: Partial<Record<ReportKind, number>>,
+  ): Promise<{ snapshotRequestId: string | null; rows: number }> {
+    const headers = this.authHeaders();
+    let snapshotRows = 0;
+    let resolvedSnapshotId: string | null = null;
+
+    try {
+      const snapResp = await axios.post(
+        `${this.BASE}/analyticsReportRequests`,
+        {
+          data: {
+            type: "analyticsReportRequests",
+            attributes: { accessType: "ONE_TIME_SNAPSHOT" },
+            relationships: {
+              app: { data: { type: "apps", id: ascAppId } },
+            },
+          },
+        },
+        { headers },
+      );
+
+      this.logRateLimit(snapResp.headers);
+      resolvedSnapshotId = snapResp.data?.data?.id ?? null;
+
+      if (resolvedSnapshotId) {
+        logger.info(
+          `Created ONE_TIME_SNAPSHOT request ${resolvedSnapshotId} for ${bundleId} – processing historical data now.`,
+        );
+
+        snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
+        logger.info(`ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows stored for ${bundleId}.`);
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 409) {
+        logger.info(`ONE_TIME_SNAPSHOT already exists for this month (${bundleId}), recovering it.`);
+        try {
+          const listResp = await axios.get(`${this.BASE}/apps/${ascAppId}/analyticsReportRequests`, {
+            headers,
+            params: { "filter[accessType]": "ONE_TIME_SNAPSHOT", limit: 10 },
+          });
+
+          this.logRateLimit(listResp.headers);
+          const existingSnap = (listResp.data?.data ?? []).find(
+            (r: any) => r.attributes?.accessType === "ONE_TIME_SNAPSHOT",
+          );
+
+          if (existingSnap?.id) {
+            resolvedSnapshotId = existingSnap.id as string;
+            snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
+            logger.info(`Existing ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows for ${bundleId}.`);
+          }
+        } catch (snapListErr: any) {
+          logger.warn(`Could not process existing snapshot: ${snapListErr?.message ?? snapListErr}`);
+        }
+      } else {
+        logger.info(
+          `ONE_TIME_SNAPSHOT request failed (non-fatal): ${err?.response?.data ? JSON.stringify(err.response.data) : (err?.message ?? err)}`,
+        );
+      }
+    }
+
+    return { snapshotRequestId: resolvedSnapshotId, rows: snapshotRows };
+  }
+
   async fetchEngagementReport(
     ascAppId: string,
     bundleId: string,
@@ -1105,6 +1210,7 @@ export class AscAnalyticsService {
     snapshotRequestId: string | null,
     daysBack = 60,
     daysBackByKind?: Partial<Record<ReportKind, number>>,
+    needsSnapshotBackfill = false,
   ): Promise<{
     rows: number;
     requestId: string | null;
@@ -1166,69 +1272,12 @@ export class AscAnalyticsService {
         }
       }
 
-      let snapshotRows = 0;
-      let resolvedSnapshotId: string | null = null;
-
-      try {
-        const snapResp = await axios.post(
-          `${this.BASE}/analyticsReportRequests`,
-          {
-            data: {
-              type: "analyticsReportRequests",
-              attributes: { accessType: "ONE_TIME_SNAPSHOT" },
-              relationships: {
-                app: { data: { type: "apps", id: ascAppId } },
-              },
-            },
-          },
-          { headers },
-        );
-
-        this.logRateLimit(snapResp.headers);
-        resolvedSnapshotId = snapResp.data?.data?.id ?? null;
-
-        if (resolvedSnapshotId) {
-          logger.info(
-            `Created ONE_TIME_SNAPSHOT request ${resolvedSnapshotId} for ${bundleId} – processing historical data now.`,
-          );
-
-          snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
-          logger.info(`ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows stored for ${bundleId}.`);
-        }
-      } catch (err: any) {
-        const status = err?.response?.status;
-        if (status === 409) {
-          logger.info(`ONE_TIME_SNAPSHOT already exists for this month (${bundleId}), recovering it.`);
-          try {
-            const listResp = await axios.get(`${this.BASE}/apps/${ascAppId}/analyticsReportRequests`, {
-              headers,
-              params: { "filter[accessType]": "ONE_TIME_SNAPSHOT", limit: 10 },
-            });
-
-            this.logRateLimit(listResp.headers);
-            const existingSnap = (listResp.data?.data ?? []).find(
-              (r: any) => r.attributes?.accessType === "ONE_TIME_SNAPSHOT",
-            );
-
-            if (existingSnap?.id) {
-              resolvedSnapshotId = existingSnap.id as string;
-              snapshotRows = await this.processAnalyticsRequest(bundleId, resolvedSnapshotId, daysBack, daysBackByKind);
-              logger.info(`Existing ONE_TIME_SNAPSHOT processed: ${snapshotRows} rows for ${bundleId}.`);
-            }
-          } catch (snapListErr: any) {
-            logger.warn(`Could not process existing snapshot: ${snapListErr?.message ?? snapListErr}`);
-          }
-        } else {
-          logger.info(
-            `ONE_TIME_SNAPSHOT request failed (non-fatal): ${err?.response?.data ? JSON.stringify(err.response.data) : (err?.message ?? err)}`,
-          );
-        }
-      }
+      const snap = await this.createAndProcessSnapshot(ascAppId, bundleId, daysBack, daysBackByKind);
 
       return {
-        rows: snapshotRows,
+        rows: snap.rows,
         requestId,
-        snapshotRequestId: resolvedSnapshotId,
+        snapshotRequestId: snap.snapshotRequestId,
       };
     }
 
@@ -1240,6 +1289,15 @@ export class AscAnalyticsService {
       if (snapRows > 0) {
         logger.info(`ONE_TIME_SNAPSHOT catch-up: ${snapRows} rows for ${bundleId} (snapshot: ${snapshotRequestId})`);
       }
+    } else if (needsSnapshotBackfill) {
+      // The ONGOING request predates report kinds that now need historical
+      // backfill (e.g. campaign-token downloads/purchases added after this
+      // app's analytics request already existed) and no snapshot was ever
+      // taken for them. Request one now instead of only growing forward.
+      logger.info(`No ONE_TIME_SNAPSHOT on file for ${bundleId} yet a backfill is needed — requesting one now.`);
+      const snap = await this.createAndProcessSnapshot(ascAppId, bundleId, daysBack, daysBackByKind);
+      storedRows += snap.rows;
+      snapshotRequestId = snap.snapshotRequestId;
     }
 
     logger.info(`Engagement report: stored ${storedRows} rows for ${bundleId} (ongoing: ${requestId})`);
@@ -1361,12 +1419,11 @@ export class AscAnalyticsService {
           > = {};
           if (installDeletionCount === 0) overrides.installDeletion = 365;
           if (sessionCohortCount === 0) overrides.usage = 365;
-          if (
-            needsCampaignBackfill({
-              mappingCount,
-              oldestReportDate: oldestCampaignRow?.reportDate ?? null,
-            })
-          ) {
+          const campaignBackfillNeeded = needsCampaignBackfill({
+            mappingCount,
+            oldestReportDate: oldestCampaignRow?.reportDate ?? null,
+          });
+          if (campaignBackfillNeeded) {
             overrides.downloadsDetailed = 365;
             overrides.purchasesDetailed = 365;
             logger.info(`Campaign metrics backfill scheduled for ${bundleId} (365 days).`);
@@ -1380,6 +1437,7 @@ export class AscAnalyticsService {
             currentSnapshotId,
             engagementDaysBack,
             daysBackByKind,
+            campaignBackfillNeeded,
           );
           engagementRows = result.rows;
 
