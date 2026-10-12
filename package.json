@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "dev": "concurrently \"tsx watch src/web/server.ts\" \"tsx watch src/web/admin-server.ts\" \"cd web && npx vite\" \"cd admin && npx vite\"",
     "start": "NODE_OPTIONS='--max-old-space-size=9216 --heapsnapshot-near-heap-limit=1' tsx src/web/server.ts",
     "start:admin": "NODE_OPTIONS='--max-old-space-size=1536' tsx src/web/admin-server.ts",

@@ -11,6 +11,7 @@ import { actionsRouter } from "./api/actions";
 import { authRouter } from "./api/auth";
 import { settingsRouter } from "./api/settings";
 import { ascRouter } from "./api/asc";
+import { productPagesRouter } from "./api/product-pages";
 import { analyticsRouter } from "./api/analytics";
 import { bossRouter } from "./api/boss";
 import { bossScheduler } from "../jobs/boss";
@@ -88,7 +89,8 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), asyn
   }
 });
 
-app.use(express.json());
+// Raised for base64 screenshot uploads (custom product pages, review screenshots).
+app.use(express.json({ limit: "25mb" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api/dashboard", requireAuth, demoGuard, loadTeamRole, dashboardRouter);
@@ -99,6 +101,7 @@ app.use("/api/actions", requireAuth, demoGuard, loadTeamRole, requireWriteRole, 
 app.use("/api/settings", requireAuth, demoGuard, loadTeamRole, settingsRouter);
 app.use("/api/activity", requireAuth, demoGuard, loadTeamRole, activityRouter);
 app.use("/api/asc", requireAuth, demoGuard, loadTeamRole, requireWriteRole, ascRouter);
+app.use("/api/product-pages", requireAuth, demoGuard, loadTeamRole, requireWriteRole, productPagesRouter);
 app.use("/api/analytics", requireAuth, demoGuard, loadTeamRole, requireWriteRole, analyticsRouter);
 app.use("/api/boss", requireAuth, demoGuard, loadTeamRole, requireWriteRole, bossRouter);
 app.use("/api/submissions", requireAuth, demoGuard, loadTeamRole, requireWriteRole, submissionsRouter);

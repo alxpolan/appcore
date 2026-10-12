@@ -2,6 +2,18 @@ import axios, { AxiosInstance } from "./utils/http";
 import { logger, env } from "../config";
 import { prisma } from "../config/database";
 import { generateASCToken } from "./utils/asc-token";
+import {
+  buildCreateLocalizationBody,
+  buildCreatePageBody,
+  buildCreateScreenshotSetBody,
+  buildCreateVersionBody,
+  buildReviewSubmissionBody,
+  buildReviewSubmissionItemBody,
+  buildSubmitReviewSubmissionBody,
+  buildUpdateLocalizationBody,
+  buildUpdatePageBody,
+  buildUpdateVersionBody,
+} from "./utils/custom-product-pages";
 
 interface ASCAppInfo {
   id: string;
@@ -84,6 +96,32 @@ export interface ASCScreenshotWithAsset {
     sourceFileChecksum?: string;
     imageAsset?: ASCImageAsset | null;
     assetDeliveryState?: { state?: string } | null;
+  };
+}
+
+export interface ASCCustomProductPage {
+  id: string;
+  attributes: {
+    name: string;
+    url?: string;
+    visible?: boolean;
+  };
+}
+
+export interface ASCCustomProductPageVersion {
+  id: string;
+  attributes: {
+    version?: string;
+    state?: string;
+    deepLink?: string;
+  };
+}
+
+export interface ASCCustomProductPageLocalization {
+  id: string;
+  attributes: {
+    locale: string;
+    promotionalText?: string;
   };
 }
 
@@ -823,6 +861,201 @@ export class AppStoreConnectClient {
         });
         return data.data.id;
       }
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Custom Product Pages
+  // ---------------------------------------------------------------------------
+
+  async listCustomProductPages(appId: string): Promise<ASCCustomProductPage[]> {
+    const { data } = await this.client.get(`/apps/${appId}/appCustomProductPages`, {
+      params: { "fields[appCustomProductPages]": "name,url,visible", limit: 200 },
+    });
+    return data.data ?? [];
+  }
+
+  async getCustomProductPage(pageId: string): Promise<ASCCustomProductPage> {
+    const { data } = await this.client.get(`/appCustomProductPages/${pageId}`, {
+      params: { "fields[appCustomProductPages]": "name,url,visible" },
+    });
+    return data.data;
+  }
+
+  async createCustomProductPage(
+    appId: string,
+    name: string,
+    locale: string,
+  ): Promise<ASCCustomProductPage> {
+    try {
+      const { data } = await this.client.post(
+        "/appCustomProductPages",
+        buildCreatePageBody(appId, name, locale),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async updateCustomProductPage(
+    pageId: string,
+    updates: { name?: string; visible?: boolean },
+  ): Promise<ASCCustomProductPage> {
+    try {
+      const { data } = await this.client.patch(
+        `/appCustomProductPages/${pageId}`,
+        buildUpdatePageBody(pageId, updates),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async deleteCustomProductPage(pageId: string): Promise<void> {
+    try {
+      await this.client.delete(`/appCustomProductPages/${pageId}`);
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async listCustomProductPageVersions(pageId: string): Promise<ASCCustomProductPageVersion[]> {
+    const { data } = await this.client.get(`/appCustomProductPages/${pageId}/appCustomProductPageVersions`, {
+      params: { "fields[appCustomProductPageVersions]": "version,state,deepLink", limit: 200 },
+    });
+    return data.data ?? [];
+  }
+
+  async getCustomProductPageVersion(versionId: string): Promise<ASCCustomProductPageVersion> {
+    const { data } = await this.client.get(`/appCustomProductPageVersions/${versionId}`, {
+      params: { "fields[appCustomProductPageVersions]": "version,state,deepLink" },
+    });
+    return data.data;
+  }
+
+  async createCustomProductPageVersion(pageId: string): Promise<ASCCustomProductPageVersion> {
+    try {
+      const { data } = await this.client.post("/appCustomProductPageVersions", buildCreateVersionBody(pageId));
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async updateCustomProductPageVersion(
+    versionId: string,
+    deepLink: string,
+  ): Promise<ASCCustomProductPageVersion> {
+    try {
+      const { data } = await this.client.patch(
+        `/appCustomProductPageVersions/${versionId}`,
+        buildUpdateVersionBody(versionId, deepLink),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async listCustomProductPageLocalizations(versionId: string): Promise<ASCCustomProductPageLocalization[]> {
+    const { data } = await this.client.get(
+      `/appCustomProductPageVersions/${versionId}/appCustomProductPageLocalizations`,
+      { params: { "fields[appCustomProductPageLocalizations]": "locale,promotionalText", limit: 200 } },
+    );
+    return data.data ?? [];
+  }
+
+  async createCustomProductPageLocalization(
+    versionId: string,
+    locale: string,
+  ): Promise<ASCCustomProductPageLocalization> {
+    try {
+      const { data } = await this.client.post(
+        "/appCustomProductPageLocalizations",
+        buildCreateLocalizationBody(versionId, locale),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async updateCustomProductPageLocalization(
+    localizationId: string,
+    promotionalText: string,
+  ): Promise<ASCCustomProductPageLocalization> {
+    try {
+      const { data } = await this.client.patch(
+        `/appCustomProductPageLocalizations/${localizationId}`,
+        buildUpdateLocalizationBody(localizationId, promotionalText),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async deleteCustomProductPageLocalization(localizationId: string): Promise<void> {
+    try {
+      await this.client.delete(`/appCustomProductPageLocalizations/${localizationId}`);
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async listCustomProductPageScreenshotSets(localizationId: string): Promise<ASCScreenshotSet[]> {
+    const { data } = await this.client.get(
+      `/appCustomProductPageLocalizations/${localizationId}/appScreenshotSets`,
+      { params: { "fields[appScreenshotSets]": "screenshotDisplayType" } },
+    );
+    return data.data ?? [];
+  }
+
+  async createCustomProductPageScreenshotSet(
+    localizationId: string,
+    displayType: string,
+  ): Promise<ASCScreenshotSet> {
+    try {
+      const { data } = await this.client.post(
+        "/appScreenshotSets",
+        buildCreateScreenshotSetBody(localizationId, displayType),
+      );
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async deleteScreenshot(screenshotId: string): Promise<void> {
+    try {
+      await this.client.delete(`/appScreenshots/${screenshotId}`);
+    } catch (err: any) {
+      if (err?.response?.status === 404) return;
+      this.throwASCError(err);
+    }
+  }
+
+  async submitCustomProductPageVersionForReview(appId: string, versionId: string): Promise<string> {
+    try {
+      const { data: submissionResp } = await this.client.post(
+        "/reviewSubmissions",
+        buildReviewSubmissionBody(appId),
+      );
+      const submissionId = submissionResp.data.id;
+      await this.client.post(
+        "/reviewSubmissionItems",
+        buildReviewSubmissionItemBody(submissionId, versionId),
+      );
+      await this.client.patch(
+        `/reviewSubmissions/${submissionId}`,
+        buildSubmitReviewSubmissionBody(submissionId),
+      );
+      logger.info(`Submitted custom product page version ${versionId} for App Review`);
+      return submissionId;
     } catch (err: any) {
       this.throwASCError(err);
     }
