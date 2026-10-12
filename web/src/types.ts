@@ -679,6 +679,19 @@ export interface GoogleAdsAppleRevenueResponse {
   days?: GoogleAdsAppleRevenueDay[];
 }
 
+export interface GoogleAdsAppleRevenueCountry {
+  territory: string;
+  downloads: number;
+  purchases: number;
+  trials: number;
+  proceedsUsd: number;
+}
+
+export interface GoogleAdsAppleRevenueCountriesResponse {
+  mapped: boolean;
+  countries: GoogleAdsAppleRevenueCountry[];
+}
+
 export interface GoogleAdsCampaignMapping {
   id: string;
   name: string;

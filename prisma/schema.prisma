@@ -479,13 +479,15 @@ model AppStoreCampaignMetrics {
   bundleId   String
   campaign   String
   reportDate DateTime
+  /** ISO 3166-1 alpha-2 territory from Apple's report, or "ZZ" for rows stored before per-territory tracking. */
+  territory  String   @default("ZZ")
   downloads  Int      @default(0)
   purchases  Int      @default(0)
   trials     Int      @default(0)
   proceedsUsd Float   @default(0)
   createdAt  DateTime @default(now())
 
-  @@unique([bundleId, campaign, reportDate])
+  @@unique([bundleId, campaign, reportDate, territory])
   @@index([bundleId, campaign, reportDate])
 }
 

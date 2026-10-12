@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { apiDelete, apiPatch, useApi } from "../../hooks/useApi";
-import type { AppItem, GoogleAdsAppleRevenueResponse } from "../../types";
+import type { AppItem, GoogleAdsAppleRevenueCountriesResponse, GoogleAdsAppleRevenueResponse } from "../../types";
 import { borderDefault, btnSecSm, inputCls, textMuted, textPrimary } from "../../styles";
-import { fmtNumber } from "../../utils/formatters";
+import { countryName, fmtNumber } from "../../utils/formatters";
 
 function fmtMoney(amount: number): string {
   return new Intl.NumberFormat(undefined, {
@@ -25,6 +25,11 @@ export default function GoogleAdsAppleRevenue({
 }) {
   const { data, loading, error, refetch } = useApi<GoogleAdsAppleRevenueResponse>(
     `/google-ads/campaigns/${campaignId}/apple-revenue${query}`,
+    [campaignId, ...rangeDeps],
+    true,
+  );
+  const { data: countriesData } = useApi<GoogleAdsAppleRevenueCountriesResponse>(
+    `/google-ads/campaigns/${campaignId}/apple-revenue/countries${query}`,
     [campaignId, ...rangeDeps],
     true,
   );
@@ -165,6 +170,36 @@ export default function GoogleAdsAppleRevenue({
             <div className={`text-[11px] ${textMuted} mt-3`}>
               Apple reports campaign data with a delay of a few days; metrics below 5 are withheld for privacy.
             </div>
+            {countriesData?.mapped && countriesData.countries.length > 0 && (
+              <div className="mt-4">
+                <div className={`text-[11px] font-semibold uppercase tracking-wide ${textMuted} mb-2`}>By country</div>
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr>
+                      <th className={`text-left pb-1.5 font-medium ${textMuted}`}>Country</th>
+                      <th className={`text-right pb-1.5 font-medium ${textMuted}`}>Downloads</th>
+                      <th className={`text-right pb-1.5 font-medium ${textMuted}`}>Trials</th>
+                      <th className={`text-right pb-1.5 font-medium ${textMuted}`}>Purchases</th>
+                      <th className={`text-right pb-1.5 font-medium ${textMuted}`}>Proceeds</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {countriesData.countries.map((c) => (
+                      <tr key={c.territory} className="border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
+                        <td className={`py-1.5 ${textPrimary}`}>
+                          {c.territory === "ZZ" ? "Unknown (pre-tracking)" : countryName(c.territory)}{" "}
+                          <span className={textMuted}>{c.territory !== "ZZ" && c.territory}</span>
+                        </td>
+                        <td className={`py-1.5 text-right ${textPrimary}`}>{fmtNumber(c.downloads)}</td>
+                        <td className={`py-1.5 text-right ${textPrimary}`}>{fmtNumber(c.trials)}</td>
+                        <td className={`py-1.5 text-right ${textPrimary}`}>{fmtNumber(c.purchases)}</td>
+                        <td className={`py-1.5 text-right ${textPrimary}`}>{fmtMoney(c.proceedsUsd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {saveError && <div className="mt-2 text-[12px] font-medium text-red-500">{saveError}</div>}
           </div>
         )}

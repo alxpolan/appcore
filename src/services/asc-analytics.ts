@@ -301,49 +301,49 @@ async function storePurchasesSegment(bundleId: string, rows: PurchaseRow[]): Pro
 export interface CampaignMetricsRow {
   dateStr: string;
   campaign: string;
+  /** ISO 3166-1 alpha-2 territory, or "ZZ" when Apple didn't report one. */
+  territory: string;
   downloads: number;
   purchases: number;
   trials: number;
   proceedsUsd: number;
 }
 
-/** Aggregate Detailed downloads rows by (day, campaign token). Prefers
- * first-time downloads; falls back to all counts when no first-time rows exist. */
+/** Aggregate Detailed downloads rows by (day, campaign token, territory).
+ * Only counts rows Apple labels "First-time download" — other Download Types
+ * (Auto-update, Manual update, Redownload, ...) are existing users, not
+ * acquisitions driven by the campaign, and must not be counted as downloads. */
 export function parseCampaignDownloadsSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
-  const byKey = new Map<string, CampaignMetricsRow & { firstTime: number; total: number }>();
+  const byKey = new Map<string, CampaignMetricsRow>();
 
   for (const row of rows) {
     const dateStr = (row["Date"] ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
     const campaign = (row["Campaign"] ?? "").trim();
     if (!campaign) continue;
+    if (!/first/i.test(row["Download Type"] ?? "")) continue;
 
-    const key = `${dateStr}::${campaign}`;
+    const territory = (row["Territory"] ?? "").trim().toUpperCase() || "ZZ";
+    const key = `${dateStr}::${campaign}::${territory}`;
     const counts = parseInt(row["Counts"] ?? "0", 10) || 0;
-    const isFirstTime = /first/i.test(row["Download Type"] ?? "");
     const bucket = byKey.get(key) ?? {
       dateStr,
       campaign,
+      territory,
       downloads: 0,
       purchases: 0,
       trials: 0,
       proceedsUsd: 0,
-      firstTime: 0,
-      total: 0,
     };
-    bucket.total += counts;
-    if (isFirstTime) bucket.firstTime += counts;
+    bucket.downloads += counts;
     byKey.set(key, bucket);
   }
 
-  return [...byKey.values()].map(({ firstTime, total, ...rest }) => ({
-    ...rest,
-    downloads: firstTime > 0 ? firstTime : total,
-  }));
+  return [...byKey.values()];
 }
 
-/** Aggregate Detailed purchases rows by (day, campaign token). Trials are
- * best-effort: purchase rows whose type mentions a trial. */
+/** Aggregate Detailed purchases rows by (day, campaign token, territory).
+ * Trials are best-effort: purchase rows whose type mentions a trial. */
 export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
   const byKey = new Map<string, CampaignMetricsRow>();
   const seenTypes = new Set<string>();
@@ -356,7 +356,8 @@ export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): C
 
     const purchaseType = (row["Purchase Type"] ?? "").trim();
     if (purchaseType) seenTypes.add(purchaseType);
-    const key = `${dateStr}::${campaign}`;
+    const territory = (row["Territory"] ?? "").trim().toUpperCase() || "ZZ";
+    const key = `${dateStr}::${campaign}::${territory}`;
     const purchases = parseInt(row["Purchases"] ?? "0", 10) || 0;
     const proceedsUsd = parseFloat(row["Proceeds in USD"] ?? "0") || 0;
     const trials = /trial/i.test(purchaseType) ? purchases : 0;
@@ -364,6 +365,7 @@ export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): C
     const bucket = byKey.get(key) ?? {
       dateStr,
       campaign,
+      territory,
       downloads: 0,
       purchases: 0,
       trials: 0,
@@ -389,11 +391,11 @@ async function storeCampaignMetricsSegment(
   await Promise.all(
     rows.map((r) => {
       const reportDate = new Date(r.dateStr);
-      const dims = { bundleId, campaign: r.campaign, reportDate };
+      const dims = { bundleId, campaign: r.campaign, reportDate, territory: r.territory };
       const metrics = Object.fromEntries(fields.map((f) => [f, r[f]]));
 
       return prisma.appStoreCampaignMetrics.upsert({
-        where: { bundleId_campaign_reportDate: dims },
+        where: { bundleId_campaign_reportDate_territory: dims },
         create: { ...dims, downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0, ...metrics },
         update: metrics,
       });
