@@ -7,6 +7,7 @@ import { fmtRelativeDateTime } from "../utils/formatters";
 import type { AppleAdsOrgsResponse, AppleAdsStatus, DashboardData, GoogleAdsStatus, RevenueCatStatus } from "../types";
 import AppleAdsConnectModal from "./integrations/AppleAdsConnectModal";
 import GoogleAdsConnectModal from "./integrations/GoogleAdsConnectModal";
+import GoogleAdsCampaignMapping from "./integrations/GoogleAdsCampaignMapping";
 import RevenueCatConnectModal from "./integrations/RevenueCatConnectModal";
 
 interface Props {
@@ -285,6 +286,8 @@ export default function Integrations({ addToast }: Props) {
           </div>
         ))}
       </div>
+
+      {googleAds?.connected && <GoogleAdsCampaignMapping addToast={addToast} />}
 
       {showAppleAdsModal && (
         <AppleAdsConnectModal

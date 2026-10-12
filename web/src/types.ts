@@ -594,12 +594,20 @@ export interface GoogleAdsStats {
   conversionRate: number | null;
 }
 
+export interface GoogleAdsCampaignAppleTotals {
+  downloads: number;
+  trials: number;
+  purchases: number;
+  proceedsUsd: number;
+}
+
 export interface GoogleAdsCampaign extends GoogleAdsStats {
   id: string;
   name: string;
   status: string;
   dailyBudget: number | null;
   currency: string | null;
+  apple?: GoogleAdsCampaignAppleTotals | null;
 }
 
 export interface GoogleAdsKeyword extends GoogleAdsStats {
@@ -669,6 +677,17 @@ export interface GoogleAdsAppleRevenueResponse {
   ctToken?: string;
   totals?: { downloads: number; purchases: number; trials: number; proceedsUsd: number };
   days?: GoogleAdsAppleRevenueDay[];
+}
+
+export interface GoogleAdsCampaignMapping {
+  id: string;
+  name: string;
+  status: string;
+  mapping: { appId: string; appName: string; ctToken: string } | null;
+}
+
+export interface GoogleAdsCampaignMappingsResponse {
+  campaigns: GoogleAdsCampaignMapping[];
 }
 
 export interface GitHubRepo {

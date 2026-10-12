@@ -10,6 +10,12 @@ import {
   verifyGoogleAdsOAuthState,
 } from "../../services/google-ads-oauth";
 import { encrypt, decryptNullable } from "../../config/encryption";
+import {
+  aggregateAppleMetricsByCampaign,
+  attachCampaignMappings,
+  filterCampaignsByApp,
+  type AppleMetricsKey,
+} from "../../services/utils/google-ads-mapping";
 import { logActivity } from "../../services/activity-log";
 import {
   addGoogleAdsNegativeKeywords,
@@ -84,11 +90,88 @@ googleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
   }
 
   try {
-    const campaigns = await listGoogleAdsCampaigns(googleAdsCreds(s), resolveGoogleAdsRange(req.query));
-    res.json({ campaigns });
+    const range = resolveGoogleAdsRange(req.query);
+    const campaigns = await listGoogleAdsCampaigns(googleAdsCreds(s), range);
+    const appId = typeof req.query.appId === "string" && req.query.appId ? req.query.appId : undefined;
+    const stored = await prisma.googleAdsCampaignToken.findMany({
+      where: { teamId: req.user!.teamId!, ...(appId ? { appId } : {}) },
+      include: { app: { select: { bundleId: true } } },
+    });
+    const visible = appId
+      ? filterCampaignsByApp(campaigns, stored.map((m) => m.googleCampaignId))
+      : campaigns;
+    const visibleIds = new Set(visible.map((c) => c.id));
+    const appleKeys: AppleMetricsKey[] = [];
+    for (const m of stored) {
+      if (!visibleIds.has(m.googleCampaignId)) continue;
+      if (
+        req.user!.role !== "ADMIN" &&
+        !(await memberAllowedApp(req.user!.userId, req.user!.teamId!, m.appId))
+      ) {
+        continue;
+      }
+      appleKeys.push({ googleCampaignId: m.googleCampaignId, bundleId: m.app.bundleId, ctToken: m.ctToken });
+    }
+    const end = new Date(`${range.endDate}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    const rows = appleKeys.length
+      ? await prisma.appStoreCampaignMetrics.findMany({
+          where: {
+            OR: appleKeys.map((k) => ({ bundleId: k.bundleId, campaign: k.ctToken })),
+            reportDate: { gte: new Date(`${range.startDate}T00:00:00Z`), lt: end },
+          },
+          select: {
+            bundleId: true,
+            campaign: true,
+            downloads: true,
+            trials: true,
+            purchases: true,
+            proceedsUsd: true,
+          },
+        })
+      : [];
+    const appleByCampaign = aggregateAppleMetricsByCampaign(rows, appleKeys);
+    res.json({ campaigns: visible.map((c) => ({ ...c, apple: appleByCampaign.get(c.id) ?? null })) });
   } catch (err: any) {
     logger.error("[google-ads] campaigns fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "campaign list") });
+  }
+});
+
+googleAdsRouter.get("/campaign-mappings", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (googleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Google Ads is not connected" });
+    return;
+  }
+
+  try {
+    const [campaigns, stored] = await Promise.all([
+      listGoogleAdsCampaigns(googleAdsCreds(s)),
+      prisma.googleAdsCampaignToken.findMany({
+        where: { teamId: req.user!.teamId! },
+        include: { app: { select: { id: true, displayName: true, name: true } } },
+      }),
+    ]);
+    const mappings: Array<{ googleCampaignId: string; appId: string; appName: string; ctToken: string }> = [];
+    for (const m of stored) {
+      if (
+        req.user!.role !== "ADMIN" &&
+        !(await memberAllowedApp(req.user!.userId, req.user!.teamId!, m.appId))
+      ) {
+        continue;
+      }
+      mappings.push({
+        googleCampaignId: m.googleCampaignId,
+        appId: m.appId,
+        appName: m.app.displayName ?? m.app.name,
+        ctToken: m.ctToken,
+      });
+    }
+    res.json({ campaigns: attachCampaignMappings(campaigns, mappings) });
+  } catch (err: any) {
+    logger.error("[google-ads] campaign mappings fetch error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: googleAdsErrorMessage(err, "campaign mappings") });
   }
 });
 

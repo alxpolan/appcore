@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Megaphone, ArrowRight, Check, ExternalLink, Pause, Plus, X } from "lucide-react";
-import { useApi } from "../../hooks/useApi";
+import { getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { GoogleAdsCampaign, GoogleAdsStatus } from "../../types";
+import type { AppItem, GoogleAdsCampaign, GoogleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
@@ -47,20 +47,28 @@ export default function AnalyticsGoogleAds() {
   const { canManageTeam } = usePermissions();
   const [showCreate, setShowCreate] = useState(false);
   const { data: status } = useApi<GoogleAdsStatus>("/google-ads/status", [], true);
+  const { data: apps } = useApi<AppItem[]>("/apps?ownOnly=true", [], true);
+  const activeBundleId = getActiveBundleId();
+  const activeAppId =
+    apps?.find((a) => a.bundleId === activeBundleId)?.id ?? apps?.[0]?.id ?? null;
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const query = useMemo(
-    () => rangeToParams(range, customStart, customEnd).replace(/^&/, "?"),
-    [range, customStart, customEnd],
-  );
+  const query = useMemo(() => {
+    const base = rangeToParams(range, customStart, customEnd).replace(/^&/, "?");
+    return activeAppId ? `${base}&appId=${activeAppId}` : base;
+  }, [range, customStart, customEnd, activeAppId]);
   const rangeDeps = [range, customStart, customEnd];
   const {
     data: campaignsData,
     loading,
     error,
     refetch: refetchCampaigns,
-  } = useApi<{ campaigns: GoogleAdsCampaign[] }>(`/google-ads/campaigns${query}`, [status?.connected, ...rangeDeps], false);
+  } = useApi<{ campaigns: GoogleAdsCampaign[] }>(
+    `/google-ads/campaigns${query}`,
+    [status?.connected, activeAppId, ...rangeDeps],
+    false,
+  );
 
   const campaigns = campaignsData?.campaigns ?? [];
   const totals = campaigns.reduce(
@@ -68,9 +76,9 @@ export default function AnalyticsGoogleAds() {
       spend: acc.spend + c.spend,
       impressions: acc.impressions + c.impressions,
       clicks: acc.clicks + c.clicks,
-      conversions: acc.conversions + c.conversions,
+      proceeds: acc.proceeds + (c.apple?.proceedsUsd ?? 0),
     }),
-    { spend: 0, impressions: 0, clicks: 0, conversions: 0 },
+    { spend: 0, impressions: 0, clicks: 0, proceeds: 0 },
   );
   const currency = campaigns.find((c) => c.currency)?.currency ?? "USD";
 
@@ -143,7 +151,7 @@ export default function AnalyticsGoogleAds() {
               { label: "Spend", value: fmtMoney(totals.spend, currency) },
               { label: "Impressions", value: fmtNumber(totals.impressions) },
               { label: "Clicks", value: fmtNumber(totals.clicks) },
-              { label: "Conversions", value: fmtNumber(totals.conversions) },
+              { label: "Proceeds (Apple)", value: fmtMoney(totals.proceeds, "USD") },
             ].map((s) => (
               <div
                 key={s.label}
@@ -172,10 +180,22 @@ export default function AnalyticsGoogleAds() {
             ) : error ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>{error}</div>
             ) : campaigns.length === 0 ? (
-              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No campaigns found</div>
+              <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+                {activeAppId ? (
+                  <>
+                    No campaigns assigned to this app yet. Assign them in{" "}
+                    <Link to="/integrations" className="font-medium text-[#595DD2] hover:underline">
+                      Integrations
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  "No campaigns found"
+                )}
+              </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
+                <table className="w-full min-w-[1400px]">
                   <thead>
                     <tr>
                       <th className={TH}>Campaign</th>
@@ -183,8 +203,19 @@ export default function AnalyticsGoogleAds() {
                       <th className={`${TH} text-right`}>Spend</th>
                       <th className={`${TH} text-right`}>Impressions</th>
                       <th className={`${TH} text-right`}>Clicks</th>
-                      <th className={`${TH} text-right`}>Conversions</th>
                       <th className={`${TH} text-right`}>Avg CPC</th>
+                      <th className={`${TH} text-right`} title="Spend per Apple download">
+                        CPA
+                      </th>
+                      <th className={`${TH} text-right`} title="Apple trial starts attributed to the campaign token">
+                        Trials
+                      </th>
+                      <th className={`${TH} text-right`} title="Apple purchases attributed to the campaign token">
+                        Purchases
+                      </th>
+                      <th className={`${TH} text-right`} title="Apple proceeds attributed to the campaign token">
+                        Proceeds
+                      </th>
                       <th className={`${TH} pr-5`}></th>
                     </tr>
                   </thead>
@@ -209,9 +240,22 @@ export default function AnalyticsGoogleAds() {
                         </td>
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.impressions)}</td>
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.clicks)}</td>
-                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.conversions)}</td>
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                           {c.avgCpc != null ? fmtMoney(c.avgCpc, c.currency) : "—"}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                          {c.apple && c.apple.downloads > 0
+                            ? fmtMoney(c.spend / c.apple.downloads, c.currency)
+                            : "—"}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                          {c.apple ? fmtNumber(c.apple.trials) : "—"}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                          {c.apple ? fmtNumber(c.apple.purchases) : "—"}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                          {c.apple ? fmtMoney(c.apple.proceedsUsd, "USD") : "—"}
                         </td>
                         <td className={`${TD} text-right pr-5`}>
                           <button
@@ -228,6 +272,18 @@ export default function AnalyticsGoogleAds() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {!loading && !error && campaigns.length > 0 && (
+              <div
+                className={`px-5 py-3 border-t border-[#f3f4f6] dark:border-[#2a2f3d] text-[11px] ${textMuted}`}
+              >
+                CPA, Trials, Purchases and Proceeds come from Apple campaign attribution. Assign the
+                campaign token in{" "}
+                <Link to="/integrations" className="font-medium text-[#595DD2] hover:underline">
+                  Integrations
+                </Link>
+                .
               </div>
             )}
           </div>
