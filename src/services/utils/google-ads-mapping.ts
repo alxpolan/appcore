@@ -65,6 +65,25 @@ export function aggregateAppleMetricsByCampaign(
   return totals;
 }
 
+/**
+ * Whether an app's campaign metrics need a one-off history backfill.
+ * Incremental sync only covers a few days, so apps that already have mappings
+ * but no (or only shallow) campaign history would otherwise never show past
+ * campaign performance. Apps without mappings never need one.
+ */
+export function needsCampaignBackfill(args: {
+  mappingCount: number;
+  oldestReportDate: Date | null;
+  now?: Date;
+  minHistoryDays?: number;
+}): boolean {
+  if (args.mappingCount === 0) return false;
+  if (!args.oldestReportDate) return true;
+  const now = args.now ?? new Date();
+  const historyDays = (now.getTime() - args.oldestReportDate.getTime()) / 86_400_000;
+  return historyDays < (args.minHistoryDays ?? 60);
+}
+
 /** Attaches stored mappings to Google campaigns by campaign id; unmapped campaigns get null. */
 export function attachCampaignMappings(
   campaigns: Array<{ id: string; name: string; status: string }>,

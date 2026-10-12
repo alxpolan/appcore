@@ -3,6 +3,7 @@ import axios from "./utils/http";
 import { prisma, logger } from "../config";
 import type { EffectiveSettings } from "../config/userSettings";
 import { generateASCToken } from "./utils/asc-token";
+import { needsCampaignBackfill } from "./utils/google-ads-mapping";
 import { AppStoreConnectClient } from "./appstore-connect";
 import { fetchSubscriptionPrices } from "./asc-subscription-prices";
 import { ALPHA2_TO_ALPHA3 } from "./utils/territory-codes";
@@ -1345,13 +1346,31 @@ export class AscAnalyticsService {
 
           // Newly tracked reports need a one-off backfill even on incremental
           // syncs, where daysBack would only cover the last few days.
-          const [installDeletionCount, sessionCohortCount] = await Promise.all([
+          const [installDeletionCount, sessionCohortCount, mappingCount, oldestCampaignRow] = await Promise.all([
             prisma.appStoreInstallDeletion.count({ where: { bundleId } }),
             prisma.appStoreSessionCohort.count({ where: { bundleId } }),
+            prisma.googleAdsCampaignToken.count({ where: { app: { bundleId } } }),
+            prisma.appStoreCampaignMetrics.findFirst({
+              where: { bundleId },
+              orderBy: { reportDate: "asc" },
+              select: { reportDate: true },
+            }),
           ]);
-          const overrides: Partial<Record<"installDeletion" | "usage", number>> = {};
+          const overrides: Partial<
+            Record<"installDeletion" | "usage" | "downloadsDetailed" | "purchasesDetailed", number>
+          > = {};
           if (installDeletionCount === 0) overrides.installDeletion = 365;
           if (sessionCohortCount === 0) overrides.usage = 365;
+          if (
+            needsCampaignBackfill({
+              mappingCount,
+              oldestReportDate: oldestCampaignRow?.reportDate ?? null,
+            })
+          ) {
+            overrides.downloadsDetailed = 365;
+            overrides.purchasesDetailed = 365;
+            logger.info(`Campaign metrics backfill scheduled for ${bundleId} (365 days).`);
+          }
           const daysBackByKind = Object.keys(overrides).length > 0 ? overrides : undefined;
 
           const result = await this.fetchEngagementReport(

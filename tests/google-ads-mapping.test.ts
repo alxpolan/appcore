@@ -4,6 +4,7 @@ import {
   aggregateAppleMetricsByCampaign,
   attachCampaignMappings,
   filterCampaignsByApp,
+  needsCampaignBackfill,
 } from "../src/services/utils/google-ads-mapping";
 
 describe("google ads: campaign mappings", () => {
@@ -119,3 +120,30 @@ describe("google ads: aggregate apple metrics by campaign", () => {
   });
 });
 
+describe("google ads: campaign backfill trigger", () => {
+  const now = new Date("2026-10-12T00:00:00Z");
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000);
+
+  it("never backfills without mappings", () => {
+    assert.equal(needsCampaignBackfill({ mappingCount: 0, oldestReportDate: null, now }), false);
+    assert.equal(
+      needsCampaignBackfill({ mappingCount: 0, oldestReportDate: daysAgo(5), now }),
+      false,
+    );
+  });
+
+  it("backfills when mappings exist but no rows do", () => {
+    assert.equal(needsCampaignBackfill({ mappingCount: 2, oldestReportDate: null, now }), true);
+  });
+
+  it("backfills shallow history and stops once history is deep", () => {
+    assert.equal(
+      needsCampaignBackfill({ mappingCount: 1, oldestReportDate: daysAgo(3), now }),
+      true,
+    );
+    assert.equal(
+      needsCampaignBackfill({ mappingCount: 1, oldestReportDate: daysAgo(200), now }),
+      false,
+    );
+  });
+});
