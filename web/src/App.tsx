@@ -125,7 +125,6 @@ const railLinks: SidebarLink[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/analytics", label: "Analytics", icon: BarChart2 },
   { to: "/analytics/ads", label: "Ads", icon: Megaphone },
-  { to: "/analytics/google-ads", label: "Google Ads", icon: Megaphone },
   { to: "/keywords", label: "Keywords", icon: Search },
   { to: "/competitors", label: "Competitors", icon: Users },
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
@@ -640,6 +639,68 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
               key={link.to}
               to={link.to}
               end={link.end}
+              className={({ isActive }) =>
+                `flex items-center px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
+                  isActive
+                    ? "bg-white text-[#1a1a2e] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.06)] dark:bg-[#1f242e] dark:text-[#e8eaf0] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
+                    : "text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0]"
+                }`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive: boolean }) => string }) {
+  const [expanded, setExpanded] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isAnyAdsActive =
+    location.pathname.startsWith("/analytics/ads") || location.pathname.startsWith("/analytics/google-ads");
+
+  useEffect(() => {
+    if (isAnyAdsActive) setExpanded(true);
+  }, []);
+
+  const subLinks = [
+    { to: "/analytics/ads", label: "Apple Ads" },
+    { to: "/analytics/google-ads", label: "Google Ads" },
+  ];
+
+  const handleHeaderClick = () => {
+    if (isAnyAdsActive) {
+      setExpanded((v) => !v);
+    } else {
+      setExpanded(true);
+      navigate(subLinks[0].to);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-0.5">
+        <button
+          onClick={handleHeaderClick}
+          className="flex-1 flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-sm font-medium transition-all [&_svg]:w-[18px] [&_svg]:h-[18px] text-[#1f2937] dark:text-[#dfe3ec] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#1a1a2e] dark:hover:text-[#e8eaf0] [&>svg:first-child]:opacity-60"
+        >
+          <Megaphone />
+          <span className="flex-1 text-left">Ads</span>
+          <ChevronDown
+            className={`!w-3.5 !h-3.5 shrink-0 text-[#111827] dark:text-[#f5f7fb] transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
+        </button>
+      </div>
+      {expanded && (
+        <div className="ml-3 pl-3 border-l border-[#e5e7eb] dark:border-[#2a2f3d] mb-1 flex flex-col gap-0.5">
+          {subLinks.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
               className={({ isActive }) =>
                 `flex items-center px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-all ${
                   isActive
@@ -1414,14 +1475,7 @@ export default function App() {
                     </NavLink>
                   ))}
                   <AnalyticsSidebarSection navLinkClass={navLinkClass} />
-                  <NavLink to="/analytics/ads" className={navLinkClass}>
-                    <Megaphone />
-                    Ads
-                  </NavLink>
-                  <NavLink to="/analytics/google-ads" className={navLinkClass}>
-                    <Megaphone />
-                    Google Ads
-                  </NavLink>
+                  <AdsSidebarSection navLinkClass={navLinkClass} />
                   {sidebarLinks
                     .slice(1)
                     .filter((link) => link.to !== "/suggestions" || user.isFringeloTeam)
