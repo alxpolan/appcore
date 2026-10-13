@@ -605,6 +605,18 @@ keywordsRouter.put("/:id/group", bundleAccess("body", "bundleId"), async (req, r
   }
 });
 
+keywordsRouter.delete("/", bundleAccess("query", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const result = await prisma.keyword.deleteMany({
+      where: { rankings: { some: { appId: ownApp.id } } },
+    });
+    res.json({ ok: true, removedCount: result.count });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 keywordsRouter.delete("/:id", async (req, res) => {
   try {
     if (req.user!.role !== "ADMIN") {

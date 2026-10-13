@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { borderDefault, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { FolderPlus, LayoutGrid, List, Lock, MoreHorizontal, Plus, Search, Target, Upload } from "lucide-react";
+import { FolderPlus, LayoutGrid, List, Lock, MoreHorizontal, Plus, Search, Target, Trash2, Upload } from "lucide-react";
 import {
   useApi,
   apiGet,
@@ -317,6 +317,23 @@ export default function Keywords({ addToast, isPro }: Props) {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!canWrite) {
+      addToast("Viewer role cannot perform this action", "error");
+      return;
+    }
+    if (items.length === 0) return;
+    if (!window.confirm(`Delete all ${items.length} tracked keywords for this app? This cannot be undone.`)) return;
+    try {
+      await apiDelete(`/keywords?bundleId=${encodeURIComponent(getActiveBundleId() ?? "")}`);
+      posthog?.capture("keywords_bulk_deleted", { count: items.length });
+      addToast("All keywords removed", "info");
+      refetch();
+    } catch (e: any) {
+      addToast(e.message, "error");
+    }
+  };
+
   const toggleCollapse = (id: string) =>
     setCollapsed((s) => {
       const n = new Set(s);
@@ -505,6 +522,19 @@ export default function Keywords({ addToast, isPro }: Props) {
               >
                 <Target className={`w-3.5 h-3.5 ${textSecondary}`} />
                 {running === "track-keywords" ? "Tracking…" : "Track Rankings"}
+              </button>
+              <div className={`my-1 border-t ${borderDefault}`} />
+              <button
+                onClick={() => {
+                  setMoreOpen(false);
+                  handleDeleteAll();
+                }}
+                disabled={!canWrite || items.length === 0}
+                title={writeTip}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className={`w-3.5 h-3.5`} />
+                Delete all keywords
               </button>
             </div>
           )}
