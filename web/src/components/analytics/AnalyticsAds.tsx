@@ -35,7 +35,9 @@ import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, tex
 import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
+import AppleAdsOverviewChart from "./AppleAdsOverviewChart";
 import { StatCard } from "../StatCard";
+import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 
 function fmtMoney(amount: number, currency: string | null): string {
   return new Intl.NumberFormat(undefined, {
@@ -186,7 +188,7 @@ export default function AnalyticsAds({ addToast }: Props) {
     [status?.connected, bundleId, ...rangeDeps],
     false,
   );
-  const { data: dailyData } = useApi<AppleAdsDailyStatsResponse>(
+  const { data: dailyData, loading: dailyLoading } = useApi<AppleAdsDailyStatsResponse>(
     `/apple-ads/daily${query}`,
     [status?.connected, bundleId, ...rangeDeps],
     false,
@@ -457,7 +459,6 @@ export default function AnalyticsAds({ addToast }: Props) {
       {expandedCampaign === c.id && (
         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
           <td colSpan={9} className="px-5 py-4">
-            <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>RevenueCat transactions</div>
             {revenueLoading ? (
               <div className={`text-[12px] ${textMuted}`}>Loading…</div>
             ) : revenueError ? (
@@ -472,8 +473,9 @@ export default function AnalyticsAds({ addToast }: Props) {
                       <th className={TH}>Date</th>
                       <th className={TH}>App</th>
                       <th className={TH}>Product</th>
-                      <th className={TH}>Event</th>
-                      <th className={`${TH} text-right`}>Proceeds (USD)</th>
+                      <th className={TH}>Type</th>
+                      <th className={TH}>Country</th>
+                      <th className={`${TH} text-right`}>Proceeds</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -481,8 +483,31 @@ export default function AnalyticsAds({ addToast }: Props) {
                       <tr key={transaction.id}>
                         <td className={TD}>{transaction.date.slice(0, 10)}</td>
                         <td className={TD}>{transaction.app}</td>
-                        <td className={TD}>{transaction.product}</td>
-                        <td className={TD}>{transaction.eventType.replace(/_/g, " ")}</td>
+                        <td className={TD}>
+                          <span className={`font-medium ${textPrimary}`} title={transaction.product}>
+                            {prettyProductName(transaction.product)}
+                          </span>
+                        </td>
+                        <td className={TD}>
+                          <TransactionTypeBadge type={adsTransactionType(transaction)} />
+                        </td>
+                        <td className={TD}>
+                          {transaction.country ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <img
+                                src={`/country-flags/${transaction.country.toLowerCase()}.svg`}
+                                alt={transaction.country}
+                                className="w-4 h-3 rounded-xs object-cover shrink-0"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                              {transaction.country}
+                            </span>
+                          ) : (
+                            <span className={textMuted}>—</span>
+                          )}
+                        </td>
                         <td className={`${TD} text-right tabular-nums`}>{fmtMoney(transaction.proceedsUsd, "USD")}</td>
                       </tr>
                     ))}
@@ -722,8 +747,16 @@ export default function AnalyticsAds({ addToast }: Props) {
             />
           </div>
 
+          <AppleAdsOverviewChart
+            days={days}
+            startDate={dailyData?.startDate}
+            endDate={dailyData?.endDate}
+            currency={currency}
+            loading={dailyLoading}
+          />
+
           <div
-            className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
+            className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] [&_td]:text-[14px] [&_th]:text-[13px]`}
           >
             <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
               <Megaphone className={`w-4 h-4 ${textMuted}`} />

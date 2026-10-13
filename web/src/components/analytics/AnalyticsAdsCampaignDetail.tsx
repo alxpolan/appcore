@@ -19,6 +19,7 @@ import {
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
 import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
+import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -80,13 +81,31 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatCells({ stats, currency }: { stats: AppleAdsStats; currency: string | null }) {
+function ttrTrafficColor(ttr: number | null): string | undefined {
+  if (ttr == null) return undefined;
+  const pct = ttr * 100;
+  return pct < 8 ? "#ef4444" : pct < 15 ? "#f59e0b" : "#10b981";
+}
+
+function StatCells({
+  stats,
+  currency,
+  ttrTrafficLight,
+}: {
+  stats: AppleAdsStats;
+  currency: string | null;
+  ttrTrafficLight?: boolean;
+}) {
+  const ttrColor = ttrTrafficLight ? ttrTrafficColor(stats.ttr) : undefined;
   return (
     <>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(stats.spend, currency)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.impressions)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.taps)}</td>
-      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+      <td
+        className={`${TD} text-right tabular-nums ${ttrColor ? "font-semibold" : textMuted}`}
+        style={ttrColor ? { color: ttrColor } : undefined}
+      >
         {stats.ttr != null ? fmtPct(stats.ttr * 100) : "—"}
       </td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.installs)}</td>
@@ -681,7 +700,11 @@ export default function AnalyticsAdsCampaignDetail() {
                                             <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                                               {fmtMoney(k.bidAmount, k.currency ?? g.currency ?? currency)}
                                             </td>
-                                            <StatCells stats={k} currency={k.currency ?? g.currency ?? currency} />
+                                            <StatCells
+                                              stats={k}
+                                              currency={k.currency ?? g.currency ?? currency}
+                                              ttrTrafficLight
+                                            />
                                             <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                                               {revenueLoading ? "…" : revenueError ? "—" : fmtNumber(kwRevenue?.transactions.length ?? 0)}
                                             </td>
@@ -715,9 +738,9 @@ export default function AnalyticsAdsCampaignDetail() {
                                                           <th className={TH}>Date</th>
                                                           <th className={TH}>App</th>
                                                           <th className={TH}>Product</th>
-                                                          <th className={TH}>Event</th>
+                                                          <th className={TH}>Type</th>
                                                           <th className={TH}>Country</th>
-                                                          <th className={`${TH} text-right`}>Proceeds (USD)</th>
+                                                          <th className={`${TH} text-right`}>Proceeds</th>
                                                         </tr>
                                                       </thead>
                                                       <tbody>
@@ -725,9 +748,32 @@ export default function AnalyticsAdsCampaignDetail() {
                                                           <tr key={t.id}>
                                                             <td className={TD}>{t.date.slice(0, 10)}</td>
                                                             <td className={TD}>{t.app}</td>
-                                                            <td className={TD}>{t.product}</td>
-                                                            <td className={TD}>{t.eventType.replace(/_/g, " ")}</td>
-                                                            <td className={TD}>{t.country ?? "—"}</td>
+                                                            <td className={TD}>
+                                                              <span className={`font-medium ${textPrimary}`} title={t.product}>
+                                                                {prettyProductName(t.product)}
+                                                              </span>
+                                                            </td>
+                                                            <td className={TD}>
+                                                              <TransactionTypeBadge type={adsTransactionType(t)} />
+                                                            </td>
+                                                            <td className={TD}>
+                                                              {t.country ? (
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                  <img
+                                                                    src={`/country-flags/${t.country.toLowerCase()}.svg`}
+                                                                    alt={t.country}
+                                                                    className="w-4 h-3 rounded-xs object-cover shrink-0"
+                                                                    onError={(e) => {
+                                                                      (e.target as HTMLImageElement).style.display =
+                                                                        "none";
+                                                                    }}
+                                                                  />
+                                                                  {t.country}
+                                                                </span>
+                                                              ) : (
+                                                                <span className={textMuted}>—</span>
+                                                              )}
+                                                            </td>
                                                             <td className={`${TD} text-right tabular-nums`}>{fmtMoneyUsd(t.proceedsUsd)}</td>
                                                           </tr>
                                                         ))}
