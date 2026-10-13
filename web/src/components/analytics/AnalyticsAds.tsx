@@ -1,13 +1,41 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Megaphone, ArrowRight, Check, ChevronRight, ExternalLink, Pause, Plus, X } from "lucide-react";
-import { useApi, getActiveBundleId } from "../../hooks/useApi";
+import {
+  Megaphone,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  ExternalLink,
+  FolderPlus,
+  MoreHorizontal,
+  Pause,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+  DollarSign,
+  Download,
+  Eye,
+  MousePointerClick,
+  Percent,
+  TrendingUp,
+} from "lucide-react";
+import { useApi, apiDelete, apiGet, apiPatch, apiPost, apiPut, getActiveBundleId } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { AppleAdsCampaign, AppleAdsCampaignRevenue, AppleAdsStatus } from "../../types";
+import type {
+  AppleAdsCampaign,
+  AppleAdsCampaignGroup,
+  AppleAdsCampaignRevenue,
+  AppleAdsDailyStatsResponse,
+  AppleAdsStatus,
+} from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
+import { StatCard } from "../StatCard";
 
 function fmtMoney(amount: number, currency: string | null): string {
   return new Intl.NumberFormat(undefined, {
@@ -42,21 +70,60 @@ function statusDot(status: string) {
   );
 }
 
-export default function AnalyticsAds() {
+const UNGROUPED = "__ungrouped__";
+
+type CampaignSortKey =
+  | "name"
+  | "dailyBudget"
+  | "spend"
+  | "impressions"
+  | "taps"
+  | "installs"
+  | "transactions"
+  | "proceeds";
+
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
+  return (
+    <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
+      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
+      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
+    </span>
+  );
+}
+
+export default function AnalyticsAds({ addToast }: Props) {
   const navigate = useNavigate();
-  const { canManageTeam } = usePermissions();
+  const { canManageTeam, canWrite } = usePermissions();
   const [showCreate, setShowCreate] = useState(false);
   const { data: status } = useApi<AppleAdsStatus>("/apple-ads/status", [], true);
   const [bundleId, setBundleId] = useState<string | null>(() => getActiveBundleId());
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
+  const [groups, setGroups] = useState<AppleAdsCampaignGroup[]>([]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupOverride, setGroupOverride] = useState<Record<string, string | null>>({});
+  const [openRowMenu, setOpenRowMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+  const [openGroupMenu, setOpenGroupMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<CampaignSortKey>("spend");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   useEffect(() => {
     const handler = () => {
       setBundleId(getActiveBundleId());
       setExpandedCampaign(null);
+      setGroupOverride({});
+      setOpenRowMenu(null);
+      setOpenGroupMenu(null);
+      setEditingGroup(null);
+      setCreatingGroup(false);
     };
     window.addEventListener("app-changed", handler);
     return () => window.removeEventListener("app-changed", handler);
   }, []);
-  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -84,6 +151,12 @@ export default function AnalyticsAds() {
     [status?.connected, bundleId, ...rangeDeps],
     false,
   );
+  const { data: dailyData } = useApi<AppleAdsDailyStatsResponse>(
+    `/apple-ads/daily${query}`,
+    [status?.connected, bundleId, ...rangeDeps],
+    false,
+  );
+  const days = dailyData?.days ?? [];
 
   const campaigns = campaignsData?.campaigns ?? [];
   const totals = campaigns.reduce(
@@ -97,10 +170,398 @@ export default function AnalyticsAds() {
   );
   const currency = campaigns.find((c) => c.currency)?.currency ?? "USD";
 
+  const refetchGroups = useCallback(() => {
+    if (!status?.connected || !bundleId) {
+      setGroups([]);
+      return;
+    }
+    apiGet<{ groups: AppleAdsCampaignGroup[] }>("/apple-ads/campaign-groups")
+      .then((res) => setGroups(res.groups))
+      .catch(() => setGroups([]));
+  }, [status?.connected, bundleId]);
+
+  useEffect(() => {
+    refetchGroups();
+  }, [refetchGroups]);
+
+  // Fresh server data is the source of truth — drop local assign overrides.
+  useEffect(() => {
+    setGroupOverride({});
+  }, [campaignsData]);
+
+  const closeMenus = () => {
+    setOpenRowMenu(null);
+    setOpenGroupMenu(null);
+  };
+  const menuPos = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { top: r.bottom + 4, right: window.innerWidth - r.right };
+  };
+
+  const toggleCollapse = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const handleSort = (key: CampaignSortKey) => {
+    if (key === sortBy) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortBy(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    }
+  };
+
+  const sortedCampaigns = useMemo(() => {
+    const withOverrides = campaigns.map((c) =>
+      c.id in groupOverride ? { ...c, groupId: groupOverride[c.id] } : c,
+    );
+    const valueFor = (c: AppleAdsCampaign): number | string => {
+      switch (sortBy) {
+        case "name":
+          return c.name.toLowerCase();
+        case "dailyBudget":
+          return c.dailyBudget ?? -1;
+        case "spend":
+          return c.spend;
+        case "impressions":
+          return c.impressions;
+        case "taps":
+          return c.taps;
+        case "installs":
+          return c.installs;
+        case "transactions":
+          return revenueData?.byCampaign[c.id]?.transactions.length ?? -1;
+        case "proceeds":
+          return revenueData?.byCampaign[c.id]?.proceedsUsd ?? -1;
+      }
+    };
+    return [...withOverrides].sort((a, b) => {
+      const va = valueFor(a);
+      const vb = valueFor(b);
+      const cmp = typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) : va - vb;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [campaigns, groupOverride, sortBy, sortDir, revenueData]);
+
+  const ungrouped = sortedCampaigns.filter((c) => !c.groupId || !groups.some((g) => g.id === c.groupId));
+  const hasGroups = groups.length > 0;
+
+  const handleCreateGroup = async (name: string) => {
+    if (!canWrite) return;
+    try {
+      const res = await apiPost<{ group: AppleAdsCampaignGroup }>("/apple-ads/campaign-groups", {
+        name,
+        bundleId: getActiveBundleId(),
+      });
+      setGroups((g) => [...g, res.group]);
+      setCreatingGroup(false);
+    } catch (e: any) {
+      addToast(e.message, "error");
+    }
+  };
+
+  const handleRenameGroup = async (id: string, name: string) => {
+    if (!canWrite) return;
+    try {
+      const res = await apiPatch<{ group: AppleAdsCampaignGroup }>(`/apple-ads/campaign-groups/${id}`, { name });
+      setGroups((g) => g.map((x) => (x.id === id ? res.group : x)));
+    } catch (e: any) {
+      addToast(e.message, "error");
+    }
+  };
+
+  const handleDeleteGroup = async (id: string) => {
+    if (!canWrite) return;
+    try {
+      await apiDelete(`/apple-ads/campaign-groups/${id}`);
+      setGroups((g) => g.filter((x) => x.id !== id));
+      setGroupOverride((prev) => {
+        const next = { ...prev };
+        for (const c of campaigns) {
+          const effective = c.id in prev ? prev[c.id] : (c.groupId ?? null);
+          if (effective === id) next[c.id] = null;
+        }
+        return next;
+      });
+    } catch (e: any) {
+      addToast(e.message, "error");
+    }
+  };
+
+  const handleAssignGroup = async (campaignId: string, groupId: string | null) => {
+    if (!canWrite) return;
+    const hadOverride = campaignId in groupOverride;
+    const prev = groupOverride[campaignId];
+    setGroupOverride((o) => ({ ...o, [campaignId]: groupId }));
+    try {
+      await apiPut(`/apple-ads/campaigns/${campaignId}/group`, { groupId, bundleId: getActiveBundleId() });
+    } catch (e: any) {
+      setGroupOverride((o) => {
+        const next = { ...o };
+        if (!hadOverride) delete next[campaignId];
+        else next[campaignId] = prev;
+        return next;
+      });
+      addToast(e.message, "error");
+    }
+  };
+
+  const col = (key: CampaignSortKey, label: string, align: "left" | "right" = "right") => (
+    <th
+      className={`${TH} ${align === "right" ? "text-right" : ""} cursor-pointer select-none hover:text-[#111827] dark:hover:text-[#e8eaf0] transition-colors`}
+      onClick={() => handleSort(key)}
+    >
+      <span
+        className={`inline-flex items-center gap-0.5 whitespace-nowrap ${align === "right" ? "flex-row-reverse" : ""}`}
+      >
+        {label}
+        <SortIcon active={sortBy === key} dir={sortDir} />
+      </span>
+    </th>
+  );
+
+  const renderRow = (c: AppleAdsCampaign) => (
+    <Fragment key={c.id}>
+      <tr
+        onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)}
+        className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors cursor-pointer"
+      >
+        <td className={TD}>
+          <span className={`flex min-w-0 items-center gap-2 font-medium ${textPrimary}`}>
+            <ChevronRight
+              className={`w-3.5 h-3.5 ${textMuted} shrink-0 transition-transform ${expandedCampaign === c.id ? "rotate-90" : ""}`}
+            />
+            {statusDot(c.status)}
+            <span className="truncate" title={c.name}>
+              {c.name}
+            </span>
+          </span>
+        </td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+          {c.dailyBudget != null ? fmtMoney(c.dailyBudget, c.currency) : "—"}
+        </td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(c.spend, c.currency)}</td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.impressions)}</td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.taps)}</td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.installs)}</td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+          {revenueLoading
+            ? "…"
+            : revenueError
+              ? "—"
+              : fmtNumber(revenueData?.byCampaign[c.id]?.transactions.length ?? 0)}
+        </td>
+        <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+          {revenueLoading
+            ? "…"
+            : revenueError
+              ? "—"
+              : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
+        </td>
+        <td className={`${TD} text-right pr-5`}>
+          <span className="inline-flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/analytics/ads/${c.id}`);
+              }}
+              className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
+            >
+              Details <ExternalLink className="w-3 h-3" />
+            </button>
+            <button
+              aria-label="Campaign actions"
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-md ${textMuted} hover:bg-gray-100 dark:hover:bg-white/10 hover:${textPrimary} transition-colors`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenGroupMenu(null);
+                const pos = menuPos(e);
+                setOpenRowMenu((m) => (m?.id === c.id ? null : { id: c.id, ...pos }));
+              }}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </span>
+          {openRowMenu?.id === c.id && (
+            <div
+              style={{ position: "fixed", top: openRowMenu.top, right: openRowMenu.right }}
+              className={`z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[200px] text-left`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={`px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ${textMuted}`}>
+                Move to group
+              </div>
+              {groups.length === 0 && <div className={`px-3 py-1.5 text-[12px] ${textMuted}`}>No groups yet</div>}
+              {groups.map((g) => (
+                <button
+                  key={g.id}
+                  disabled={!canWrite}
+                  onClick={() => {
+                    handleAssignGroup(c.id, g.id);
+                    setOpenRowMenu(null);
+                  }}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <span className="truncate">{g.name}</span>
+                  {c.groupId === g.id && <Check className="w-3.5 h-3.5 text-[#595DD2] shrink-0" strokeWidth={3} />}
+                </button>
+              ))}
+              {c.groupId && (
+                <button
+                  disabled={!canWrite}
+                  onClick={() => {
+                    handleAssignGroup(c.id, null);
+                    setOpenRowMenu(null);
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] ${textSecondary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  Remove from group
+                </button>
+              )}
+            </div>
+          )}
+        </td>
+      </tr>
+      {expandedCampaign === c.id && (
+        <tr className="bg-[#fafbfc] dark:bg-[#161920]">
+          <td colSpan={9} className="px-5 py-4">
+            <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>RevenueCat transactions</div>
+            {revenueLoading ? (
+              <div className={`text-[12px] ${textMuted}`}>Loading…</div>
+            ) : revenueError ? (
+              <div className="text-[12px] text-red-500">Could not load attributed transactions.</div>
+            ) : !revenueData?.byCampaign[c.id]?.transactions.length ? (
+              <div className={`text-[12px] ${textMuted}`}>No attributed transactions in the last 30 days.</div>
+            ) : (
+              <div className="max-h-80 overflow-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr>
+                      <th className={TH}>Date</th>
+                      <th className={TH}>App</th>
+                      <th className={TH}>Product</th>
+                      <th className={TH}>Event</th>
+                      <th className={`${TH} text-right`}>Proceeds (USD)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueData.byCampaign[c.id].transactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <td className={TD}>{transaction.date.slice(0, 10)}</td>
+                        <td className={TD}>{transaction.app}</td>
+                        <td className={TD}>{transaction.product}</td>
+                        <td className={TD}>{transaction.eventType.replace(/_/g, " ")}</td>
+                        <td className={`${TD} text-right tabular-nums`}>{fmtMoney(transaction.proceedsUsd, "USD")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+
+  const renderGroupHeader = (id: string, name: string, rows: AppleAdsCampaign[], removable: boolean) => {
+    const isCollapsed = collapsed.has(id);
+    const spend = rows.reduce((sum, c) => sum + c.spend, 0);
+    return (
+      <tr key={`hdr-${id}`} className="bg-gray-50/70 dark:bg-white/[0.02] border-y border-[#f0f1f3] dark:border-[#252a34]">
+        <td colSpan={8} className="px-4 py-2.5 cursor-pointer select-none" onClick={() => toggleCollapse(id)}>
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2 min-w-0">
+              {isCollapsed ? (
+                <ChevronRight className={`w-4 h-4 ${textMuted} shrink-0`} />
+              ) : (
+                <ChevronDown className={`w-4 h-4 ${textMuted} shrink-0`} />
+              )}
+              {editingGroup === id ? (
+                <input
+                  autoFocus
+                  defaultValue={name}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== name) handleRenameGroup(id, v);
+                    setEditingGroup(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setEditingGroup(null);
+                  }}
+                  className={`text-[14px] font-semibold ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2 py-0.5 outline-none focus:border-[#595DD2]`}
+                />
+              ) : (
+                <span className={`text-[14px] font-semibold ${textPrimary} truncate`}>{name}</span>
+              )}
+              <span className={`text-[12px] ${textMuted} shrink-0`}>
+                · {rows.length} campaign{rows.length === 1 ? "" : "s"}
+              </span>
+            </span>
+            <span className={`text-[12px] ${textMuted} tabular-nums shrink-0 ml-3`}>
+              {rows.length > 0 ? fmtMoney(spend, currency) : ""}
+            </span>
+          </div>
+        </td>
+        <td className="px-2 py-2.5 relative text-right">
+          {removable && (
+            <button
+              aria-label="Group actions"
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-md ${textMuted} hover:bg-gray-100 dark:hover:bg-white/10 hover:${textPrimary} transition-colors`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenRowMenu(null);
+                const pos = menuPos(e);
+                setOpenGroupMenu((g) => (g?.id === id ? null : { id, ...pos }));
+              }}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          )}
+          {openGroupMenu?.id === id && (
+            <div
+              style={{ position: "fixed", top: openGroupMenu.top, right: openGroupMenu.right }}
+              className={`z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[160px] text-left`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                disabled={!canWrite}
+                onClick={() => {
+                  setOpenGroupMenu(null);
+                  setEditingGroup(id);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Rename
+              </button>
+              <button
+                disabled={!canWrite}
+                onClick={() => {
+                  setOpenGroupMenu(null);
+                  handleDeleteGroup(id);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete group
+              </button>
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="max-w-[1440px] mx-auto">
       <div className="mb-6">
-        <h1 className={`${pageTitle} mb-1`}>Ads</h1>
+        <h1 className={`${pageTitle} mb-1`}>Apple Ads</h1>
       </div>
 
       {!status?.connected ? (
@@ -161,21 +622,55 @@ export default function AnalyticsAds() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-            {[
-              { label: "Spend", value: fmtMoney(totals.spend, currency) },
-              { label: "Impressions", value: fmtNumber(totals.impressions) },
-              { label: "Taps", value: fmtNumber(totals.taps) },
-              { label: "Installs", value: fmtNumber(totals.installs) },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
-              >
-                <div className={`text-[13px] font-semibold ${textPrimary} mb-2`}>{s.label}</div>
-                <div className={`text-[28px] font-bold leading-none ${textPrimary}`}>{s.value}</div>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+            <StatCard
+              label="Spend"
+              value={loading ? "—" : fmtMoney(totals.spend, currency)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.spend)}
+              icon={<DollarSign className="w-4 h-4" />}
+              color="#f59e0b"
+            />
+            <StatCard
+              label="Impressions"
+              value={loading ? "—" : fmtNumber(totals.impressions)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.impressions)}
+              icon={<Eye className="w-4 h-4" />}
+              color="#0ea5e9"
+            />
+            <StatCard
+              label="Taps"
+              value={loading ? "—" : fmtNumber(totals.taps)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.taps)}
+              icon={<MousePointerClick className="w-4 h-4" />}
+              color="#6366f1"
+            />
+            <StatCard
+              label="Installs"
+              value={loading ? "—" : fmtNumber(totals.installs)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.installs)}
+              icon={<Download className="w-4 h-4" />}
+              color="#10b981"
+            />
+            <StatCard
+              label="TTR"
+              value={loading ? "—" : totals.impressions > 0 ? fmtPct((totals.taps / totals.impressions) * 100) : "—"}
+              sub="Taps / Impressions"
+              sparkline={days.map((d) => (d.impressions > 0 ? (d.taps / d.impressions) * 100 : 0))}
+              icon={<TrendingUp className="w-4 h-4" />}
+              color="#8b5cf6"
+            />
+            <StatCard
+              label="Conversion Rate"
+              value={loading ? "—" : totals.taps > 0 ? fmtPct((totals.installs / totals.taps) * 100) : "—"}
+              sub="Installs / Taps"
+              sparkline={days.map((d) => (d.taps > 0 ? (d.installs / d.taps) * 100 : 0))}
+              icon={<Percent className="w-4 h-4" />}
+              color="#D94412"
+            />
           </div>
 
           <div
@@ -184,11 +679,18 @@ export default function AnalyticsAds() {
             <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
               <Megaphone className={`w-4 h-4 ${textMuted}`} />
               <div className={`text-[16px] font-semibold ${textPrimary}`}>Campaigns</div>
-              {canManageTeam && (
-                <button onClick={() => setShowCreate(true)} className={`${btnSecSm} ml-auto`}>
-                  <Plus className="w-3.5 h-3.5" /> New Campaign
-                </button>
-              )}
+              <div className="ml-auto flex items-center gap-2">
+                {canWrite && (
+                  <button onClick={() => setCreatingGroup(true)} className={btnSecSm} title="New group">
+                    <FolderPlus className="w-3.5 h-3.5" /> New Group
+                  </button>
+                )}
+                {canManageTeam && (
+                  <button onClick={() => setShowCreate(true)} className={btnSecSm}>
+                    <Plus className="w-3.5 h-3.5" /> New Campaign
+                  </button>
+                )}
+              </div>
             </div>
             {!bundleId ? (
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
@@ -208,118 +710,74 @@ export default function AnalyticsAds() {
               <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No campaigns found</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
+                {(openRowMenu || openGroupMenu) && <div className="fixed inset-0 z-40" onClick={closeMenus} />}
+                <table className="w-full min-w-[1200px] border-collapse table-fixed">
+                  <colgroup>
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "10%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th className={TH}>Campaign</th>
-                      <th className={`${TH} text-right`}>Daily Budget</th>
-                      <th className={`${TH} text-right`}>Spend</th>
-                      <th className={`${TH} text-right`}>Impressions</th>
-                      <th className={`${TH} text-right`}>Taps</th>
-                      <th className={`${TH} text-right`}>Installs</th>
-                      <th className={`${TH} text-right`}>Transactions</th>
-                      <th className={`${TH} text-right`}>Proceeds</th>
+                      {col("name", "Campaign", "left")}
+                      {col("dailyBudget", "Daily Budget")}
+                      {col("spend", "Spend")}
+                      {col("impressions", "Impressions")}
+                      {col("taps", "Taps")}
+                      {col("installs", "Installs")}
+                      {col("transactions", "Transactions")}
+                      {col("proceeds", "Proceeds")}
                       <th className={`${TH} pr-5`}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {campaigns.map((c) => (
-                      <Fragment key={c.id}>
-                        <tr
-                          onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)}
-                          className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors cursor-pointer"
-                        >
-                          <td className={TD}>
-                            <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
-                              <ChevronRight
-                                className={`w-3.5 h-3.5 ${textMuted} transition-transform ${expandedCampaign === c.id ? "rotate-90" : ""}`}
-                              />
-                              {statusDot(c.status)}
-                              {c.name}
-                            </span>
-                          </td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                            {c.dailyBudget != null ? fmtMoney(c.dailyBudget, c.currency) : "—"}
-                          </td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                            {fmtMoney(c.spend, c.currency)}
-                          </td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.impressions)}</td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.taps)}</td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.installs)}</td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                            {revenueLoading
-                              ? "…"
-                              : revenueError
-                                ? "—"
-                                : fmtNumber(revenueData?.byCampaign[c.id]?.transactions.length ?? 0)}
-                          </td>
-                          <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                            {revenueLoading
-                              ? "…"
-                              : revenueError
-                                ? "—"
-                                : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
-                          </td>
-                          <td className={`${TD} text-right pr-5`}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/analytics/ads/${c.id}`);
-                              }}
-                              className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
-                            >
-                              Details <ExternalLink className="w-3 h-3" />
-                            </button>
-                          </td>
-                        </tr>
-                        {expandedCampaign === c.id && (
-                          <tr className="bg-[#fafbfc] dark:bg-[#161920]">
-                            <td colSpan={9} className="px-5 py-4">
-                              <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
-                                RevenueCat transactions
-                              </div>
-                              {revenueLoading ? (
-                                <div className={`text-[12px] ${textMuted}`}>Loading…</div>
-                              ) : revenueError ? (
-                                <div className="text-[12px] text-red-500">Could not load attributed transactions.</div>
-                              ) : !revenueData?.byCampaign[c.id]?.transactions.length ? (
-                                <div className={`text-[12px] ${textMuted}`}>
-                                  No attributed transactions in the last 30 days.
-                                </div>
-                              ) : (
-                                <div className="max-h-80 overflow-auto">
-                                  <table className="w-full text-[12px]">
-                                    <thead>
-                                      <tr>
-                                        <th className={TH}>Date</th>
-                                        <th className={TH}>App</th>
-                                        <th className={TH}>Product</th>
-                                        <th className={TH}>Event</th>
-                                        <th className={`${TH} text-right`}>Proceeds (USD)</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {revenueData.byCampaign[c.id].transactions.map((transaction) => (
-                                        <tr key={transaction.id}>
-                                          <td className={TD}>{transaction.date.slice(0, 10)}</td>
-                                          <td className={TD}>{transaction.app}</td>
-                                          <td className={TD}>{transaction.product}</td>
-                                          <td className={TD}>{transaction.eventType.replace(/_/g, " ")}</td>
-                                          <td className={`${TD} text-right tabular-nums`}>
-                                            {fmtMoney(transaction.proceedsUsd, "USD")}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
+                    {creatingGroup && (
+                      <tr className="bg-gray-50/70 dark:bg-white/[0.02] border-b border-[#f0f1f3] dark:border-[#252a34]">
+                        <td colSpan={9} className="px-4 py-2.5">
+                          <input
+                            autoFocus
+                            placeholder="Group name…"
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v) handleCreateGroup(v);
+                              setCreatingGroup(false);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              if (e.key === "Escape") setCreatingGroup(false);
+                            }}
+                            className={`text-[13px] ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2.5 py-1 outline-none focus:border-[#595DD2] w-56`}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    {hasGroups ? (
+                      <>
+                        {groups.map((g) => {
+                          const rows = sortedCampaigns.filter((c) => c.groupId === g.id);
+                          return (
+                            <Fragment key={g.id}>
+                              {renderGroupHeader(g.id, g.name, rows, true)}
+                              {!collapsed.has(g.id) && rows.map(renderRow)}
+                            </Fragment>
+                          );
+                        })}
+                        {ungrouped.length > 0 && (
+                          <>
+                            {renderGroupHeader(UNGROUPED, "Ungrouped", ungrouped, false)}
+                            {!collapsed.has(UNGROUPED) && ungrouped.map(renderRow)}
+                          </>
                         )}
-                      </Fragment>
-                    ))}
+                      </>
+                    ) : (
+                      sortedCampaigns.map(renderRow)
+                    )}
                   </tbody>
                 </table>
               </div>

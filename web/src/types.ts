@@ -503,6 +503,14 @@ export interface AppleAdsCampaign extends AppleAdsStats {
   countriesOrRegions: string[];
   startTime: string | null;
   endTime: string | null;
+  /** Internal Marteso grouping (null = ungrouped). Only set by the campaigns overview endpoint. */
+  groupId?: string | null;
+}
+
+export interface AppleAdsCampaignGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
 }
 
 export interface AppleAdsKeyword extends AppleAdsStats {
@@ -535,6 +543,20 @@ export interface AppleAdsCampaignDetail {
 
 export interface AppleAdsDailySpendResponse {
   days: { date: string; spend: number }[];
+  startDate: string;
+  endDate: string;
+}
+
+export interface AppleAdsDailyStats {
+  date: string;
+  spend: number;
+  impressions: number;
+  taps: number;
+  installs: number;
+}
+
+export interface AppleAdsDailyStatsResponse {
+  days: AppleAdsDailyStats[];
   startDate: string;
   endDate: string;
 }

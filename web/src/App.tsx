@@ -1542,7 +1542,7 @@ export default function App() {
               <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail addToast={addToast} />} />
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
-              <Route path="/analytics/ads" element={<AnalyticsAds />} />
+              <Route path="/analytics/ads" element={<AnalyticsAds addToast={addToast} />} />
               <Route path="/analytics/ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
               <Route path="/analytics/google-ads" element={<AnalyticsGoogleAds />} />
               <Route path="/analytics/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
