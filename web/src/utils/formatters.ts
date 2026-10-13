@@ -3,6 +3,12 @@ export function fmtShortDate(iso: string): string {
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+export function fmtShortDateWithWeekday(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  const weekday = d.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
+  return `${weekday}, ${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export function fmtMediumDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     day: "2-digit",
