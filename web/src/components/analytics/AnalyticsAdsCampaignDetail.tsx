@@ -1,12 +1,31 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Megaphone,
+  Pause,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  ChevronsUpDown,
+  X,
+  CircleDollarSign,
+  DollarSign,
+  Download,
+  Eye,
+  MousePointerClick,
+  Percent,
+  Receipt,
+  Tag,
+  TrendingUp,
+} from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_KEYWORD_FILTERS,
   filterKeywordRows,
@@ -20,6 +39,7 @@ import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
 import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
+import { StatCard } from "../StatCard";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -67,17 +87,6 @@ function statusDot(status: string) {
         <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={3} />
       )}
     </span>
-  );
-}
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
-    >
-      <div className={`text-[11px] ${textMuted} mb-1.5`}>{label}</div>
-      <div className={`text-[20px] font-bold leading-none truncate ${textPrimary}`} title={value}>{value}</div>
-    </div>
   );
 }
 
@@ -254,7 +263,11 @@ export default function AnalyticsAdsCampaignDetail() {
   );
   const rangeDeps = [range, customStart, customEnd];
 
-  const { data: campaignsData } = useApi<{ campaigns: AppleAdsCampaign[] }>(`/apple-ads/campaigns${query}`, rangeDeps, true);
+  const { data: campaignsData, loading: campaignsLoading } = useApi<{ campaigns: AppleAdsCampaign[] }>(
+    `/apple-ads/campaigns${query}`,
+    rangeDeps,
+    true,
+  );
   const campaign = campaignsData?.campaigns.find((c) => c.id === campaignId) ?? null;
 
   const {
@@ -301,6 +314,37 @@ export default function AnalyticsAdsCampaignDetail() {
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
+
+  // One aligned day axis for every sparkline: full range buckets, gaps as zero.
+  const statDays = useMemo(() => {
+    const raw = dailySpend?.days ?? [];
+    const byDate = new Map(raw.map((d) => [d.date, d]));
+    const proceedsByDate = new Map<string, number>();
+    for (const t of campaignRevenue?.transactions ?? []) {
+      const key = (t.cohortDate ?? t.date).slice(0, 10);
+      proceedsByDate.set(key, (proceedsByDate.get(key) ?? 0) + t.proceedsUsd);
+    }
+    const start = dailySpend?.startDate ?? raw[0]?.date;
+    const end = dailySpend?.endDate ?? raw[raw.length - 1]?.date;
+    if (!start || !end) return [];
+    const points: { spend: number; impressions: number; taps: number; installs: number; proceeds: number }[] = [];
+    for (
+      let cursor = new Date(`${start}T00:00:00Z`);
+      cursor <= new Date(`${end}T00:00:00Z`);
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    ) {
+      const key = cursor.toISOString().slice(0, 10);
+      const d = byDate.get(key);
+      points.push({
+        spend: d?.spend ?? 0,
+        impressions: d?.impressions ?? 0,
+        taps: d?.taps ?? 0,
+        installs: d?.installs ?? 0,
+        proceeds: proceedsByDate.get(key) ?? 0,
+      });
+    }
+    return points;
+  }, [dailySpend, campaignRevenue]);
 
   const TEXT_SORT_COLS: KeywordSortCol[] = ["keyword", "matchType"];
   function handleKwSort(col: KeywordSortCol) {
@@ -420,22 +464,88 @@ export default function AnalyticsAdsCampaignDetail() {
         )}
       </div>
 
-      {campaign && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          <StatTile label="Countries" value={campaign.countriesOrRegions?.join(", ") || "—"} />
-          <StatTile label="Spend" value={fmtMoney(campaign.spend, campaign.currency)} />
-          <StatTile label="Impressions" value={fmtNumber(campaign.impressions)} />
-          <StatTile label="Taps" value={fmtNumber(campaign.taps)} />
-          <StatTile label="TTR" value={campaign.ttr != null ? fmtPct(campaign.ttr * 100) : "—"} />
-          <StatTile label="Installs" value={fmtNumber(campaign.installs)} />
-          <StatTile label="Avg CPT" value={fmtMoney(campaign.avgCpt, campaign.currency)} />
-          <StatTile label="Avg CPA" value={fmtMoney(campaign.avgCpa, campaign.currency)} />
-          <StatTile
-            label="Conv. Rate"
-            value={campaign.conversionRate != null ? fmtPct(campaign.conversionRate * 100) : "—"}
-          />
-        </div>
-      )}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+        <StatCard
+          label="Spend"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.spend, campaign.currency)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.spend)}
+          icon={<DollarSign className="w-4 h-4" />}
+          color="#f59e0b"
+        />
+        <StatCard
+          label="Impressions"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.impressions)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.impressions)}
+          icon={<Eye className="w-4 h-4" />}
+          color="#0ea5e9"
+        />
+        <StatCard
+          label="Taps"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.taps)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.taps)}
+          icon={<MousePointerClick className="w-4 h-4" />}
+          color="#6366f1"
+        />
+        <StatCard
+          label="TTR"
+          value={campaignsLoading || !campaign ? "—" : campaign.ttr != null ? fmtPct(campaign.ttr * 100) : "—"}
+          sub="Taps / Impressions"
+          sparkline={statDays.map((d) => (d.impressions > 0 ? (d.taps / d.impressions) * 100 : 0))}
+          icon={<TrendingUp className="w-4 h-4" />}
+          color="#8b5cf6"
+        />
+        <StatCard
+          label="Installs"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.installs)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.installs)}
+          icon={<Download className="w-4 h-4" />}
+          color="#10b981"
+        />
+        <StatCard
+          label="Avg CPT"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.avgCpt, campaign.currency)}
+          sub="Spend / Taps"
+          sparkline={statDays.map((d) => (d.taps > 0 ? d.spend / d.taps : 0))}
+          icon={<Tag className="w-4 h-4" />}
+          color="#14b8a6"
+        />
+        <StatCard
+          label="Avg CPA"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.avgCpa, campaign.currency)}
+          sub="Spend / Installs"
+          sparkline={statDays.map((d) => (d.installs > 0 ? d.spend / d.installs : 0))}
+          icon={<Receipt className="w-4 h-4" />}
+          color="#f43f5e"
+        />
+        <StatCard
+          label="Conv. Rate"
+          value={
+            campaignsLoading || !campaign
+              ? "—"
+              : campaign.conversionRate != null
+                ? fmtPct(campaign.conversionRate * 100)
+                : "—"
+          }
+          sub="Installs / Taps"
+          sparkline={statDays.map((d) => (d.taps > 0 ? (d.installs / d.taps) * 100 : 0))}
+          icon={<Percent className="w-4 h-4" />}
+          color="#D94412"
+        />
+        <StatCard
+          label="Proceeds"
+          value={
+            revenueLoading ? "—" : revenueError || !campaignRevenue ? "—" : fmtMoneyUsd(campaignRevenue.proceedsUsd)
+          }
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.proceeds)}
+          icon={<CircleDollarSign className="w-4 h-4" />}
+          color="#16a34a"
+        />
+      </div>
 
       <AppleAdsCampaignChart
         spendDays={dailySpend?.days}
