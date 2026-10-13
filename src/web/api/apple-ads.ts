@@ -3,6 +3,7 @@ import { prisma, logger } from "../../config";
 import {
   requireAuth,
   requireTeamAdmin,
+  bundleAccess,
   loadTeamSettings,
   memberAllowedApp,
   verifyAppOwnership,
@@ -16,6 +17,8 @@ import {
   listAppleAdsAdGroups,
   getAppleAdsCampaignDetail,
   getAppleAdsCampaignDailySpend,
+  getAppleAdsDailyStats,
+  mergeDailyStatsLists,
   resolveAppleAdsRange,
   listAppleAdsApps,
   createAppleAdsCampaignFull,
@@ -152,6 +155,55 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
     const keyCreds = appleAdsKeyCreds(s);
     const bundleId = req.query.bundleId as string | undefined;
     let orgIds: string[];
+    let groupAppId: string | null = null;
+    if (bundleId) {
+      const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
+      if (!app) return;
+      if (!app.appleAdsOrgId) {
+        res.status(400).json({ error: "No campaign group mapped for this app — map one in Integrations." });
+        return;
+      }
+      groupAppId = app.id;
+      orgIds = [app.appleAdsOrgId];
+    } else {
+      orgIds = (await listTeamAppleAdsOrgs(req.user!.teamId)).map((o) => o.orgId);
+    }
+    const lists = await Promise.all(orgIds.map((orgId) => listAppleAdsCampaigns({ ...keyCreds, orgId }, range)));
+    const campaigns = lists.flat();
+    if (!groupAppId) {
+      res.json({ campaigns });
+      return;
+    }
+    // Attach internal group membership (same shape as keywords' groupId).
+    const members = await prisma.appleAdsCampaignGroupMember.findMany({
+      where: { appId: groupAppId, externalCampaignId: { in: campaigns.map((c) => c.id) } },
+      select: { externalCampaignId: true, groupId: true },
+    });
+    const groupByCampaign = new Map(members.map((m) => [m.externalCampaignId, m.groupId]));
+    res.json({ campaigns: campaigns.map((c) => ({ ...c, groupId: groupByCampaign.get(c.id) ?? null })) });
+  } catch (err: any) {
+    logger.error("[apple-ads] campaigns fetch error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+
+    res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
+  }
+});
+
+appleAdsRouter.get("/daily", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (appleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+    return;
+  }
+
+  try {
+    const range = resolveAppleAdsRange(req.query);
+    const keyCreds = appleAdsKeyCreds(s);
+    const bundleId = req.query.bundleId as string | undefined;
+    let orgIds: string[];
     if (bundleId) {
       const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
       if (!app) return;
@@ -163,16 +215,136 @@ appleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
     } else {
       orgIds = (await listTeamAppleAdsOrgs(req.user!.teamId)).map((o) => o.orgId);
     }
-    const lists = await Promise.all(orgIds.map((orgId) => listAppleAdsCampaigns({ ...keyCreds, orgId }, range)));
-    res.json({ campaigns: lists.flat() });
+    const lists = await Promise.all(
+      orgIds.map((orgId) => getAppleAdsDailyStats({ ...keyCreds, orgId }, range)),
+    );
+    res.json({ days: mergeDailyStatsLists(lists), startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
-    logger.error("[apple-ads] campaigns fetch error", {
+    logger.error("[apple-ads] daily stats fetch error", {
       err: String(err?.message ?? err),
       status: err?.response?.status,
       body: err?.response?.data,
     });
 
-    res.status(500).json({ error: "Failed to load campaigns from Apple Search Ads" });
+    res.status(500).json({ error: "Failed to load daily stats from Apple Search Ads" });
+  }
+});
+
+// Internal-only campaign groups (Marteso DB, never synced to Apple).
+// Mirrors the keyword groups API: groups per app, one group per campaign.
+appleAdsRouter.get("/campaign-groups", bundleAccess("query", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const groups = await prisma.appleAdsCampaignGroup.findMany({
+      where: { appId: ownApp.id },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, name: true, sortOrder: true },
+    });
+    res.json({ groups });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+appleAdsRouter.post("/campaign-groups", bundleAccess("body", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const name = String(req.body.name ?? "").trim();
+    if (!name) return res.status(400).json({ error: "name is required" });
+
+    const max = await prisma.appleAdsCampaignGroup.aggregate({
+      where: { appId: ownApp.id },
+      _max: { sortOrder: true },
+    });
+    const group = await prisma.appleAdsCampaignGroup.create({
+      data: { appId: ownApp.id, name, sortOrder: (max._max.sortOrder ?? -1) + 1 },
+      select: { id: true, name: true, sortOrder: true },
+    });
+    res.json({ group });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+async function loadOwnedCampaignGroup(req: any, res: any) {
+  const group = await prisma.appleAdsCampaignGroup.findUnique({
+    where: { id: req.params.id },
+    include: { app: { select: { teamId: true } } },
+  });
+  if (!group) {
+    res.status(404).json({ error: "Group not found" });
+    return null;
+  }
+  if (req.user.role !== "ADMIN" && group.app.teamId !== req.user.teamId) {
+    res.status(403).json({ error: "Not authorized" });
+    return null;
+  }
+  return group;
+}
+
+appleAdsRouter.patch("/campaign-groups/:id", async (req, res) => {
+  try {
+    const group = await loadOwnedCampaignGroup(req, res);
+    if (!group) return;
+
+    const data: { name?: string; sortOrder?: number } = {};
+    if (req.body.name != null) {
+      const name = String(req.body.name).trim();
+      if (!name) return res.status(400).json({ error: "name cannot be empty" });
+      data.name = name;
+    }
+    if (req.body.sortOrder != null && Number.isFinite(Number(req.body.sortOrder))) {
+      data.sortOrder = Number(req.body.sortOrder);
+    }
+
+    const updated = await prisma.appleAdsCampaignGroup.update({
+      where: { id: group.id },
+      data,
+      select: { id: true, name: true, sortOrder: true },
+    });
+    res.json({ group: updated });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+appleAdsRouter.delete("/campaign-groups/:id", async (req, res) => {
+  try {
+    const group = await loadOwnedCampaignGroup(req, res);
+    if (!group) return;
+    await prisma.appleAdsCampaignGroup.delete({ where: { id: group.id } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+appleAdsRouter.put("/campaigns/:campaignId/group", bundleAccess("body", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const externalCampaignId = req.params.campaignId as string;
+    const groupId: string | null = req.body.groupId ?? null;
+
+    if (groupId) {
+      const group = await prisma.appleAdsCampaignGroup.findFirst({
+        where: { id: groupId, appId: ownApp.id },
+        select: { id: true },
+      });
+      if (!group) return res.status(404).json({ error: "Group not found" });
+
+      await prisma.appleAdsCampaignGroupMember.upsert({
+        where: { appId_externalCampaignId: { appId: ownApp.id, externalCampaignId } },
+        create: { appId: ownApp.id, externalCampaignId, groupId },
+        update: { groupId },
+      });
+    } else {
+      await prisma.appleAdsCampaignGroupMember.deleteMany({
+        where: { appId: ownApp.id, externalCampaignId },
+      });
+    }
+    res.json({ ok: true, groupId });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

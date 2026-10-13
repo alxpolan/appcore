@@ -237,6 +237,7 @@ model App {
   snapshots                  AppSnapshot[]
   rankings                   KeywordRanking[]
   keywordGroups              KeywordGroup[]
+  appleAdsCampaignGroups     AppleAdsCampaignGroup[]
   competitors                CompetitorRelation[]      @relation("app_competitors")
   competitorOf               CompetitorRelation[]      @relation("competitor_of")
   screenshotJobs             ScreenshotJob[]
@@ -340,6 +341,33 @@ model KeywordGroupMember {
   @@unique([appId, keywordId])
   @@index([groupId])
   @@index([keywordId])
+}
+
+// Internal-only grouping for Apple Search Ads campaigns (lives in the Marteso
+// DB, never synced to Apple). Campaigns themselves are external Apple entities,
+// so members reference them by Apple campaign id instead of a FK.
+model AppleAdsCampaignGroup {
+  id        String                        @id @default(cuid())
+  appId     String
+  app       App                           @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int                           @default(0)
+  members   AppleAdsCampaignGroupMember[]
+  createdAt DateTime                      @default(now())
+  updatedAt DateTime                      @updatedAt
+
+  @@index([appId])
+}
+
+model AppleAdsCampaignGroupMember {
+  id                 String                @id @default(cuid())
+  groupId            String
+  group              AppleAdsCampaignGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  externalCampaignId String
+  appId              String
+
+  @@unique([appId, externalCampaignId])
+  @@index([groupId])
 }
 
 model KeywordRanking {

@@ -1,6 +1,10 @@
 import jwt from "jsonwebtoken";
 import axios from "./utils/http";
 import { prisma } from "../config";
+import { aggregateDailyStats, type AppleAdsDailyStats } from "./utils/apple-ads-daily";
+
+export { aggregateDailyStats, mergeDailyStatsLists } from "./utils/apple-ads-daily";
+export type { AppleAdsDailyStats } from "./utils/apple-ads-daily";
 
 // Overridable for tests/stubs; production always uses Apple's endpoints.
 const TOKEN_URL = process.env.APPLE_ADS_TOKEN_URL ?? "https://appleid.apple.com/auth/oauth2/token";
@@ -447,11 +451,13 @@ function rowsFromReport(data: any): any[] {
   return data?.data?.reportingDataResponse?.row ?? data?.data?.row ?? data?.row ?? [];
 }
 
-export async function getAppleAdsCampaignDailySpend(
+/** Daily spend/impressions/taps/installs for one org. Without a campaignId
+ * the series aggregates every campaign in the org (overview sparklines). */
+export async function getAppleAdsDailyStats(
   creds: AppleAdsCredentials,
-  campaignId: string,
   range: AppleAdsReportRange = resolveAppleAdsRange({}),
-): Promise<AppleAdsDailySpend[]> {
+  campaignId?: string,
+): Promise<AppleAdsDailyStats[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const headers = authedHeaders(accessToken, creds.orgId);
   const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
@@ -462,7 +468,9 @@ export async function getAppleAdsCampaignDailySpend(
         endTime,
         selector: {
           orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
-          conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
+          ...(campaignId != null
+            ? { conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }] }
+            : {}),
           pagination: { offset: 0, limit: 1000 },
         },
         granularity: "DAILY",
@@ -480,17 +488,15 @@ export async function getAppleAdsCampaignDailySpend(
   const rows = mergeReportRows(chunks.flat(), (row) =>
     row.metadata?.campaignId != null ? String(row.metadata.campaignId) : undefined,
   );
+  return aggregateDailyStats(rows, campaignId);
+}
 
-  const byDate = new Map<string, number>();
-  for (const row of rows) {
-    if (String(row.metadata?.campaignId) !== campaignId) continue;
-    for (const day of row.granularity ?? []) {
-      const date = String(day.date ?? "").slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-      byDate.set(date, (byDate.get(date) ?? 0) + Number(day.localSpend?.amount ?? 0));
-    }
-  }
-  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, spend]) => ({ date, spend }));
+export async function getAppleAdsCampaignDailySpend(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
+): Promise<AppleAdsDailySpend[]> {
+  return (await getAppleAdsDailyStats(creds, range, campaignId)).map(({ date, spend }) => ({ date, spend }));
 }
 
 export interface AppleAdsCountryStats extends AppleAdsStats {
