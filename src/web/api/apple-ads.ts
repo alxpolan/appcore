@@ -16,7 +16,6 @@ import {
   listAppleAdsCampaigns,
   listAppleAdsAdGroups,
   getAppleAdsCampaignDetail,
-  getAppleAdsCampaignDailySpend,
   getAppleAdsDailyStats,
   mergeDailyStatsLists,
   resolveAppleAdsRange,
@@ -612,10 +611,10 @@ appleAdsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSettings, async
 
   try {
     const range = resolveAppleAdsRange(req.query);
-    const days = await getAppleAdsCampaignDailySpend(
+    const days = await getAppleAdsDailyStats(
       await orgCredsForCampaign(req.user!.teamId, appleAdsKeyCreds(s), req.params.campaignId as string),
-      req.params.campaignId as string,
       range,
+      req.params.campaignId as string,
     );
     res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {

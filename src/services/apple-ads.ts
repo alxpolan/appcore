@@ -87,11 +87,6 @@ export interface AppleAdsAdGroupWithKeywords extends AppleAdsAdGroup {
   keywords: AppleAdsKeyword[];
 }
 
-export interface AppleAdsDailySpend {
-  date: string;
-  spend: number;
-}
-
 export interface AppleAdsReportRange {
   startDate: string;
   endDate: string;
@@ -489,14 +484,6 @@ export async function getAppleAdsDailyStats(
     row.metadata?.campaignId != null ? String(row.metadata.campaignId) : undefined,
   );
   return aggregateDailyStats(rows, campaignId);
-}
-
-export async function getAppleAdsCampaignDailySpend(
-  creds: AppleAdsCredentials,
-  campaignId: string,
-  range: AppleAdsReportRange = resolveAppleAdsRange({}),
-): Promise<AppleAdsDailySpend[]> {
-  return (await getAppleAdsDailyStats(creds, range, campaignId)).map(({ date, spend }) => ({ date, spend }));
 }
 
 export interface AppleAdsCountryStats extends AppleAdsStats {

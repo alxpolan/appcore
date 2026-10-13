@@ -542,7 +542,7 @@ export interface AppleAdsCampaignDetail {
 }
 
 export interface AppleAdsDailySpendResponse {
-  days: { date: string; spend: number }[];
+  days: { date: string; spend: number; impressions: number; taps: number; installs: number }[];
   startDate: string;
   endDate: string;
 }

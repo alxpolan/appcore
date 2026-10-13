@@ -12,8 +12,8 @@ import {
   deleteAppleAdsKeywordsBulk,
   deleteAppleAdsNegativeKeywordsBulk,
   getAppleAdsCampaignCountryBreakdown,
-  getAppleAdsCampaignDailySpend,
   getAppleAdsCampaignDetail,
+  getAppleAdsDailyStats,
   getAppleAdsKeywordCountryBreakdown,
   listAppleAdsAdGroups,
   listAppleAdsCampaigns,
@@ -651,7 +651,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     "get_ads_campaign_daily_spend",
     {
       description:
-        "Get daily ad spend for one Apple Search Ads campaign as a date series. " +
+        "Get daily spend, impressions, taps and installs for one Apple Search Ads campaign as a date series. " +
         "Use list_ads_campaigns first to find the campaign ID.",
       inputSchema: {
         campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
@@ -664,7 +664,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
 
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
-        const daysSeries = await getAppleAdsCampaignDailySpend(ctx.creds, campaignId, range);
+        const daysSeries = await getAppleAdsDailyStats(ctx.creds, range, campaignId);
         return jsonResult({ range, campaignId, days: daysSeries });
       } catch (err) {
         return adsError("get_ads_campaign_daily_spend", err);
