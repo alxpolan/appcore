@@ -1,16 +1,5 @@
 import { useState, useMemo, useEffect, Fragment, type ReactNode } from "react";
-import {
-  DollarSign,
-  TrendingUp,
-  Users,
-  ShoppingBag,
-  Hourglass,
-  RefreshCw,
-  ChevronRight,
-  CirclePlus,
-  CircleCheck,
-  CircleDashed,
-} from "lucide-react";
+import { DollarSign, TrendingUp, Users, ShoppingBag, Hourglass, RefreshCw, ChevronRight } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useApi, apiPost, getActiveBundleId } from "../../hooks/useApi";
 import type {
@@ -33,6 +22,7 @@ import {
 import { type RangeKey, RANGE_OPTIONS, rangeToParams, rangeLabel } from "../../utils/analyticsRange";
 import DemoModeFrame from "../DemoModeFrame";
 import AscConnectCard from "../AscConnectCard";
+import { TransactionTypeBadge } from "../TransactionTypeBadge";
 import {
   generateDemoDownloads,
   generateDemoSummary,
@@ -76,49 +66,6 @@ function DetailField({ label, value, sub, mono }: { label: string; value: string
       </div>
       {sub && <div className={`text-[11px] ${textMuted}`}>{sub}</div>}
     </div>
-  );
-}
-
-function TransactionTypeBadge({ type }: { type: string }) {
-  const normalized = type.toLowerCase();
-  let label = type;
-  let Icon = CircleCheck;
-  let color = "bg-slate-100 text-slate-600 dark:bg-[#2a2f3d] dark:text-[#a6aec0]";
-  let iconColor = "text-slate-500 dark:text-[#a6aec0]";
-
-  if (normalized === "new subscription" || normalized === "subscription") {
-    label = normalized === "new subscription" ? "New Sub" : type;
-    Icon = CirclePlus;
-    color = "bg-indigo-50 text-slate-800 dark:bg-[#2c3041] dark:text-white";
-    iconColor = "text-[#637bf1] dark:text-[#8298ff]";
-  } else if (normalized === "one time") {
-    color = "bg-indigo-50 text-slate-800 dark:bg-[#2c3041] dark:text-white";
-    iconColor = "text-[#637bf1] dark:text-[#8298ff]";
-  } else if (normalized === "trial") {
-    Icon = CircleDashed;
-    color = "bg-orange-50 text-slate-800 dark:bg-[#3d2a1e] dark:text-white";
-    iconColor = "text-[#f97316] dark:text-[#fb923c]";
-  } else if (normalized === "trial converted") {
-    color = "bg-emerald-50 text-slate-800 dark:bg-[#203c30] dark:text-white";
-    iconColor = "text-[#10b981] dark:text-[#32e4a5]";
-  } else if (normalized === "trial canceled" || normalized === "trial cancelled" || normalized === "trial ended") {
-    Icon = CircleDashed;
-    color = "bg-red-50 text-slate-800 dark:bg-[#3c2427] dark:text-white";
-    iconColor = "text-[#ef4444] dark:text-[#ff4d63]";
-  } else if (normalized === "renewal") {
-    Icon = RefreshCw;
-    color = "bg-indigo-50 text-slate-800 dark:bg-[#2c3041] dark:text-white";
-    iconColor = "text-[#637bf1] dark:text-[#8298ff]";
-  }
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${color}`}
-      title={type}
-    >
-      <Icon className={`h-3.5 w-3.5 shrink-0 stroke-[2.7] ${iconColor}`} aria-hidden="true" />
-      {label}
-    </span>
   );
 }
 
