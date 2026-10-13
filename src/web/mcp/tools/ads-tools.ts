@@ -40,6 +40,7 @@ import {
   mcpToolMessages,
   registerMutatingTool,
   verifyMcpAppAccess,
+  type MutatingToolOpts,
   type ToolSummary,
 } from "./shared";
 
@@ -461,6 +462,77 @@ async function getMcpRevenueApps(userId: string, teamId: string) {
   return allowedAppIds ? apps.filter((app) => allowedAppIds.includes(app.id)) : apps;
 }
 
+/** Lean change history for MCP responses. Successes only: shared audit
+ * failure-patterns scan result text, so past error summaries stay out. */
+async function getAdsHistory(teamId: string, campaignId?: string, limit = 20) {
+  try {
+    const entries = await prisma.activityLog.findMany({
+      where: {
+        teamId,
+        entityType: "ads_campaign",
+        status: "success",
+        ...(campaignId != null ? { entityId: String(campaignId) } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { source: true, actor: true, action: true, entityId: true, summary: true, createdAt: true },
+    });
+    return entries.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() }));
+  } catch {
+    return [];
+  }
+}
+
+/** Attaches `history` to a JSON tool result; passes errors and non-JSON through untouched. */
+async function withAdsHistory(userId: string, campaignId: unknown, result: any) {
+  try {
+    const text = result?.content?.[0]?.text;
+    if (typeof text !== "string") return result;
+    const parsed: any = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return result;
+    const teamId = await getMcpUserTeamId(userId);
+    if (!teamId) return result;
+    parsed.history =
+      parsed.history ?? (await getAdsHistory(teamId, typeof campaignId === "string" ? campaignId : undefined));
+    return { content: [{ type: "text" as const, text: JSON.stringify(parsed, null, 2) }] };
+  } catch {
+    return result;
+  }
+}
+
+type AdsToolConfig = { description?: string; inputSchema?: any; outputSchema?: any; annotations?: any };
+type AdsToolHandler = (args: any, extra?: any) => Promise<any>;
+
+function registerAdsReadTool(
+  server: McpServer,
+  userId: string,
+  name: string,
+  config: AdsToolConfig,
+  handler: AdsToolHandler,
+) {
+  server.registerTool(name, config, async (args: any, extra?: any) =>
+    withAdsHistory(userId, args?.campaignId, await handler(args, extra)),
+  );
+}
+
+function registerAdsMutatingTool(
+  server: McpServer,
+  userId: string,
+  name: string,
+  config: AdsToolConfig,
+  handler: AdsToolHandler,
+  opts: MutatingToolOpts = {},
+) {
+  registerMutatingTool(
+    server,
+    userId,
+    name,
+    config,
+    async (args: any, extra?: any) => withAdsHistory(userId, args?.campaignId, await handler(args, extra)),
+    opts,
+  );
+}
+
 /** Shared bundle/app resolution for the internal campaign-group tools. */
 async function resolveGroupApp(userId: string, bundleId: string | undefined) {
   if (!bundleId?.trim()) return { ok: false as const, error: mcpToolMessages.noBundleIdProvided };
@@ -514,7 +586,9 @@ const summarizeAssignGroup = (args: any, text: string): ToolSummary => {
 };
 
 export function registerAdsTools(server: McpServer, userId: string) {
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "list_ads_campaigns",
     {
       description:
@@ -544,7 +618,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_campaign_detail",
     {
       description:
@@ -569,7 +645,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_campaign_daily_spend",
     {
       description:
@@ -594,7 +672,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_campaign_country_breakdown",
     {
       description:
@@ -626,7 +706,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_keyword_country_breakdown",
     {
       description:
@@ -668,7 +750,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "create_ads_campaign",
@@ -783,7 +865,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeCreateCampaign },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "update_ads_campaign_status",
@@ -819,7 +901,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeCampaignStatus },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "delete_ads_campaign",
@@ -853,7 +935,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeDeleteCampaign },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "update_ads_campaign",
@@ -904,7 +986,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeUpdateCampaign },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "create_ads_ad_group",
@@ -964,7 +1046,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeCreateAdGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "update_ads_ad_group",
@@ -1012,7 +1094,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeUpdateAdGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "delete_ads_ad_group",
@@ -1045,7 +1127,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeDeleteAdGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "add_ads_keywords",
@@ -1089,7 +1171,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeAddKeywords },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "update_ads_keywords",
@@ -1137,7 +1219,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeUpdateKeywords },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "delete_ads_keywords",
@@ -1175,7 +1257,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeDeleteKeywords },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_negative_keywords",
     {
       description:
@@ -1209,7 +1293,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "update_ads_negative_keywords",
@@ -1259,7 +1343,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeUpdateNegatives },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "get_ads_campaign_revenue",
     {
       description:
@@ -1297,7 +1383,9 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  server.registerTool(
+  registerAdsReadTool(
+    server,
+    userId,
     "list_ads_campaign_groups",
     {
       description:
@@ -1329,7 +1417,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "create_ads_campaign_group",
@@ -1362,7 +1450,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeCreateGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "rename_ads_campaign_group",
@@ -1398,7 +1486,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeRenameGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "delete_ads_campaign_group",
@@ -1428,7 +1516,7 @@ export function registerAdsTools(server: McpServer, userId: string) {
     { summarize: summarizeDeleteGroup },
   );
 
-  registerMutatingTool(
+  registerAdsMutatingTool(
     server,
     userId,
     "assign_ads_campaign_group",

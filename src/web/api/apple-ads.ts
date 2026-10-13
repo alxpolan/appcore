@@ -40,9 +40,11 @@ import {
   type CreateAppleAdsNegativeKeywordInput,
 } from "../../services/apple-ads";
 import { getAppleAdsCampaignRevenue, mergeCountryRevenue } from "../../services/apple-ads-revenue";
+import { adsResponseCache } from "./response-cache";
 
 export const appleAdsRouter = Router();
 appleAdsRouter.use(requireAuth);
+appleAdsRouter.use(adsResponseCache());
 
 function webActor(req: Request) {
   return { teamId: req.user!.teamId, userId: req.user!.userId, actor: req.user!.email };

@@ -35,8 +35,10 @@ import {
   validateGoogleAdsCreateCampaignInput,
   type GoogleAdsCredentials,
 } from "../../services/google-ads";
+import { adsResponseCache } from "./response-cache";
 
 export const googleAdsRouter = Router();
+googleAdsRouter.use(adsResponseCache());
 
 function webActor(req: Request) {
   return { teamId: req.user!.teamId, userId: req.user!.userId, actor: req.user!.email };

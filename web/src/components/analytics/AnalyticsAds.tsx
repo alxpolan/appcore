@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Megaphone,
@@ -95,6 +95,20 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   );
 }
 
+const COLLAPSED_GROUPS_KEY = "appcore_ads_collapsed_groups";
+
+function loadCollapsedGroups(bundleId: string | null): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+    if (!raw || !bundleId) return new Set();
+    const parsed = JSON.parse(raw) as Record<string, string[]>;
+    const ids = parsed[bundleId];
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export default function AnalyticsAds({ addToast }: Props) {
   const navigate = useNavigate();
   const { canManageTeam, canWrite } = usePermissions();
@@ -103,7 +117,7 @@ export default function AnalyticsAds({ addToast }: Props) {
   const [bundleId, setBundleId] = useState<string | null>(() => getActiveBundleId());
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [groups, setGroups] = useState<AppleAdsCampaignGroup[]>([]);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsedGroups(getActiveBundleId()));
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [groupOverride, setGroupOverride] = useState<Record<string, string | null>>({});
   const [openRowMenu, setOpenRowMenu] = useState<{ id: string; top: number; right: number } | null>(null);
@@ -124,6 +138,27 @@ export default function AnalyticsAds({ addToast }: Props) {
     window.addEventListener("app-changed", handler);
     return () => window.removeEventListener("app-changed", handler);
   }, []);
+  // Remember collapsed groups per app across reloads. Loading wins over
+  // persisting on app switch so a stale set never leaks into the new app.
+  const skipPersistRef = useRef(true);
+  useEffect(() => {
+    setCollapsed(loadCollapsedGroups(bundleId));
+    skipPersistRef.current = true;
+  }, [bundleId]);
+  useEffect(() => {
+    if (!bundleId || skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+      const parsed = (raw ? JSON.parse(raw) : {}) as Record<string, string[]>;
+      parsed[bundleId] = [...collapsed];
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(parsed));
+    } catch {
+      // Private mode etc. — collapsing still works for the session.
+    }
+  }, [collapsed, bundleId]);
   const [range, setRange] = useState<RangeKey>("30d");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -215,9 +250,7 @@ export default function AnalyticsAds({ addToast }: Props) {
   };
 
   const sortedCampaigns = useMemo(() => {
-    const withOverrides = campaigns.map((c) =>
-      c.id in groupOverride ? { ...c, groupId: groupOverride[c.id] } : c,
-    );
+    const withOverrides = campaigns.map((c) => (c.id in groupOverride ? { ...c, groupId: groupOverride[c.id] } : c));
     const valueFor = (c: AppleAdsCampaign): number | string => {
       switch (sortBy) {
         case "name":
@@ -355,11 +388,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               : fmtNumber(revenueData?.byCampaign[c.id]?.transactions.length ?? 0)}
         </td>
         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-          {revenueLoading
-            ? "…"
-            : revenueError
-              ? "—"
-              : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
+          {revenueLoading ? "…" : revenueError ? "—" : fmtMoney(revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0, "USD")}
         </td>
         <td className={`${TD} text-right pr-5`}>
           <span className="inline-flex items-center gap-1">
@@ -469,46 +498,66 @@ export default function AnalyticsAds({ addToast }: Props) {
 
   const renderGroupHeader = (id: string, name: string, rows: AppleAdsCampaign[], removable: boolean) => {
     const isCollapsed = collapsed.has(id);
-    const spend = rows.reduce((sum, c) => sum + c.spend, 0);
+    const sum = (pick: (c: AppleAdsCampaign) => number) => rows.reduce((total, c) => total + pick(c), 0);
+    const transactions = sum((c) => revenueData?.byCampaign[c.id]?.transactions.length ?? 0);
+    const proceeds = sum((c) => revenueData?.byCampaign[c.id]?.proceedsUsd ?? 0);
+    const totalCls = `text-right tabular-nums font-semibold ${textPrimary}`;
     return (
-      <tr key={`hdr-${id}`} className="bg-gray-50/70 dark:bg-white/[0.02] border-y border-[#f0f1f3] dark:border-[#252a34]">
-        <td colSpan={8} className="px-4 py-2.5 cursor-pointer select-none" onClick={() => toggleCollapse(id)}>
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 min-w-0">
-              {isCollapsed ? (
-                <ChevronRight className={`w-4 h-4 ${textMuted} shrink-0`} />
-              ) : (
-                <ChevronDown className={`w-4 h-4 ${textMuted} shrink-0`} />
-              )}
-              {editingGroup === id ? (
-                <input
-                  autoFocus
-                  defaultValue={name}
-                  onClick={(e) => e.stopPropagation()}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v && v !== name) handleRenameGroup(id, v);
-                    setEditingGroup(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    if (e.key === "Escape") setEditingGroup(null);
-                  }}
-                  className={`text-[14px] font-semibold ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2 py-0.5 outline-none focus:border-[#595DD2]`}
-                />
-              ) : (
-                <span className={`text-[14px] font-semibold ${textPrimary} truncate`}>{name}</span>
-              )}
-              <span className={`text-[12px] ${textMuted} shrink-0`}>
-                · {rows.length} campaign{rows.length === 1 ? "" : "s"}
+      <tr
+        key={`hdr-${id}`}
+        className="bg-gray-50/70 dark:bg-white/[0.02] border-t border-[#f0f1f3] dark:border-[#252a34]"
+      >
+        <td className={`${TD} cursor-pointer select-none`} onClick={() => toggleCollapse(id)}>
+          <span className="flex min-w-0 items-center gap-2">
+            {isCollapsed ? (
+              <ChevronRight className={`w-4 h-4 ${textMuted} shrink-0`} />
+            ) : (
+              <ChevronDown className={`w-4 h-4 ${textMuted} shrink-0`} />
+            )}
+            {editingGroup === id ? (
+              <input
+                autoFocus
+                defaultValue={name}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v && v !== name) handleRenameGroup(id, v);
+                  setEditingGroup(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") setEditingGroup(null);
+                }}
+                className={`text-[14px] font-semibold ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-md px-2 py-0.5 outline-none focus:border-[#595DD2] w-48 max-w-full shrink-0`}
+              />
+            ) : (
+              <span className={`text-[14px] font-semibold ${textPrimary} truncate`} title={name}>
+                {name}
               </span>
+            )}
+            <span className={`text-[12px] ${textMuted} shrink-0`}>
+              · {rows.length} campaign{rows.length === 1 ? "" : "s"}
             </span>
-            <span className={`text-[12px] ${textMuted} tabular-nums shrink-0 ml-3`}>
-              {rows.length > 0 ? fmtMoney(spend, currency) : ""}
-            </span>
-          </div>
+          </span>
         </td>
-        <td className="px-2 py-2.5 relative text-right">
+        <td className={`${TD} ${totalCls}`}>
+          {fmtMoney(
+            sum((c) => c.dailyBudget ?? 0),
+            currency,
+          )}
+        </td>
+        <td className={`${TD} ${totalCls}`}>
+          {fmtMoney(
+            sum((c) => c.spend),
+            currency,
+          )}
+        </td>
+        <td className={`${TD} ${totalCls}`}>{fmtNumber(sum((c) => c.impressions))}</td>
+        <td className={`${TD} ${totalCls}`}>{fmtNumber(sum((c) => c.taps))}</td>
+        <td className={`${TD} ${totalCls}`}>{fmtNumber(sum((c) => c.installs))}</td>
+        <td className={`${TD} ${totalCls}`}>{revenueLoading ? "…" : revenueError ? "—" : fmtNumber(transactions)}</td>
+        <td className={`${TD} ${totalCls}`}>{revenueLoading ? "…" : revenueError ? "—" : fmtMoney(proceeds, "USD")}</td>
+        <td className={`${TD} relative text-right pr-5`}>
           {removable && (
             <button
               aria-label="Group actions"
