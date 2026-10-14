@@ -714,6 +714,8 @@ export interface GoogleAdsAppleRevenueResponse {
   ctToken?: string;
   totals?: { downloads: number; purchases: number; trials: number; proceedsUsd: number };
   days?: GoogleAdsAppleRevenueDay[];
+  /** Central app-level avg paid proceeds (90d RevenueCat), used when the campaign has no conversions yet. */
+  avgTrialValueUsd?: number;
 }
 
 export interface GoogleAdsAppleRevenueCountry {

@@ -205,13 +205,14 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     const started = revenueTotals?.trials ?? 0;
     const converted = revenueTotals?.purchases ?? 0;
     const proceeds = revenueTotals?.proceedsUsd ?? 0;
+    const campaignAvg = converted > 0 ? proceeds / converted : 0;
     return {
       downloads,
       started,
       converted,
-      proceedsPerConverted: converted > 0 ? proceeds / converted : 0,
+      proceedsPerConverted: campaignAvg > 0 ? campaignAvg : (revenueData?.avgTrialValueUsd ?? 0),
     };
-  }, [revenueTotals]);
+  }, [revenueTotals, revenueData?.avgTrialValueUsd]);
 
   const {
     data: countriesData,

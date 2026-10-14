@@ -76,7 +76,8 @@ export default function GoogleAdsCampaignChart({
   const [showTrials, setShowTrials] = useState(true);
   const hasRevenue = revenue?.mapped === true && !revenueError;
   const totals = hasRevenue ? revenue?.totals : undefined;
-  const avgPerPurchase = totals && totals.purchases > 0 ? totals.proceedsUsd / totals.purchases : 0;
+  const campaignAvg = totals && totals.purchases > 0 ? totals.proceedsUsd / totals.purchases : 0;
+  const avgPerPurchase = campaignAvg > 0 ? campaignAvg : (revenue?.avgTrialValueUsd ?? 0);
   // Day buckets follow the resolved backend range; fall back to the last 30
   // days while the range is still loading.
   const fallbackEnd = new Date();

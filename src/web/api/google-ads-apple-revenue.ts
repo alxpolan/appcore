@@ -56,6 +56,22 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       }),
       { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
     );
+    // Central app-level trial reference (same population Apple Ads uses per
+    // product): what a paid purchase is worth on this app, so campaigns
+    // without conversions yet can still value their trials.
+    const priceStart = new Date();
+    priceStart.setUTCDate(priceStart.getUTCDate() - 90);
+    priceStart.setUTCHours(0, 0, 0, 0);
+    const priceSample = await prisma.revenueCatTransaction.aggregate({
+      where: {
+        bundleId: mapping.app.bundleId,
+        occurredAt: { gte: priceStart },
+        environment: "production",
+        proceedsUsd: { gt: 0 },
+      },
+      _avg: { proceedsUsd: true },
+    });
+    const avgTrialValueUsd = Math.round((priceSample._avg.proceedsUsd ?? 0) * 100) / 100;
 
     res.json({
       mapped: true,
@@ -64,6 +80,7 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       range,
       totals,
       days,
+      avgTrialValueUsd,
     });
   } catch (err: any) {
     logger.error("[google-ads] apple revenue fetch error", { err: String(err?.message ?? err) });

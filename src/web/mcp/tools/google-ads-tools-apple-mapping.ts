@@ -82,6 +82,19 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           }),
           { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
         );
+        const priceStart = new Date();
+        priceStart.setUTCDate(priceStart.getUTCDate() - 90);
+        priceStart.setUTCHours(0, 0, 0, 0);
+        const priceSample = await prisma.revenueCatTransaction.aggregate({
+          where: {
+            bundleId: mapping.app.bundleId,
+            occurredAt: { gte: priceStart },
+            environment: "production",
+            proceedsUsd: { gt: 0 },
+          },
+          _avg: { proceedsUsd: true },
+        });
+        const avgTrialValueUsd = Math.round((priceSample._avg.proceedsUsd ?? 0) * 100) / 100;
 
         return jsonResult({
           campaignId,
@@ -90,6 +103,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           range,
           totals,
           days,
+          avgTrialValueUsd,
         });
       } catch (err) {
         return googleAdsError("get_google_ads_apple_revenue", err);
