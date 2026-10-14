@@ -5,6 +5,8 @@ import {
   attachCampaignMappings,
   filterCampaignsByApp,
   needsCampaignBackfill,
+  parseCtParam,
+  withCtParam,
 } from "../src/services/utils/google-ads-mapping";
 
 describe("google ads: campaign mappings", () => {
@@ -145,5 +147,23 @@ describe("google ads: campaign backfill trigger", () => {
       needsCampaignBackfill({ mappingCount: 1, oldestReportDate: daysAgo(200), now }),
       false,
     );
+  });
+
+  it("parses ct params from final URLs", () => {
+    assert.equal(parseCtParam("https://apps.apple.com/app/id1?ct=gads_x"), "gads_x");
+    assert.equal(parseCtParam("https://apps.apple.com/app/id1"), null);
+    assert.equal(parseCtParam("notaurl"), null);
+  });
+
+  it("appends ct params without clobbering", () => {
+    assert.equal(
+      withCtParam("https://apps.apple.com/app/id1", "gads_x"),
+      "https://apps.apple.com/app/id1?ct=gads_x",
+    );
+    assert.equal(
+      withCtParam("https://apps.apple.com/app/id1?ct=keep", "gads_x"),
+      "https://apps.apple.com/app/id1?ct=keep",
+    );
+    assert.equal(withCtParam("notaurl", "gads_x"), "notaurl");
   });
 });

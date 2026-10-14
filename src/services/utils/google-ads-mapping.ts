@@ -85,6 +85,27 @@ export function needsCampaignBackfill(args: {
 }
 
 /** Attaches stored mappings to Google campaigns by campaign id; unmapped campaigns get null. */
+export function parseCtParam(finalUrl: string): string | null {
+  try {
+    const ct = new URL(finalUrl).searchParams.get("ct")?.trim();
+
+    return ct ? ct : null;
+  } catch {
+    return null;
+  }
+}
+
+export function withCtParam(finalUrl: string, ctToken: string): string {
+  try {
+    const url = new URL(finalUrl);
+    if (!url.searchParams.get("ct")) url.searchParams.set("ct", ctToken);
+
+    return url.toString();
+  } catch {
+    return finalUrl;
+  }
+}
+
 export function attachCampaignMappings(
   campaigns: Array<{ id: string; name: string; status: string }>,
   mappings: CampaignMappingInput[],

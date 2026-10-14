@@ -65,11 +65,24 @@ export async function previousGoogleNegativeTexts(
     .slice(0, 10);
 }
 
-export const summarizeGoogleCreateCampaign = (args: any, text: string): ToolSummary => ({
-  summary: `Created Google Ads campaign "${args?.name}" (${args?.status ?? "PAUSED"}) with ${args?.adGroups?.length ?? 0} ad group(s)`,
-  entityType: "google_ads_campaign",
-  entityId: tryParseJson(text)?.campaign?.id != null ? String(tryParseJson(text).campaign.id) : undefined,
-});
+export const summarizeGoogleCreateCampaign = (args: any, text: string): ToolSummary => {
+  const res = tryParseJson(text);
+  const bits: string[] = [];
+  if (args?.locationIds?.length) bits.push(`${args.locationIds.length} location(s)`);
+  if (args?.languageIds?.length) bits.push(`${args.languageIds.length} language(s)`);
+  const adCount = (args?.adGroups ?? []).reduce((n: number, g: any) => n + (g?.ads?.length ?? 0), 0);
+  if (adCount) bits.push(`${adCount} ad(s)`);
+  if (args?.biddingStrategy) bits.push(String(args.biddingStrategy));
+  if (res?.appleMapping) bits.push(`Apple mapping ${res.appleMapping.ctToken}`);
+
+  return {
+    summary:
+      `Created Google Ads campaign "${args?.name}" (${args?.status ?? "PAUSED"}) with ${args?.adGroups?.length ?? 0} ad group(s)` +
+      (bits.length ? ` (${bits.join(", ")})` : ""),
+    entityType: "google_ads_campaign",
+    entityId: res?.campaign?.id != null ? String(res.campaign.id) : undefined,
+  };
+};
 
 export const summarizeGoogleUpdateCampaign = (args: any, text: string): ToolSummary => {
   const prev = tryParseJson(text)?.previous;

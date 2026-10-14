@@ -21,6 +21,8 @@ import {
   googleTargetingKeywordSchema,
   rangeSchema,
 } from "./google-ads-tools-shared";
+import { parseCtParam, withCtParam } from "../../../services/utils/google-ads-mapping";
+import { upsertGoogleAdsAppleMapping } from "./google-ads-tools-apple-mapping";
 import {
   previousGoogleCampaign,
   previousGoogleCampaignTargeting,
@@ -140,13 +142,15 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
     "create_google_ads_campaign",
     {
       description:
-        "Create a Google Ads Search campaign with ad groups, keywords and negative keywords via the Google Ads API. " +
+        "Create a Google Ads Search campaign with ad groups, keywords, negative keywords, geo/language targeting " +
+        "and responsive search ads via the Google Ads API. " +
         "The campaign starts PAUSED by default so it can be reviewed in Google Ads before it spends money — " +
         "pass status ENABLED only when the user explicitly asks to run it immediately, " +
         "or publish it later with update_google_ads_campaign_status. " +
-        "Requires team admin rights. Note: the campaign also needs responsive search ads " +
-        "and geo targeting (both managed in the Google Ads UI) before it can serve. " +
-        "Campaign-level negativeKeywords apply to the whole campaign; per-ad-group negativeKeywords apply to that ad group only.",
+        "Requires team admin rights. " +
+        "Campaign-level negativeKeywords apply to the whole campaign; per-ad-group negativeKeywords apply to that ad group only. " +
+        "Pass locationIds (e.g. ['2276'] Germany) or the campaign serves worldwide. " +
+        "Pass ctToken to append it as ct param to all ad final URLs; with appleBundleId the Apple mapping is linked automatically.",
       inputSchema: {
         name: z.string().describe("Campaign name, e.g. 'MyApp - US - Brand'."),
         dailyBudgetAmount: z.number().positive().describe("Daily budget in the account currency, e.g. 50."),
@@ -156,15 +160,44 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           .describe("PAUSED (default, recommended) or ENABLED to run immediately."),
         startDate: z.string().optional().describe("Start date, YYYY-MM-DD. Defaults to today when omitted."),
         endDate: z.string().optional().describe("Optional end date, YYYY-MM-DD."),
+        biddingStrategy: z
+          .enum(["MANUAL_CPC", "MAXIMIZE_CLICKS"])
+          .optional()
+          .describe("MANUAL_CPC (default, needs bids) or MAXIMIZE_CLICKS (bids are ignored)."),
+        cpcBidCeiling: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Max CPC cap for MAXIMIZE_CLICKS. Only valid with that strategy."),
+        locationIds: z
+          .array(z.string().regex(/^\d+$/))
+          .optional()
+          .describe("Geo target IDs, e.g. ['2276'] Germany, ['2040'] Austria. Omit only for worldwide campaigns."),
+        languageIds: z
+          .array(z.string().regex(/^\d+$/))
+          .optional()
+          .describe("Language IDs, e.g. ['1002'] German, ['1001'] English."),
+        ctToken: z
+          .string()
+          .optional()
+          .describe("App Store campaign token appended as ct param to all ad final URLs missing one."),
+        appleBundleId: z
+          .string()
+          .optional()
+          .describe("App bundle ID to link the ct token for Apple-measured revenue (needs ctToken or ct in final URLs)."),
         adGroups: z
           .array(
             z.object({
               name: z.string().describe("Ad group name, e.g. 'Brand Exact'."),
-              defaultBidAmount: z.number().positive().describe("Default max CPC bid."),
+              defaultBidAmount: z
+                .number()
+                .positive()
+                .optional()
+                .describe("Default max CPC bid (required for MANUAL_CPC, ignored for MAXIMIZE_CLICKS)."),
               keywords: z
                 .array(
                   googleTargetingKeywordSchema.extend({
-                    bidAmount: z.number().positive().describe("Keyword-level max CPC bid (required at creation)."),
+                    bidAmount: z.number().positive().optional().describe("Keyword-level max CPC bid."),
                   }),
                 )
                 .min(1)
@@ -175,6 +208,20 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
                 .max(500)
                 .optional()
                 .describe("Negative keywords for this ad group only. Omit when none are needed."),
+              ads: z
+                .array(
+                  z.object({
+                    headlines: z.array(z.string()).min(3).max(15).describe("3-15 headlines, max 30 chars each."),
+                    descriptions: z.array(z.string()).min(2).max(4).describe("2-4 descriptions, max 90 chars each."),
+                    finalUrl: z.string().describe("Final URL, e.g. an App Store campaign link."),
+                    path1: z.string().max(15).optional(),
+                    path2: z.string().max(15).optional(),
+                    status: z.enum(["ENABLED", "PAUSED"]).optional().describe("Defaults to PAUSED."),
+                  }),
+                )
+                .max(10)
+                .optional()
+                .describe("Responsive search ads for this ad group, e.g. translated per language."),
             }),
           )
           .min(1)
@@ -195,6 +242,16 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         return textResult("Creating campaigns requires the team admin role.");
       }
 
+      const token = String(params.ctToken ?? "").trim() || null;
+      const groups = Array.isArray(params.adGroups) ? params.adGroups : [];
+      if (token) {
+        for (const g of groups) {
+          for (const ad of g?.ads ?? []) {
+            if (ad?.finalUrl) ad.finalUrl = withCtParam(String(ad.finalUrl), token);
+          }
+        }
+      }
+
       let input;
 
       try {
@@ -205,8 +262,24 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
 
       try {
         const campaign = await createGoogleAdsCampaignFull(ctx.creds, input);
+        let appleMapping: { bundleId: string; ctToken: string } | null = null;
+        const bundleId = String(params.appleBundleId ?? "").trim();
+        if (bundleId) {
+          const fromUrls = new Set<string>();
+          for (const g of groups) {
+            for (const ad of g?.ads ?? []) {
+              const ct = ad?.finalUrl ? parseCtParam(String(ad.finalUrl)) : null;
+              if (ct) fromUrls.add(ct);
+            }
+          }
+          const effective = token ?? (fromUrls.size === 1 ? [...fromUrls][0] : null);
+          if (effective) {
+            const mapping = await upsertGoogleAdsAppleMapping(ctx.teamId, campaign.id, bundleId, effective);
+            if (mapping) appleMapping = { bundleId, ctToken: mapping.ctToken };
+          }
+        }
 
-        return jsonResult({ campaign });
+        return jsonResult({ campaign, appleMapping });
       } catch (err) {
         return googleAdsError("create_google_ads_campaign", err);
       }

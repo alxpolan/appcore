@@ -5,6 +5,17 @@ import { resolveGoogleAdsRange } from "../../../services/google-ads";
 import { getMcpAllowedAppIds, getMcpUserTeamId, isTeamAdmin, jsonResult, registerMutatingTool, textResult, type ToolSummary } from "./shared";
 import { googleAdsError, rangeSchema } from "./google-ads-tools-shared";
 
+export async function upsertGoogleAdsAppleMapping(teamId: string, campaignId: string, bundleId: string, ctToken: string) {
+  const app = await prisma.app.findFirst({ where: { bundleId, teamId }, select: { id: true } });
+  if (!app) return null;
+
+  return prisma.googleAdsCampaignToken.upsert({
+    where: { teamId_googleCampaignId: { teamId, googleCampaignId: campaignId } },
+    create: { teamId, googleCampaignId: campaignId, appId: app.id, ctToken: ctToken.trim() },
+    update: { appId: app.id, ctToken: ctToken.trim() },
+  });
+}
+
 export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: string) {
   server.registerTool(
     "get_google_ads_apple_revenue",
@@ -106,13 +117,8 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
       }
 
       try {
-        const app = await prisma.app.findFirst({ where: { bundleId, teamId }, select: { id: true } });
-        if (!app) return textResult(`App ${bundleId} not found on this team.`);
-        const mapping = await prisma.googleAdsCampaignToken.upsert({
-          where: { teamId_googleCampaignId: { teamId, googleCampaignId: campaignId } },
-          create: { teamId, googleCampaignId: campaignId, appId: app.id, ctToken: ctToken.trim() },
-          update: { appId: app.id, ctToken: ctToken.trim() },
-        });
+        const mapping = await upsertGoogleAdsAppleMapping(teamId, campaignId, bundleId, ctToken);
+        if (!mapping) return textResult(`App ${bundleId} not found on this team.`);
 
         return jsonResult({ campaignId, bundleId, ctToken: mapping.ctToken });
       } catch (err) {
