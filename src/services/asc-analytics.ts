@@ -383,7 +383,7 @@ export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): C
   return [...byKey.values()];
 }
 
-async function storeCampaignMetricsSegment(
+export async function storeCampaignMetricsSegment(
   bundleId: string,
   rows: CampaignMetricsRow[],
   fields: (keyof CampaignMetricsRow)[],
