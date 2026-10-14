@@ -1,7 +1,7 @@
 import { ResourceNames, enums, toMicros } from "google-ads-api";
 import { asPositiveNumber } from "./utils/ads-validation";
 import { googleAdsGateway } from "./google-ads-gateway";
-import { listGoogleAdsKeywords } from "./google-ads-reports";
+import { listGoogleAdsCampaignTargeting, listGoogleAdsKeywords } from "./google-ads-reports";
 import type {
   GoogleAdsAddKeywordInput,
   GoogleAdsCreateCampaignInput,
@@ -520,4 +520,66 @@ export async function deleteGoogleAdsNegativeKeywords(
   }
 
   return ids.length;
+}
+
+export function validateTargetingIds(list: unknown, label: string): string[] {
+  if (list == null) throw new Error(`${label} is required`);
+  if (!Array.isArray(list)) throw new Error(`${label} must be an array of numeric ids`);
+
+  return list.map((v: any, i: number) => {
+    const id = String(v ?? "").trim();
+    if (!/^\d+$/.test(id)) throw new Error(`${label} [${i + 1}] must be a numeric id`);
+    return id;
+  });
+}
+
+export async function replaceGoogleAdsCampaignTargeting(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+  patch: { locationIds?: (string | number)[]; languageIds?: (string | number)[] },
+): Promise<{ locations: string[]; languages: string[] }> {
+  const gw = googleAdsGateway(creds);
+  const campaignName = ResourceNames.campaign(creds.customerId, campaignId);
+  const current = await listGoogleAdsCampaignTargeting(creds, campaignId);
+  const ops: GoogleAdsMutationOperation[] = [];
+  let locations = current.locations.map((l) => l.geoTargetConstant.split("/").pop() ?? "");
+  let languages = current.languages.map((l) => l.languageConstant.split("/").pop() ?? "");
+
+  if (patch.locationIds !== undefined) {
+    for (const c of current.locations) {
+      ops.push({
+        entity: "campaign_criterion",
+        operation: "remove",
+        resource: `${campaignName}/campaignCriteria/${campaignId}~${c.criterionId}`,
+      });
+    }
+    locations = patch.locationIds.map(String);
+    for (const id of locations) {
+      ops.push({
+        entity: "campaign_criterion",
+        operation: "create",
+        resource: { campaign: campaignName, location: { geo_target_constant: `geoTargetConstants/${id}` } },
+      });
+    }
+  }
+  if (patch.languageIds !== undefined) {
+    for (const c of current.languages) {
+      ops.push({
+        entity: "campaign_criterion",
+        operation: "remove",
+        resource: `${campaignName}/campaignCriteria/${campaignId}~${c.criterionId}`,
+      });
+    }
+    languages = patch.languageIds.map(String);
+    for (const id of languages) {
+      ops.push({
+        entity: "campaign_criterion",
+        operation: "create",
+        resource: { campaign: campaignName, language: { language_constant: `languageConstants/${id}` } },
+      });
+    }
+  }
+  await gw.mutate(ops);
+
+  return { locations, languages };
 }

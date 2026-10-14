@@ -1,6 +1,7 @@
 import {
   listGoogleAdsAdGroups,
   listGoogleAdsCampaigns,
+  listGoogleAdsCampaignTargeting,
   listGoogleAdsKeywords,
   listGoogleAdsNegativeKeywords,
   type GoogleAdsCredentials,
@@ -278,5 +279,33 @@ export const summarizeGoogleUpdateNegatives = (args: any, text: string): ToolSum
     entityType: "google_ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
     details: { campaignId: args?.campaignId, adGroupId: args?.adGroupId ?? null, scope, added, removed },
+  };
+};
+
+export async function previousGoogleCampaignTargeting(creds: GoogleAdsCredentials, campaignId: string) {
+  const t = await bestEffort(() => listGoogleAdsCampaignTargeting(creds, campaignId));
+  if (!t) return undefined;
+
+  return {
+    locations: t.locations.map((l) => l.geoTargetConstant.split("/").pop()),
+    languages: t.languages.map((l) => l.languageConstant.split("/").pop()),
+  };
+}
+
+export const summarizeGoogleCampaignTargeting = (args: any, text: string): ToolSummary => {
+  const prev = tryParseJson(text)?.previous;
+  const parts: string[] = [];
+  if (args?.locationIds !== undefined) {
+    parts.push(`locations ${(prev?.locations ?? []).join(", ") || "none"} → ${(args.locationIds ?? []).join(", ") || "none"}`);
+  }
+  if (args?.languageIds !== undefined) {
+    parts.push(`languages ${(prev?.languages ?? []).join(", ") || "none"} → ${(args.languageIds ?? []).join(", ") || "none"}`);
+  }
+
+  return {
+    summary: `Google Ads campaign ${args?.campaignId} targeting: ${parts.join("; ") || "no changes"}`,
+    entityType: "google_ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+    details: { campaignId: args?.campaignId, changes: parts },
   };
 };

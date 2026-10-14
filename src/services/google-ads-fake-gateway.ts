@@ -43,6 +43,8 @@ interface FakeCriterion {
   cpcBidMicros: number | null;
   metrics: FakeMetrics;
   removed: boolean;
+  locationId: string | null;
+  languageId: string | null;
 }
 
 interface FakeStore {
@@ -229,6 +231,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
             status: k.status,
             negative: k.negative,
             keyword: { text: k.text, match_type: k.matchType },
+            ...(k.locationId ? { location: { geo_target_constant: `geoTargetConstants/${k.locationId}` } } : {}),
+            ...(k.languageId ? { language: { language_constant: `languageConstants/${k.languageId}` } } : {}),
           },
           campaign: { id: k.campaignId },
         });
@@ -415,6 +419,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
             cpcBidMicros: r.cpc_bid_micros != null ? Number(r.cpc_bid_micros) : null,
             metrics: blankMetrics(),
             removed: false,
+            locationId: null,
+            languageId: null,
           });
 
           out.push(`customers/${this.customerId}/adGroupCriteria/${adGroupId}~${id}`);
@@ -422,6 +428,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
           const campaignName = resolveTemp(String(r.campaign ?? ""));
           const campaignId = resourceId(campaignName);
 
+          const locationId = String(r.location?.geo_target_constant ?? "").split("/").pop() || null;
+          const languageId = String(r.language?.language_constant ?? "").split("/").pop() || null;
           this.store.criteria.set(`c:${campaignId}:${id}`, {
             id,
             adGroupId: null,
@@ -433,6 +441,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
             cpcBidMicros: null,
             metrics: blankMetrics(),
             removed: false,
+            locationId,
+            languageId,
           });
 
           out.push(`customers/${this.customerId}/campaignCriteria/${campaignId}~${id}`);

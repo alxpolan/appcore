@@ -112,6 +112,11 @@ export interface GoogleAdsCreateCampaignInput {
   languageIds?: (string | number)[];
 }
 
+export interface GoogleAdsCampaignTargeting {
+  locations: { criterionId: string; geoTargetConstant: string }[];
+  languages: { criterionId: string; languageConstant: string }[];
+}
+
 export interface GoogleAdsCreatedCampaign {
   id: string;
   name: string;

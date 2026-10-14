@@ -3,6 +3,7 @@ import { googleAdsGateway } from "./google-ads-gateway";
 import type {
   GoogleAdsAdGroupWithKeywords,
   GoogleAdsCampaign,
+  GoogleAdsCampaignTargeting,
   GoogleAdsCountryStats,
   GoogleAdsCredentials,
   GoogleAdsKeyword,
@@ -353,4 +354,28 @@ export async function listGoogleAdsNegativeKeywords(
       status: String(k.status ?? ""),
     };
   });
+}
+
+export async function listGoogleAdsCampaignTargeting(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+): Promise<GoogleAdsCampaignTargeting> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT campaign_criterion.criterion_id, campaign_criterion.location.geo_target_constant, " +
+      "campaign_criterion.language.language_constant " +
+      `FROM campaign_criterion WHERE campaign.id = ${campaignId} AND campaign_criterion.status != 'REMOVED'`,
+  );
+
+  const locations: GoogleAdsCampaignTargeting["locations"] = [];
+  const languages: GoogleAdsCampaignTargeting["languages"] = [];
+  for (const row of rows) {
+    const k = row.campaign_criterion ?? {};
+    const geo = k.location?.geo_target_constant ? String(k.location.geo_target_constant) : "";
+    const lang = k.language?.language_constant ? String(k.language.language_constant) : "";
+    if (geo) locations.push({ criterionId: String(k.criterion_id), geoTargetConstant: geo });
+    if (lang) languages.push({ criterionId: String(k.criterion_id), languageConstant: lang });
+  }
+
+  return { locations, languages };
 }

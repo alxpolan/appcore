@@ -9,10 +9,16 @@ import {
   createGoogleAdsCampaignFull,
   deleteGoogleAdsKeywords,
   deleteGoogleAdsNegativeKeywords,
+  replaceGoogleAdsCampaignTargeting,
   validateGoogleAdsCreateCampaignInput,
+  validateTargetingIds,
 } from "../src/services/google-ads-writes";
 import { googleAdsErrorMessage, googleAdsGateway, parseMutateResourceNames } from "../src/services/google-ads-gateway";
-import { listGoogleAdsKeywords, listGoogleAdsNegativeKeywords } from "../src/services/google-ads-reports";
+import {
+  listGoogleAdsCampaignTargeting,
+  listGoogleAdsKeywords,
+  listGoogleAdsNegativeKeywords,
+} from "../src/services/google-ads-reports";
 import type { GoogleAdsCredentials } from "../src/services/google-ads-types";
 
 const creds: GoogleAdsCredentials = { customerId: "999", clientId: "", clientSecret: "", refreshToken: "" };
@@ -139,6 +145,65 @@ describe("google ads: campaign creation", () => {
     } finally {
       process.env.GOOGLE_ADS_FAKE = "1";
     }
+  });
+
+  it("lists and replaces campaign targeting", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Targeting",
+        dailyBudgetAmount: 5,
+        locationIds: ["2276"],
+        adGroups: [
+          {
+            name: "Group 1",
+            defaultBidAmount: 0.5,
+            keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+          },
+        ],
+      }),
+    );
+    const before = await listGoogleAdsCampaignTargeting(creds, created.id);
+    assert.deepEqual(
+      before.locations.map((l) => l.geoTargetConstant),
+      ["geoTargetConstants/2276"],
+    );
+    assert.deepEqual(before.languages, []);
+    const after = await replaceGoogleAdsCampaignTargeting(creds, created.id, {
+      locationIds: ["2040", "2756"],
+      languageIds: ["1002"],
+    });
+    assert.deepEqual(after, { locations: ["2040", "2756"], languages: ["1002"] });
+    const relisted = await listGoogleAdsCampaignTargeting(creds, created.id);
+    assert.equal(relisted.locations.length, 2);
+    assert.equal(relisted.languages.length, 1);
+  });
+
+  it("replace leaves omitted dimensions untouched", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Targeting keep",
+        dailyBudgetAmount: 5,
+        locationIds: ["2276"],
+        languageIds: ["1002"],
+        adGroups: [
+          {
+            name: "Group 1",
+            defaultBidAmount: 0.5,
+            keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+          },
+        ],
+      }),
+    );
+    const after = await replaceGoogleAdsCampaignTargeting(creds, created.id, { languageIds: ["1001"] });
+    assert.deepEqual(after, { locations: ["2276"], languages: ["1001"] });
+  });
+
+  it("validates targeting ids", () => {
+    assert.deepEqual(validateTargetingIds(["2276", 2040], "locationIds"), ["2276", "2040"]);
+    assert.throws(() => validateTargetingIds(null, "locationIds"), /locationIds is required/);
+    assert.throws(() => validateTargetingIds(["xx"], "locationIds"), /locationIds \[1\] must be a numeric id/);
   });
 });
 

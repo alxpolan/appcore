@@ -7,6 +7,7 @@ import {
   getGoogleAdsCampaignDailySpend,
   getGoogleAdsCampaignDetail,
   listGoogleAdsCampaigns,
+  replaceGoogleAdsCampaignTargeting,
   resolveGoogleAdsRange,
   updateGoogleAdsCampaign,
   updateGoogleAdsCampaignStatus,
@@ -22,7 +23,9 @@ import {
 } from "./google-ads-tools-shared";
 import {
   previousGoogleCampaign,
+  previousGoogleCampaignTargeting,
   summarizeGoogleCampaignStatus,
+  summarizeGoogleCampaignTargeting,
   summarizeGoogleCreateCampaign,
   summarizeGoogleDeleteCampaign,
   summarizeGoogleUpdateCampaign,
@@ -321,5 +324,52 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
       }
     },
     { summarize: summarizeGoogleUpdateCampaign },
+  );
+
+  registerMutatingTool(
+    server,
+    userId,
+    "set_google_ads_campaign_targeting",
+    {
+      description:
+        "Replace geo and/or language targeting of a Google Ads campaign. " +
+        "Each given list fully replaces that dimension (omit a dimension to leave it untouched, pass an empty array to clear it). " +
+        "Requires team admin rights. Use list_google_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Google Ads campaign ID (numeric string)."),
+        locationIds: z
+          .array(z.string().regex(/^\d+$/))
+          .optional()
+          .describe("Geo target IDs, e.g. ['2276'] for Germany, ['2040'] Austria, ['2756'] Switzerland."),
+        languageIds: z
+          .array(z.string().regex(/^\d+$/))
+          .optional()
+          .describe("Language IDs, e.g. ['1002'] German, ['1001'] English."),
+      },
+    },
+    async ({ campaignId, locationIds, languageIds }) => {
+      const ctx = await getGoogleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Updating campaign targeting requires the team admin role.");
+      }
+      if (locationIds === undefined && languageIds === undefined) {
+        return textResult("Pass locationIds and/or languageIds.");
+      }
+
+      const previous = await previousGoogleCampaignTargeting(ctx.creds, campaignId);
+      try {
+        const targeting = await replaceGoogleAdsCampaignTargeting(ctx.creds, campaignId, {
+          locationIds,
+          languageIds,
+        });
+
+        return jsonResult({ campaignId, targeting, previous: previous ?? null });
+      } catch (err) {
+        return googleAdsError("set_google_ads_campaign_targeting", err);
+      }
+    },
+    { summarize: summarizeGoogleCampaignTargeting },
   );
 }
