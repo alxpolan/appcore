@@ -190,8 +190,12 @@ export default function GoogleAdsAppleRevenue({
                     {countriesData.countries.map((c) => (
                       <tr key={c.territory} className="border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
                         <td className={`py-1.5 ${textPrimary}`}>
-                          {c.territory === "ZZ" ? "Unknown (pre-tracking)" : countryName(c.territory)}{" "}
-                          <span className={textMuted}>{c.territory !== "ZZ" && c.territory}</span>
+                          {c.territory === "XW"
+                            ? "All territories (web)"
+                            : c.territory === "ZZ"
+                              ? "Unknown (pre-tracking)"
+                              : countryName(c.territory)}{" "}
+                          <span className={textMuted}>{c.territory !== "ZZ" && c.territory !== "XW" && c.territory}</span>
                         </td>
                         <td className={`py-1.5 text-right ${textPrimary}`}>{fmtNumber(c.downloads)}</td>
                         <td className={`py-1.5 text-right ${textPrimary}`}>{fmtNumber(c.trials)}</td>
