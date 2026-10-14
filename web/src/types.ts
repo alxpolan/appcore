@@ -681,11 +681,13 @@ export interface GoogleAdsCountryStats extends GoogleAdsStats {
   countryOrRegion: string;
   countryName: string | null;
   installs?: number | null;
+  trials?: number | null;
+  proceedsUsd?: number | null;
 }
 
 export interface GoogleAdsCountryBreakdownResponse {
   countries: GoogleAdsCountryStats[];
-  installsAvailable?: boolean;
+  revenueAvailable?: boolean;
   startDate: string;
   endDate: string;
 }
@@ -718,19 +720,6 @@ export interface GoogleAdsAppleRevenueResponse {
   days?: GoogleAdsAppleRevenueDay[];
   /** Central app-level avg paid proceeds (90d RevenueCat), used when the campaign has no conversions yet. */
   avgTrialValueUsd?: number;
-}
-
-export interface GoogleAdsAppleRevenueCountry {
-  territory: string;
-  downloads: number;
-  purchases: number;
-  trials: number;
-  proceedsUsd: number;
-}
-
-export interface GoogleAdsAppleRevenueCountriesResponse {
-  mapped: boolean;
-  countries: GoogleAdsAppleRevenueCountry[];
 }
 
 export interface GoogleAdsCampaignMapping {

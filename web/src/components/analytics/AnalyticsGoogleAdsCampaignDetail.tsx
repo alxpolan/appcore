@@ -19,7 +19,7 @@ import {
 } from "../../utils/googleKeywordTable";
 import GoogleAdsCampaignChart from "./GoogleAdsCampaignChart";
 import GoogleAdsProfitCalculator from "./GoogleAdsProfitCalculator";
-import GoogleAdsAppleRevenue from "./GoogleAdsAppleRevenue";
+import GoogleAdsAppleMapping from "./GoogleAdsAppleMapping";
 import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
 import { StatCard } from "../StatCard";
@@ -131,11 +131,11 @@ function useCountryBreakdown(path: string | null) {
 function CountryStatsTable({
   countries,
   currency,
-  installsAvailable,
+  revenueAvailable,
 }: {
   countries: GoogleAdsCountryStats[];
   currency: string | null;
-  installsAvailable: boolean;
+  revenueAvailable: boolean;
 }) {
   return (
     <table className="w-full text-[12px]">
@@ -143,11 +143,17 @@ function CountryStatsTable({
         <tr>
           <th className={TH}>Country</th>
           {STAT_HEADERS.map((h) => (
-            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" && !installsAvailable ? "pr-5" : ""}`}>
+            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" && !revenueAvailable ? "pr-5" : ""}`}>
               {h}
             </th>
           ))}
-          {installsAvailable && <th className={`${TH} text-right pr-5`}>Installs</th>}
+          {revenueAvailable && (
+            <>
+              <th className={`${TH} text-right`}>Installs</th>
+              <th className={`${TH} text-right`}>Trials</th>
+              <th className={`${TH} text-right pr-5`}>Proceeds</th>
+            </>
+          )}
         </tr>
       </thead>
       <tbody>
@@ -158,10 +164,18 @@ function CountryStatsTable({
               <span className={textMuted}>{c.countryOrRegion}</span>
             </td>
             <StatCells stats={c} currency={currency} />
-            {installsAvailable && (
-              <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>
-                {c.installs == null ? "—" : fmtNumber(c.installs)}
-              </td>
+            {revenueAvailable && (
+              <>
+                <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                  {c.installs == null ? "—" : fmtNumber(c.installs)}
+                </td>
+                <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+                  {c.trials == null ? "—" : fmtNumber(c.trials)}
+                </td>
+                <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
+                  {c.proceedsUsd == null ? "—" : fmtMoneyUsd(c.proceedsUsd)}
+                </td>
+              </>
             )}
           </tr>
         ))}
@@ -523,14 +537,10 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
       />
 
       {campaignId && (
-        <GoogleAdsAppleRevenue
+        <GoogleAdsAppleMapping
           campaignId={campaignId}
-          query={query}
-          rangeDeps={rangeDeps}
           canManageTeam={canManageTeam}
           data={revenueData}
-          loading={revenueLoading}
-          error={revenueError}
           refetch={refetchRevenue}
         />
       )}
@@ -555,7 +565,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
             <CountryStatsTable
               countries={countriesData.countries}
               currency={currency}
-              installsAvailable={countriesData.installsAvailable === true}
+              revenueAvailable={countriesData.revenueAvailable === true}
             />
           </div>
         )}
