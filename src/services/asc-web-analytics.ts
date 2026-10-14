@@ -3,9 +3,9 @@ import { prisma, logger, env } from "../config";
 import { storeCampaignMetricsSegment, type CampaignMetricsRow } from "./asc-analytics";
 import {
   collectUnknownStorefrontKeys,
-  downloadRemainderPerDay,
   parseGroupedWebTimeseries,
-  parseWebTimeseries,
+  splitRemainderPerDay,
+  type GroupedWebDayRow,
 } from "./utils/asc-web-timeseries";
 import { WEB_METRICS_TERRITORY } from "./utils/google-ads-mapping";
 
@@ -18,7 +18,13 @@ const MEASURES = [
 // Separate request: downloads must not break the proven measures above.
 // "units" = App Units (downloads), verified against the live API.
 const DOWNLOADS_MEASURES = ["units"];
-const GROUPED_DOWNLOADS_MEASURE = "totalDownloads";
+const GROUPED_MEASURES = {
+  downloads: "totalDownloads",
+  trials: "subscription-events-offerstarts-freetrial",
+  proceedsUsd: "proceeds",
+} as const;
+type GroupedMetric = keyof typeof GROUPED_MEASURES;
+const GROUPED_METRICS = Object.keys(GROUPED_MEASURES) as GroupedMetric[];
 const CHUNK_DAYS = 90;
 
 export class WebSessionExpiredError extends Error {}
@@ -79,21 +85,22 @@ export async function fetchWebCampaignSeries(
   return parseWebTimeseries(data);
 }
 
-/** Per-storefront downloads; unknown storefront keys are reported for mapping. */
-export async function fetchWebCampaignGroupedDownloads(
+/** Per-storefront split for one measure; unknown storefront keys are reported for mapping. */
+export async function fetchWebCampaignGroupedSeries(
   cookies: string,
   adamId: string,
   ctToken: string,
   startDay: string,
   endDay: string,
+  measure: string,
 ) {
   const data = await postTimeseries(cookies, adamId, {
     startTime: `${startDay}T00:00:00Z`,
     endTime: `${endDay}T00:00:00Z`,
-    measures: [GROUPED_DOWNLOADS_MEASURE],
+    measures: [measure],
     dimensionFilters: [{ dimensionKey: "campaignId", optionKeys: [ctToken] }],
     frequency: "day",
-    group: { metric: GROUPED_DOWNLOADS_MEASURE, dimension: "storefront", limit: 0, rank: "DESCENDING" },
+    group: { metric: measure, dimension: "storefront", limit: 0, rank: "DESCENDING" },
   });
   return { rows: parseGroupedWebTimeseries(data), unknownKeys: collectUnknownStorefrontKeys(data) };
 }
@@ -139,84 +146,119 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
       tokens++;
       for (const [start, end] of chunks) {
         const days = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end);
-        let unitsByDate = new Map<string, number>();
+        const totalsByMetric: Record<GroupedMetric, Map<string, number>> = {
+          downloads: new Map(),
+          trials: new Map(days.map((d) => [d.dateStr, Math.round(d.trials)])),
+          proceedsUsd: new Map(days.map((d) => [d.dateStr, d.proceedsUsd])),
+        };
         let unitsOk = false;
         try {
           const dlDays = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end, DOWNLOADS_MEASURES);
-          unitsByDate = new Map(dlDays.map((d) => [d.dateStr, Math.round(d.downloads)]));
+          totalsByMetric.downloads = new Map(dlDays.map((d) => [d.dateStr, Math.round(d.downloads)]));
           unitsOk = true;
         } catch (err) {
           logger.warn(`[asc-web-analytics] ${bundleId} ${ctToken}: downloads fetch failed (${(err as Error)?.message})`);
         }
-        // Territory split; XW keeps only the unattributed remainder so
-        // territories + remainder add up to the units total. XW downloads are
-        // only rewritten when both downloads requests succeeded, otherwise
-        // the previous remainder stays (stale but never double-counted).
-        let xwDownloadsByDate = new Map<string, number>();
-        let storeXwDownloads = false;
-        try {
-          const grouped = await fetchWebCampaignGroupedDownloads(cookies, trackId, ctToken, start, end);
-          if (grouped.unknownKeys.length > 0) {
-            logger.warn(
-              `[asc-web-analytics] ${bundleId} ${ctToken}: unknown storefronts ${grouped.unknownKeys.join(",")}`,
+        // Territory splits; XW keeps only the unattributed remainder per
+        // metric so split + remainder add up to the total. A metric's stored
+        // values are only rewritten when its grouped request succeeded,
+        // otherwise the previous values stay (stale but never double-counted).
+        const splitOk: Record<GroupedMetric, boolean> = { downloads: false, trials: false, proceedsUsd: false };
+        const splitByKey = new Map<string, GroupedWebDayRow>();
+        for (const metric of GROUPED_METRICS) {
+          try {
+            const grouped = await fetchWebCampaignGroupedSeries(
+              cookies,
+              trackId,
+              ctToken,
+              start,
+              end,
+              GROUPED_MEASURES[metric],
             );
-          }
-          const positive = grouped.rows.filter((g) => g.downloads > 0);
-          if (positive.length > 0) {
-            rows += await storeCampaignMetricsSegment(
-              bundleId,
-              positive.map((g) => ({
-                dateStr: g.dateStr,
-                campaign: ctToken,
-                territory: g.territory,
-                downloads: Math.round(g.downloads),
-                purchases: 0,
+            if (grouped.unknownKeys.length > 0) {
+              logger.warn(
+                `[asc-web-analytics] ${bundleId} ${ctToken}: unknown storefronts ${grouped.unknownKeys.join(",")}`,
+              );
+            }
+            for (const r of grouped.rows) {
+              const key = `${r.dateStr}\n${r.territory}`;
+              const e = splitByKey.get(key) ?? {
+                dateStr: r.dateStr,
+                territory: r.territory,
+                downloads: 0,
                 trials: 0,
                 proceedsUsd: 0,
-              })),
-              ["downloads"],
+              };
+              e.downloads += r.downloads;
+              e.trials += r.trials;
+              e.proceedsUsd += r.proceedsUsd;
+              splitByKey.set(key, e);
+            }
+            splitOk[metric] = true;
+          } catch (err) {
+            logger.warn(
+              `[asc-web-analytics] ${bundleId} ${ctToken}: grouped ${metric} fetch failed (${(err as Error)?.message})`,
             );
           }
-          if (unitsOk) {
-            const official = await prisma.appStoreCampaignMetrics.findMany({
-              where: {
-                bundleId,
+        }
+        const splitColumns = GROUPED_METRICS.filter((m) => splitOk[m]);
+        const totalsOk: Record<GroupedMetric, boolean> = { downloads: unitsOk, trials: true, proceedsUsd: true };
+        const remainderMetrics = GROUPED_METRICS.filter((m) => splitOk[m] && totalsOk[m]);
+        if (splitColumns.length > 0) {
+          const toStore = [...splitByKey.values()].filter((r) => splitColumns.some((c) => r[c] > 0));
+          if (toStore.length > 0) {
+            rows += await storeCampaignMetricsSegment(
+              bundleId,
+              toStore.map((r) => ({
+                dateStr: r.dateStr,
                 campaign: ctToken,
-                territory: { not: WEB_METRICS_TERRITORY },
-                reportDate: { gte: new Date(`${start}T00:00:00Z`), lte: new Date(`${end}T00:00:00Z`) },
-              },
-              select: { reportDate: true, territory: true, downloads: true },
-            });
-            xwDownloadsByDate = downloadRemainderPerDay({
-              unitsByDate,
-              grouped: grouped.rows,
-              official: official.map((o) => ({
+                territory: r.territory,
+                downloads: Math.round(r.downloads),
+                purchases: 0,
+                trials: Math.round(r.trials),
+                proceedsUsd: r.proceedsUsd,
+              })),
+              splitColumns,
+            );
+          }
+        }
+        const remainderByMetric: Record<GroupedMetric, Map<string, number>> = {
+          downloads: new Map(),
+          trials: new Map(),
+          proceedsUsd: new Map(),
+        };
+        if (remainderMetrics.length > 0) {
+          const legacy = await prisma.appStoreCampaignMetrics.findMany({
+            where: {
+              bundleId,
+              campaign: ctToken,
+              territory: { not: WEB_METRICS_TERRITORY },
+              reportDate: { gte: new Date(`${start}T00:00:00Z`), lte: new Date(`${end}T00:00:00Z`) },
+            },
+            select: { reportDate: true, territory: true, downloads: true, trials: true, proceedsUsd: true },
+          });
+          for (const metric of remainderMetrics) {
+            remainderByMetric[metric] = splitRemainderPerDay({
+              totalsByDate: totalsByMetric[metric],
+              split: [...splitByKey.values()].map((r) => ({ dateStr: r.dateStr, territory: r.territory, value: r[metric] })),
+              legacy: legacy.map((o) => ({
                 dateStr: o.reportDate.toISOString().slice(0, 10),
                 territory: o.territory,
-                downloads: o.downloads,
+                value: o[metric],
               })),
             });
-            storeXwDownloads = true;
           }
-        } catch (err) {
-          logger.warn(
-            `[asc-web-analytics] ${bundleId} ${ctToken}: grouped downloads fetch failed (${(err as Error)?.message})`,
-          );
         }
         const storeRows: CampaignMetricsRow[] = days.map((d) => ({
           dateStr: d.dateStr,
           campaign: ctToken,
           territory: WEB_METRICS_TERRITORY,
-          downloads: xwDownloadsByDate.get(d.dateStr) ?? 0,
+          downloads: Math.round(remainderByMetric.downloads.get(d.dateStr) ?? 0),
           purchases: Math.round(d.purchases),
-          trials: Math.round(d.trials),
-          proceedsUsd: d.proceedsUsd,
+          trials: Math.round(remainderByMetric.trials.get(d.dateStr) ?? 0),
+          proceedsUsd: remainderByMetric.proceedsUsd.get(d.dateStr) ?? 0,
         }));
-        rows += await storeCampaignMetricsSegment(
-          bundleId,
-          storeRows,
-          storeXwDownloads ? ["downloads", "purchases", "trials", "proceedsUsd"] : ["purchases", "trials", "proceedsUsd"],
-        );
+        rows += await storeCampaignMetricsSegment(bundleId, storeRows, ["purchases", ...remainderMetrics]);
       }
       logger.info(`[asc-web-analytics] ${bundleId} ${ctToken}: web metrics synced`);
     }

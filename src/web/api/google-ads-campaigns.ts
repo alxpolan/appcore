@@ -288,17 +288,17 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
       req.params.campaignId as string,
       range,
     );
-    // Apple installs per country (official per-territory rows only — XW web
-    // totals can't be split by country and stay in the revenue section).
+    // Apple revenue per country (per-territory rows; the XW remainder is
+    // unattributed and not shown per country).
     const mapping = await prisma.googleAdsCampaignToken.findUnique({
       where: { teamId_googleCampaignId: { teamId: req.user!.teamId!, googleCampaignId: req.params.campaignId as string } },
       include: { app: { select: { bundleId: true } } },
     });
-    const installsAllowed =
+    const revenueAllowed =
       !!mapping &&
       (req.user!.role === "ADMIN" || (await memberAllowedApp(req.user!.userId, req.user!.teamId!, mapping.appId)));
-    let installsByTerritory = new Map<string, number>();
-    if (installsAllowed && mapping) {
+    const revenueByTerritory = new Map<string, { installs: number; trials: number; proceedsUsd: number }>();
+    if (revenueAllowed && mapping) {
       const end = new Date(`${range.endDate}T00:00:00Z`);
       end.setUTCDate(end.getUTCDate() + 1);
       const rows = await prisma.appStoreCampaignMetrics.findMany({
@@ -308,19 +308,28 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
           territory: { not: WEB_METRICS_TERRITORY },
           reportDate: { gte: new Date(`${range.startDate}T00:00:00Z`), lt: end },
         },
-        select: { territory: true, downloads: true },
+        select: { territory: true, downloads: true, trials: true, proceedsUsd: true },
       });
       for (const r of rows) {
-        installsByTerritory.set(r.territory, (installsByTerritory.get(r.territory) ?? 0) + r.downloads);
+        const e = revenueByTerritory.get(r.territory) ?? { installs: 0, trials: 0, proceedsUsd: 0 };
+        e.installs += r.downloads;
+        e.trials += r.trials;
+        e.proceedsUsd += r.proceedsUsd;
+        revenueByTerritory.set(r.territory, e);
       }
     }
 
     res.json({
-      countries: countries.map((c) => ({
-        ...c,
-        installs: installsAllowed ? (installsByTerritory.get(c.countryOrRegion) ?? 0) : null,
-      })),
-      installsAvailable: installsAllowed,
+      countries: countries.map((c) => {
+        const e = revenueByTerritory.get(c.countryOrRegion);
+        return {
+          ...c,
+          installs: revenueAllowed ? (e?.installs ?? 0) : null,
+          trials: revenueAllowed ? (e?.trials ?? 0) : null,
+          proceedsUsd: revenueAllowed ? (e?.proceedsUsd ?? 0) : null,
+        };
+      }),
+      revenueAvailable: revenueAllowed,
       startDate: range.startDate,
       endDate: range.endDate,
     });

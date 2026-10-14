@@ -13,7 +13,15 @@ export interface GroupedWebDayRow {
   /** ISO 3166-1 alpha-2 territory, or "ZZ" for unknown storefronts. */
   territory: string;
   downloads: number;
+  trials: number;
+  proceedsUsd: number;
 }
+
+const GROUPED_MEASURE_FIELDS: Record<string, "downloads" | "trials" | "proceedsUsd"> = {
+  totaldownloads: "downloads",
+  "subscription-events-offerstarts-freetrial": "trials",
+  proceeds: "proceedsUsd",
+};
 
 const MEASURE_FIELDS: Record<string, keyof Omit<WebCampaignDayRow, "dateStr">> = {
   "subscription-events-offerstarts-freetrial": "trials",
@@ -48,12 +56,17 @@ export function parseWebTimeseries(body: any): WebCampaignDayRow[] {
   return [...byDate.values()].sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 }
 
-/** Parses storefront-grouped totalDownloads into summed (day, territory) rows. */
+/**
+ * Parses a storefront-grouped response into summed (day, territory) rows.
+ * Only the field matching the response's measure key is filled, so the
+ * per-metric responses merge cleanly by (day, territory).
+ */
 export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
   const results: any[] = body?.results ?? [];
   const byKey = new Map<string, GroupedWebDayRow>();
   for (const r of results) {
-    if (String(r?.totals?.key ?? "").toLowerCase() !== "totaldownloads") continue;
+    const field = GROUPED_MEASURE_FIELDS[String(r?.totals?.key ?? "").toLowerCase()];
+    if (!field) continue;
     const territory = storefrontToTerritory(r?.group?.key) ?? "ZZ";
     for (const p of r?.data ?? []) {
       const dateStr = String(p?.date ?? "").slice(0, 10);
@@ -68,8 +81,8 @@ export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
         }
       }
       const key = `${dateStr}\n${territory}`;
-      const row = byKey.get(key) ?? { dateStr, territory, downloads: 0 };
-      row.downloads += value;
+      const row = byKey.get(key) ?? { dateStr, territory, downloads: 0, trials: 0, proceedsUsd: 0 };
+      row[field] += value;
       byKey.set(key, row);
     }
   }
@@ -78,36 +91,40 @@ export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
   );
 }
 
+export interface SplitValueRow {
+  dateStr: string;
+  territory: string;
+  value: number;
+}
+
 /**
- * Per-day unattributed download remainder: units total minus the grouped
- * territory split minus legacy official rows the split doesn't cover, so
- * territories + legacy + remainder always add up to the units total.
+ * Per-day unattributed remainder: total minus the grouped territory split
+ * minus legacy rows the split doesn't cover, so split + legacy + remainder
+ * always add up to the total. Works for downloads, trials and proceeds.
  */
-export function downloadRemainderPerDay(args: {
-  unitsByDate: Map<string, number>;
-  grouped: GroupedWebDayRow[];
-  official: { dateStr: string; territory: string; downloads: number }[];
+export function splitRemainderPerDay(args: {
+  totalsByDate: Map<string, number>;
+  split: SplitValueRow[];
+  legacy: SplitValueRow[];
 }): Map<string, number> {
-  const groupedByDay = new Map<string, number>();
+  const splitByDay = new Map<string, number>();
   const covered = new Set<string>();
-  for (const g of args.grouped) {
-    if (g.downloads <= 0) continue;
-    groupedByDay.set(g.dateStr, (groupedByDay.get(g.dateStr) ?? 0) + g.downloads);
+  for (const g of args.split) {
+    if (g.value <= 0) continue;
+    splitByDay.set(g.dateStr, (splitByDay.get(g.dateStr) ?? 0) + g.value);
     covered.add(`${g.dateStr}\n${g.territory}`);
   }
-  const officialUncoveredByDay = new Map<string, number>();
-  for (const o of args.official) {
-    if (o.downloads <= 0 || covered.has(`${o.dateStr}\n${o.territory}`)) continue;
-    officialUncoveredByDay.set(o.dateStr, (officialUncoveredByDay.get(o.dateStr) ?? 0) + o.downloads);
+  const legacyUncoveredByDay = new Map<string, number>();
+  for (const o of args.legacy) {
+    if (o.value <= 0 || covered.has(`${o.dateStr}\n${o.territory}`)) continue;
+    legacyUncoveredByDay.set(o.dateStr, (legacyUncoveredByDay.get(o.dateStr) ?? 0) + o.value);
   }
+  const cents = (n: number): number => Math.round(n * 100) / 100;
   const remainder = new Map<string, number>();
-  for (const [dateStr, units] of args.unitsByDate) {
+  for (const [dateStr, total] of args.totalsByDate) {
     remainder.set(
       dateStr,
-      Math.max(
-        0,
-        Math.round(units) - Math.round(groupedByDay.get(dateStr) ?? 0) - Math.round(officialUncoveredByDay.get(dateStr) ?? 0),
-      ),
+      Math.max(0, cents(total) - cents(splitByDay.get(dateStr) ?? 0) - cents(legacyUncoveredByDay.get(dateStr) ?? 0)),
     );
   }
   return remainder;

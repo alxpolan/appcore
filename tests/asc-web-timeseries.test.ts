@@ -2,9 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   collectUnknownStorefrontKeys,
-  downloadRemainderPerDay,
   parseGroupedWebTimeseries,
   parseWebTimeseries,
+  splitRemainderPerDay,
 } from "../src/services/utils/asc-web-timeseries";
 
 describe("asc web analytics: timeseries parsing", () => {
@@ -126,11 +126,29 @@ describe("asc web analytics: grouped timeseries parsing", () => {
 
   it("maps storefront groups to territories", () => {
     assert.deepEqual(parseGroupedWebTimeseries(body), [
-      { dateStr: "2026-10-07", territory: "GB", downloads: 1 },
-      { dateStr: "2026-10-07", territory: "US", downloads: 1 },
-      { dateStr: "2026-10-07", territory: "ZZ", downloads: 4 },
-      { dateStr: "2026-10-08", territory: "US", downloads: 2 },
+      { dateStr: "2026-10-07", territory: "GB", downloads: 1, trials: 0, proceedsUsd: 0 },
+      { dateStr: "2026-10-07", territory: "US", downloads: 1, trials: 0, proceedsUsd: 0 },
+      { dateStr: "2026-10-07", territory: "ZZ", downloads: 4, trials: 0, proceedsUsd: 0 },
+      { dateStr: "2026-10-08", territory: "US", downloads: 2, trials: 0, proceedsUsd: 0 },
     ]);
+  });
+
+  it("fills only the field matching the measure key", () => {
+    const rows = parseGroupedWebTimeseries({
+      results: [
+        {
+          group: { key: "143441", title: "United States" },
+          data: [{ "subscription-events-offerStarts-freeTrial": 2, date: "2026-10-07T00:00:00Z" }],
+          totals: { value: 2, type: "COUNT", key: "subscription-events-offerStarts-freeTrial" },
+        },
+        {
+          group: { key: "143441", title: "United States" },
+          data: [{ proceeds: 9.5, date: "2026-10-07T00:00:00Z" }],
+          totals: { value: 9.5, type: "COUNT", key: "proceeds" },
+        },
+      ],
+    });
+    assert.deepEqual(rows, [{ dateStr: "2026-10-07", territory: "US", downloads: 0, trials: 2, proceedsUsd: 9.5 }]);
   });
 
   it("ignores other measures and collects unknown keys", () => {
@@ -140,23 +158,23 @@ describe("asc web analytics: grouped timeseries parsing", () => {
   });
 
   it("computes the unattributed remainder per day", () => {
-    const remainder = downloadRemainderPerDay({
-      unitsByDate: new Map([
+    const remainder = splitRemainderPerDay({
+      totalsByDate: new Map([
         ["2026-10-07", 7],
         ["2026-10-08", 2],
       ]),
-      grouped: [
-        { dateStr: "2026-10-07", territory: "US", downloads: 3 },
-        { dateStr: "2026-10-07", territory: "GB", downloads: 1 },
-        { dateStr: "2026-10-08", territory: "US", downloads: 2 },
+      split: [
+        { dateStr: "2026-10-07", territory: "US", value: 3 },
+        { dateStr: "2026-10-07", territory: "GB", value: 1 },
+        { dateStr: "2026-10-08", territory: "US", value: 2 },
       ],
-      official: [
-        { dateStr: "2026-10-07", territory: "GB", downloads: 5 },
-        { dateStr: "2026-10-07", territory: "DE", downloads: 2 },
+      legacy: [
+        { dateStr: "2026-10-07", territory: "GB", value: 5 },
+        { dateStr: "2026-10-07", territory: "DE", value: 2 },
       ],
     });
-    // 10-07: 7 units - 4 grouped - 2 uncovered official (DE; GB is covered) = 1
-    // 10-08: 2 units - 2 grouped = 0
+    // 10-07: 7 total - 4 split - 2 uncovered legacy (DE; GB is covered) = 1
+    // 10-08: 2 total - 2 split = 0
     assert.deepEqual(
       [...remainder.entries()],
       [
