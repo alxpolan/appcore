@@ -5,18 +5,21 @@ import {
   ArrowRight,
   Check,
   DollarSign,
+  Download,
   ExternalLink,
   Eye,
   MousePointerClick,
   Pause,
+  Percent,
   Plus,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppItem, GoogleAdsCampaign, GoogleAdsDailyStatsResponse, GoogleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber } from "../../utils/formatters";
+import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsGoogleAdsCreateCampaign from "./AnalyticsGoogleAdsCreateCampaign";
 import { StatCard } from "../StatCard";
@@ -94,8 +97,9 @@ export default function AnalyticsGoogleAds() {
       spend: acc.spend + c.spend,
       impressions: acc.impressions + c.impressions,
       clicks: acc.clicks + c.clicks,
+      installs: acc.installs + (c.apple?.downloads ?? 0),
     }),
-    { spend: 0, impressions: 0, clicks: 0 },
+    { spend: 0, impressions: 0, clicks: 0, installs: 0 },
   );
   const currency = campaigns.find((c) => c.currency)?.currency ?? "USD";
 
@@ -187,6 +191,30 @@ export default function AnalyticsGoogleAds() {
               sparkline={days.map((d) => d.clicks)}
               icon={<MousePointerClick className="w-4 h-4" />}
               color="#6366f1"
+            />
+            <StatCard
+              label="Installs"
+              value={loading ? "—" : fmtNumber(totals.installs)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.installs ?? 0)}
+              icon={<Download className="w-4 h-4" />}
+              color="#10b981"
+            />
+            <StatCard
+              label="CTR"
+              value={loading ? "—" : totals.impressions > 0 ? fmtPct((totals.clicks / totals.impressions) * 100) : "—"}
+              sub="Clicks / Impressions"
+              sparkline={days.map((d) => (d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0))}
+              icon={<TrendingUp className="w-4 h-4" />}
+              color="#8b5cf6"
+            />
+            <StatCard
+              label="Conversion Rate"
+              value={loading ? "—" : totals.clicks > 0 ? fmtPct((totals.installs / totals.clicks) * 100) : "—"}
+              sub="Installs / Clicks"
+              sparkline={days.map((d) => (d.clicks > 0 ? ((d.installs ?? 0) / d.clicks) * 100 : 0))}
+              icon={<Percent className="w-4 h-4" />}
+              color="#D94412"
             />
           </div>
 

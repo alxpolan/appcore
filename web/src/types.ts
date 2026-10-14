@@ -668,6 +668,7 @@ export interface GoogleAdsDailyStats {
   impressions: number;
   clicks: number;
   conversions: number;
+  installs: number;
 }
 
 export interface GoogleAdsDailyStatsResponse {
