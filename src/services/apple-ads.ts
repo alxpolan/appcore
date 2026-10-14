@@ -6,7 +6,6 @@ import { aggregateDailyStats, type AppleAdsDailyStats } from "./utils/apple-ads-
 export { aggregateDailyStats, mergeDailyStatsLists } from "./utils/apple-ads-daily";
 export type { AppleAdsDailyStats } from "./utils/apple-ads-daily";
 
-// Overridable for tests/stubs; production always uses Apple's endpoints.
 const TOKEN_URL = process.env.APPLE_ADS_TOKEN_URL ?? "https://appleid.apple.com/auth/oauth2/token";
 const API_BASE = process.env.APPLE_ADS_API_BASE ?? "https://api.searchads.apple.com/api/v5";
 
@@ -162,9 +161,6 @@ function mergeTotals(into: any, add: any): any {
   return into;
 }
 
-/** Merges rows from several chunks that describe the same entity. Derived
- * ratios in `total` (avgCPT, …) are summed, not averaged — every consumer
- * recomputes them from the summed bases instead. */
 export function mergeReportRows(rows: any[], idOf: (row: any) => string | undefined): any[] {
   const merged = new Map<string, any>();
   for (const row of rows) {
@@ -222,9 +218,6 @@ export async function fetchAppleAdsAccessToken(creds: AppleAdsOrgCredentials): P
   return (res.data as { access_token: string }).access_token;
 }
 
-/** Every org ("Campaign Group") this API key can see. A key can see more than
- * one when it belongs to an agency/parent account — the caller must pick which
- * one to use, there's no sane way to guess it server-side. */
 export async function listAppleAdsOrgs(creds: AppleAdsOrgCredentials): Promise<AppleAdsOrgOption[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
 
@@ -240,7 +233,6 @@ export async function listAppleAdsOrgs(creds: AppleAdsOrgCredentials): Promise<A
   return orgs.map((o) => ({ orgId: String(o.orgId), orgName: o.orgName }));
 }
 
-/** Distinct campaign groups mapped to the team's own apps, ordered by orgId. */
 export async function listTeamAppleAdsOrgs(teamId: string): Promise<AppleAdsOrgOption[]> {
   const apps = await prisma.app.findMany({
     where: { teamId, isOwnApp: true, appleAdsOrgId: { not: null } },
@@ -257,9 +249,6 @@ export async function listTeamAppleAdsOrgs(teamId: string): Promise<AppleAdsOrgO
     .map(([orgId, orgName]) => ({ orgId, orgName }));
 }
 
-/** Resolve the campaign group for a campaign creation via the advertised
- * app (adamId → trackId → app mapping). Returns null when the app is
- * unknown to the team or has no group mapped. */
 export async function resolveAppOrgByAdamId(
   teamId: string,
   adamId: number | string,
@@ -289,7 +278,6 @@ export interface AppleAdsCampaignObject {
   adamId: number | null;
 }
 
-/** Fetch one campaign via the management API (single object, no report range). */
 export async function getAppleAdsCampaign(
   creds: AppleAdsCredentials,
   campaignId: string,
@@ -309,8 +297,6 @@ export async function getAppleAdsCampaign(
   };
 }
 
-/** Find which mapped campaign group contains a campaign, trying each in
- * order. Only 404 moves on to the next group — anything else throws. */
 export async function resolveCampaignOrgId(
   keyCreds: AppleAdsOrgCredentials,
   orgIds: string[],
@@ -345,8 +331,6 @@ function statsFromTotal(total: any): AppleAdsStats {
   };
 }
 
-/** Pulls the row's metrics regardless of whether the response used
- * grouping/granularity (metrics live in `granularity[]`) or not (`total`). */
 function totalsFromRow(row: any): any {
   if (row.total) return row.total;
   if (Array.isArray(row.granularity)) {
@@ -393,8 +377,6 @@ export async function listAppleAdsCampaigns(
       { headers },
     );
 
-    // Apple can return HTTP 200 with a body-level error (data: null, error: {...})
-    // for a malformed request instead of a 4xx — don't let that look like "no campaigns".
     if (reportRes.data?.error) {
       throw new Error(`Apple Search Ads reports error: ${JSON.stringify(reportRes.data.error)}`);
     }
@@ -446,8 +428,6 @@ function rowsFromReport(data: any): any[] {
   return data?.data?.reportingDataResponse?.row ?? data?.data?.row ?? data?.row ?? [];
 }
 
-/** Daily spend/impressions/taps/installs for one org. Without a campaignId
- * the series aggregates every campaign in the org (overview sparklines). */
 export async function getAppleAdsDailyStats(
   creds: AppleAdsCredentials,
   range: AppleAdsReportRange = resolveAppleAdsRange({}),
@@ -503,8 +483,6 @@ function countryStatsFromRows(rows: any[]): AppleAdsCountryStats[] {
     .sort((a, b) => b.spend - a.spend);
 }
 
-/** Per-country metrics for one campaign: spend, TTR, installs, … per
- * countryOrRegion, via a grouped campaign report. */
 export async function getAppleAdsCampaignCountryBreakdown(
   creds: AppleAdsCredentials,
   campaignId: string,
@@ -541,9 +519,6 @@ export async function getAppleAdsCampaignCountryBreakdown(
   return countryStatsFromRows(rows);
 }
 
-/** Per-country metrics for one keyword, via a grouped keyword report.
- * Whether Apple supports groupBy on the keyword report is unverified
- * against the live API — callers should surface Apple's error message. */
 export async function getAppleAdsKeywordCountryBreakdown(
   creds: AppleAdsCredentials,
   campaignId: string,
@@ -728,7 +703,6 @@ export interface CreateAppleAdsCampaignInput {
   supplySources: string[];
   status?: "ENABLED" | "PAUSED";
   startTime?: string;
-  /** CPC for Search Results, CPM for Search Tab / Today Tab placements. */
   pricingModel?: "CPC" | "CPM";
   adGroups: CreateAppleAdsAdGroupInput[];
   negativeKeywords?: CreateAppleAdsNegativeKeywordInput[];
@@ -751,8 +725,6 @@ function throwIfAppleError(data: any, context: string): void {
   }
 }
 
-/** Apps the org can advertise, for the campaign-creation form. Best effort:
- * callers should fall back to another app source when this throws. */
 export async function listAppleAdsApps(creds: AppleAdsCredentials): Promise<AppleAdsStoreApp[]> {
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const res = await axios.post<any>(
@@ -776,8 +748,6 @@ function money(amount: number, currency: string) {
   return { amount: String(amount), currency };
 }
 
-/** Apple wants `yyyy-MM-dd'T'HH:mm:ss.SSS` without a zone; a plain `YYYY-MM-DD`
- * date is interpreted as midnight. Anything else passes through untouched. */
 export function toAppleAdsDateTime(value: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00.000`;
   return value;
@@ -824,8 +794,6 @@ function asNegativeKeywordList(value: unknown, field: string): CreateAppleAdsNeg
   });
 }
 
-/** Validates untrusted campaign-creation input (REST body or MCP params) and
- * normalizes it into service input. Throws on invalid. */
 export function validateCreateCampaignInput(body: any): CreateAppleAdsCampaignInput {
   if (!body || typeof body !== "object") fail("Request body is required");
   const name = asNonEmptyString(body.name, "name", 100);
@@ -1040,7 +1008,6 @@ export interface UpdateAppleAdsCampaignInput {
   name?: string;
   status?: "ENABLED" | "PAUSED";
   dailyBudgetAmount?: number;
-  /** Required when dailyBudgetAmount is set — never guess the currency on money. */
   currency?: string;
   countriesOrRegions?: string[];
 }
@@ -1096,7 +1063,6 @@ export interface UpdateAppleAdsAdGroupInput {
   status?: "ENABLED" | "PAUSED";
   defaultBidAmount?: number;
   cpaGoal?: number;
-  /** Required when defaultBidAmount or cpaGoal is set. */
   currency?: string;
 }
 
@@ -1194,7 +1160,6 @@ export async function updateAppleAdsKeywords(
     if (!code || !/^[A-Z]{3}$/.test(code)) throw new Error("currency (e.g. USD, EUR) is required when setting bids");
   }
 
-  // Apple's update call requires text+matchType alongside the id, so resolve them first.
   const existing = await listAppleAdsKeywords(creds, campaignId, adGroupId);
   const byId = new Map(existing.map((k) => [k.id, k]));
   const payload = updates.map((u) => {
@@ -1217,7 +1182,6 @@ export async function updateAppleAdsKeywords(
     { headers: authedHeaders(accessToken, creds.orgId) },
   );
   throwIfAppleError(res.data, "keyword update");
-  // The resolve step above guarantees every id exists in byId.
   return updates.map((u) => {
     const known = byId.get(String(u.keywordId))!;
     return {
@@ -1319,10 +1283,6 @@ export async function deleteAppleAdsNegativeKeywordsBulk(
   return numericIds.length;
 }
 
-/** Creates a campaign together with its ad groups, their keywords and all
- * negative keywords. Steps run sequentially so a failure stops before
- * creating more orphaned objects; already-created objects are returned on
- * the error for cleanup/debugging. */
 export async function createAppleAdsCampaignFull(
   creds: AppleAdsCredentials,
   input: CreateAppleAdsCampaignInput,
@@ -1362,11 +1322,6 @@ export async function createAppleAdsCampaignFull(
   }
 }
 
-/** Ad groups for a campaign, each with its own keywords (including bid
- * amount) and the same stat set Apple's own UI shows. Keywords live under an
- * ad group in Apple's API, so getting all of a campaign's keywords means one
- * extra call per ad group — fine in practice since campaigns rarely have more
- * than a handful. */
 export async function getAppleAdsCampaignDetail(
   creds: AppleAdsCredentials,
   campaignId: string,
