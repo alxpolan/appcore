@@ -20,6 +20,7 @@ interface FakeCampaign {
   endDate: string | null;
   metrics: FakeMetrics;
   removed: boolean;
+  biddingStrategy: string;
 }
 
 interface FakeAdGroup {
@@ -326,6 +327,7 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
           endDate: r.end_date ? String(r.end_date) : null,
           metrics: blankMetrics(),
           removed: false,
+          biddingStrategy: r.maximize_clicks != null ? "MAXIMIZE_CLICKS" : "MANUAL_CPC",
         });
 
         out.push(`customers/${this.customerId}/campaigns/${id}`);
@@ -359,6 +361,10 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
         tempIds.set(tempKey(r.resource_name), id);
         const campaignName = resolveTemp(String(r.campaign ?? ""));
         const campaignId = resourceId(campaignName);
+        const campaign = this.store.campaigns.get(campaignId);
+        if (campaign?.biddingStrategy === "MAXIMIZE_CLICKS" && r.cpc_bid_micros != null) {
+          throw new Error("FakeGoogleAdsGateway: cpc bids are incompatible with MAXIMIZE_CLICKS");
+        }
 
         this.store.adGroups.set(id, {
           id,
@@ -425,6 +431,10 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
           const adGroupName = resolveTemp(String(r.ad_group ?? ""));
           const adGroupId = resourceId(adGroupName);
           const g = this.store.adGroups.get(adGroupId);
+          const campaign = g ? this.store.campaigns.get(g.campaignId) : undefined;
+          if (campaign?.biddingStrategy === "MAXIMIZE_CLICKS" && r.cpc_bid_micros != null) {
+            throw new Error("FakeGoogleAdsGateway: cpc bids are incompatible with MAXIMIZE_CLICKS");
+          }
 
           this.store.criteria.set(`ag:${adGroupId}:${id}`, {
             id,

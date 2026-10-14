@@ -78,6 +78,15 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
   if (!Array.isArray(body.adGroups) || body.adGroups.length === 0) throw new Error("At least one ad group is required");
   const status = body.status == null ? "PAUSED" : String(body.status).toUpperCase();
   if (status !== "ENABLED" && status !== "PAUSED") throw new Error('status must be "ENABLED" or "PAUSED"');
+  const biddingStrategy = body.biddingStrategy == null ? "MANUAL_CPC" : String(body.biddingStrategy).toUpperCase();
+  if (biddingStrategy !== "MANUAL_CPC" && biddingStrategy !== "MAXIMIZE_CLICKS") {
+    throw new Error('biddingStrategy must be "MANUAL_CPC" or "MAXIMIZE_CLICKS"');
+  }
+  const manualBids = biddingStrategy === "MANUAL_CPC";
+  const cpcBidCeiling = body.cpcBidCeiling == null ? undefined : asPositiveNumber(body.cpcBidCeiling, "cpcBidCeiling");
+  if (cpcBidCeiling != null && biddingStrategy !== "MAXIMIZE_CLICKS") {
+    throw new Error("cpcBidCeiling only applies to MAXIMIZE_CLICKS");
+  }
 
   const keywordsOf = (list: any, label: string): GoogleAdsCreateKeywordInput[] => {
     if (!Array.isArray(list) || list.length === 0) throw new Error(`${label} needs at least one keyword`);
@@ -85,8 +94,13 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
     return list.map((k: any, i: number) => {
       const text = String(k?.text ?? "").trim();
       if (!text) throw new Error(`${label} keyword ${i + 1}: text is required`);
+      const bidAmount =
+        k?.bidAmount == null
+          ? undefined
+          : asPositiveNumber(k.bidAmount, `${label} keyword ${i + 1} bidAmount`);
+      if (manualBids && bidAmount == null) throw new Error(`${label} keyword ${i + 1}: bidAmount is required for MANUAL_CPC`);
 
-      return { text, matchType: asMatchType(k?.matchType, `${label} keyword ${i + 1} matchType`), bidAmount: asPositiveNumber(k?.bidAmount, `${label} keyword ${i + 1} bidAmount`) };
+      return { text, matchType: asMatchType(k?.matchType, `${label} keyword ${i + 1} matchType`), bidAmount };
     });
   };
   const negativesOf = (list: any, label: string): GoogleAdsCreateNegativeInput[] => {
@@ -130,10 +144,13 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
 
       if (g?.ads != null && !Array.isArray(g.ads)) throw new Error(`${label}: ads must be an array`);
       const ads = (g?.ads ?? []).map((a: any, i: number) => validateRsaInput(a, `${label} ad ${i + 1}`));
+      const defaultBidAmount =
+        g?.defaultBidAmount == null ? undefined : asPositiveNumber(g.defaultBidAmount, `${label} defaultBidAmount`);
+      if (manualBids && defaultBidAmount == null) throw new Error(`${label}: defaultBidAmount is required for MANUAL_CPC`);
 
       return {
         name: groupName,
-        defaultBidAmount: asPositiveNumber(g?.defaultBidAmount, `${label} defaultBidAmount`),
+        defaultBidAmount,
         status: groupStatus as "ENABLED" | "PAUSED",
         keywords: keywordsOf(g?.keywords, label),
         negativeKeywords: negativesOf(g?.negativeKeywords, label),
@@ -143,6 +160,8 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
     negativeKeywords: negativesOf(body.negativeKeywords, "Campaign"),
     locationIds: idsOf(body.locationIds, "locationIds"),
     languageIds: idsOf(body.languageIds, "languageIds"),
+    biddingStrategy: biddingStrategy as "MANUAL_CPC" | "MAXIMIZE_CLICKS",
+    cpcBidCeiling,
   };
 }
 
@@ -154,6 +173,15 @@ export async function createGoogleAdsCampaignFull(
   const customerId = creds.customerId;
   const budgetTemp = ResourceNames.campaignBudget(customerId, "-1");
   const campaignTemp = ResourceNames.campaign(customerId, "-2");
+  const biddingStrategy = input.biddingStrategy ?? "MANUAL_CPC";
+  const bidding =
+    biddingStrategy === "MAXIMIZE_CLICKS"
+      ? {
+          maximize_clicks: {
+            ...(input.cpcBidCeiling != null ? { cpc_bid_ceiling_micros: toMicros(input.cpcBidCeiling) } : {}),
+          },
+        }
+      : { manual_cpc: { enhanced_cpc_enabled: false } };
 
   const header: GoogleAdsMutationOperation[] = [
     {
@@ -174,7 +202,7 @@ export async function createGoogleAdsCampaignFull(
         name: input.name,
         advertising_channel_type: E.AdvertisingChannelType.SEARCH,
         status: E.CampaignStatus[input.status],
-        manual_cpc: { enhanced_cpc_enabled: false },
+        ...bidding,
         campaign_budget: budgetTemp,
         network_settings: { target_google_search: true, target_search_network: true },
         contains_eu_political_advertising:
@@ -201,7 +229,9 @@ export async function createGoogleAdsCampaignFull(
           name: group.name,
           status: E.AdGroupStatus[group.status ?? "ENABLED"],
           campaign: campaignName,
-          cpc_bid_micros: toMicros(group.defaultBidAmount),
+          ...(biddingStrategy === "MANUAL_CPC" && group.defaultBidAmount != null
+            ? { cpc_bid_micros: toMicros(group.defaultBidAmount) }
+            : {}),
         },
       },
     ]);
@@ -214,7 +244,7 @@ export async function createGoogleAdsCampaignFull(
         ad_group: groupName,
         keyword: { text: k.text, match_type: E.KeywordMatchType[k.matchType] },
         status: E.AdGroupCriterionStatus.ENABLED,
-        cpc_bid_micros: toMicros(k.bidAmount),
+        ...(biddingStrategy === "MANUAL_CPC" && k.bidAmount != null ? { cpc_bid_micros: toMicros(k.bidAmount) } : {}),
       },
     }));
     const keywordNames = keywordOps.length > 0 ? await gw.mutate(keywordOps) : [];
@@ -280,6 +310,7 @@ export async function createGoogleAdsCampaignFull(
     id: campaignId,
     name: input.name,
     status: input.status,
+    biddingStrategy,
     budgetResourceName: budgetName,
     adGroups,
     locations: (input.locationIds ?? []).map(String),

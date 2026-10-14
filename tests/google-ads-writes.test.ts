@@ -263,6 +263,54 @@ describe("google ads: campaign creation", () => {
     assert.ok(ads[0].id);
   });
 
+  it("creates maximize-clicks campaigns without bids", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Max clicks",
+        dailyBudgetAmount: 5,
+        biddingStrategy: "MAXIMIZE_CLICKS",
+        cpcBidCeiling: 2,
+        adGroups: [
+          { name: "Group 1", keywords: [{ text: "habit tracker", matchType: "EXACT" }] },
+        ],
+      }),
+    );
+    assert.equal(created.biddingStrategy, "MAXIMIZE_CLICKS");
+    assert.ok(created.id);
+  });
+
+  it("requires bids for manual cpc", () => {
+    assert.throws(
+      () =>
+        validateGoogleAdsCreateCampaignInput({
+          name: "Manual",
+          dailyBudgetAmount: 5,
+          adGroups: [{ name: "Group 1", keywords: [{ text: "habit tracker", matchType: "EXACT" }] }],
+        }),
+      /defaultBidAmount is required for MANUAL_CPC/,
+    );
+  });
+
+  it("rejects ceiling on manual cpc", () => {
+    assert.throws(
+      () =>
+        validateGoogleAdsCreateCampaignInput({
+          name: "Manual",
+          dailyBudgetAmount: 5,
+          cpcBidCeiling: 2,
+          adGroups: [
+            {
+              name: "Group 1",
+              defaultBidAmount: 0.5,
+              keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+            },
+          ],
+        }),
+      /cpcBidCeiling only applies to MAXIMIZE_CLICKS/,
+    );
+  });
+
   it("validates responsive search ads", () => {
     const good = {
       headlines: ["a", "b", "c"],

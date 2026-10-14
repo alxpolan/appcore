@@ -83,7 +83,7 @@ export type GoogleAdsKeywordMatchType = "EXACT" | "PHRASE" | "BROAD";
 export interface GoogleAdsCreateKeywordInput {
   text: string;
   matchType: GoogleAdsKeywordMatchType;
-  bidAmount: number;
+  bidAmount?: number;
 }
 
 export interface GoogleAdsCreateNegativeInput {
@@ -107,7 +107,7 @@ export interface GoogleAdsCreatedRsa {
 
 export interface GoogleAdsCreateAdGroupInput {
   name: string;
-  defaultBidAmount: number;
+  defaultBidAmount?: number;
   status: "ENABLED" | "PAUSED";
   keywords: GoogleAdsCreateKeywordInput[];
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
@@ -125,6 +125,8 @@ export interface GoogleAdsCreateCampaignInput {
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
   locationIds?: (string | number)[];
   languageIds?: (string | number)[];
+  biddingStrategy?: "MANUAL_CPC" | "MAXIMIZE_CLICKS";
+  cpcBidCeiling?: number;
 }
 
 export interface GoogleAdsCampaignTargeting {
@@ -136,6 +138,7 @@ export interface GoogleAdsCreatedCampaign {
   id: string;
   name: string;
   status: string;
+  biddingStrategy: string;
   budgetResourceName: string;
   adGroups: { id: string; name: string; keywords: { id: string; text: string }[]; ads: GoogleAdsCreatedRsa[] }[];
   locations: string[];
