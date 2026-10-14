@@ -17,17 +17,20 @@ export default function GoogleAdsAppleRevenue({
   query,
   rangeDeps,
   canManageTeam,
+  data,
+  loading,
+  error,
+  refetch,
 }: {
   campaignId: string;
   query: string;
   rangeDeps: unknown[];
   canManageTeam: boolean;
+  data: GoogleAdsAppleRevenueResponse | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
 }) {
-  const { data, loading, error, refetch } = useApi<GoogleAdsAppleRevenueResponse>(
-    `/google-ads/campaigns/${campaignId}/apple-revenue${query}`,
-    [campaignId, ...rangeDeps],
-    true,
-  );
   const { data: countriesData } = useApi<GoogleAdsAppleRevenueCountriesResponse>(
     `/google-ads/campaigns/${campaignId}/apple-revenue/countries${query}`,
     [campaignId, ...rangeDeps],

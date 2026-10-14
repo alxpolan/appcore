@@ -1,12 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
+import { ArrowLeft, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
+import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_GOOGLE_KEYWORD_FILTERS,
   filterGoogleKeywordRows,
@@ -20,6 +20,7 @@ import GoogleAdsCampaignChart from "./GoogleAdsCampaignChart";
 import GoogleAdsAppleRevenue from "./GoogleAdsAppleRevenue";
 import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
+import { StatCard } from "../StatCard";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -70,14 +71,9 @@ function statusDot(status: string) {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
-    >
-      <div className={`text-[11px] ${textMuted} mb-1.5`}>{label}</div>
-      <div className={`text-[20px] font-bold leading-none truncate ${textPrimary}`} title={value}>{value}</div>
-    </div>
+function fmtMoneyUsd(amount: number): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
+    amount,
   );
 }
 
@@ -174,7 +170,11 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
   );
   const rangeDeps = [range, customStart, customEnd];
 
-  const { data: campaignsData } = useApi<{ campaigns: GoogleAdsCampaign[] }>(`/google-ads/campaigns${query}`, rangeDeps, true);
+  const { data: campaignsData, loading: campaignsLoading } = useApi<{ campaigns: GoogleAdsCampaign[] }>(
+    `/google-ads/campaigns${query}`,
+    rangeDeps,
+    true,
+  );
   const campaign = campaignsData?.campaigns.find((c) => c.id === campaignId) ?? null;
 
   const {
@@ -188,6 +188,14 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     loading: spendLoading,
     error: spendError,
   } = useApi<GoogleAdsDailySpendResponse>(`/google-ads/campaigns/${campaignId}/daily-spend${query}`, [campaignId, ...rangeDeps], true);
+
+  const {
+    data: revenueData,
+    loading: revenueLoading,
+    error: revenueError,
+    refetch: refetchRevenue,
+  } = useApi<GoogleAdsAppleRevenueResponse>(`/google-ads/campaigns/${campaignId}/apple-revenue${query}`, [campaignId, ...rangeDeps], true);
+  const revenueTotals = revenueData?.mapped ? revenueData.totals : undefined;
 
   const {
     data: countriesData,
@@ -214,6 +222,35 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
+
+  const statDays = useMemo(() => {
+    const raw = dailySpend?.days ?? [];
+    const byDate = new Map(raw.map((d) => [d.date, d]));
+    const proceedsByDate = new Map<string, number>();
+    for (const t of revenueData?.days ?? []) {
+      proceedsByDate.set(t.date, (proceedsByDate.get(t.date) ?? 0) + t.proceedsUsd);
+    }
+    const start = dailySpend?.startDate ?? raw[0]?.date;
+    const end = dailySpend?.endDate ?? raw[raw.length - 1]?.date;
+    if (!start || !end) return [];
+    const points: { spend: number; impressions: number; clicks: number; conversions: number; proceeds: number }[] = [];
+    for (
+      let cursor = new Date(`${start}T00:00:00Z`);
+      cursor <= new Date(`${end}T00:00:00Z`);
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    ) {
+      const key = cursor.toISOString().slice(0, 10);
+      const d = byDate.get(key);
+      points.push({
+        spend: d?.spend ?? 0,
+        impressions: d?.impressions ?? 0,
+        clicks: d?.clicks ?? 0,
+        conversions: d?.conversions ?? 0,
+        proceeds: proceedsByDate.get(key) ?? 0,
+      });
+    }
+    return points;
+  }, [dailySpend, revenueData]);
 
   const TEXT_SORT_COLS: GoogleKeywordSortCol[] = ["keyword", "matchType"];
   function handleKwSort(col: GoogleKeywordSortCol) {
@@ -327,22 +364,90 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         )}
       </div>
 
-      {campaign && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          <StatTile label="Daily Budget" value={fmtMoney(campaign.dailyBudget, campaign.currency)} />
-          <StatTile label="Spend" value={fmtMoney(campaign.spend, campaign.currency)} />
-          <StatTile label="Impressions" value={fmtNumber(campaign.impressions)} />
-          <StatTile label="Clicks" value={fmtNumber(campaign.clicks)} />
-          <StatTile label="CTR" value={campaign.ctr != null ? fmtPct(campaign.ctr * 100) : "—"} />
-          <StatTile label="Conversions" value={fmtNumber(campaign.conversions)} />
-          <StatTile label="Avg CPC" value={fmtMoney(campaign.avgCpc, campaign.currency)} />
-          <StatTile label="Cost/Conv." value={fmtMoney(campaign.costPerConversion, campaign.currency)} />
-          <StatTile
-            label="Conv. Rate"
-            value={campaign.conversionRate != null ? fmtPct(campaign.conversionRate * 100) : "—"}
-          />
-        </div>
-      )}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+        <StatCard
+          label="Spend"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.spend, campaign.currency)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.spend)}
+          icon={<DollarSign className="w-4 h-4" />}
+          color="#f59e0b"
+        />
+        <StatCard
+          label="Impressions"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.impressions)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.impressions)}
+          icon={<Eye className="w-4 h-4" />}
+          color="#0ea5e9"
+        />
+        <StatCard
+          label="Clicks"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.clicks)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.clicks)}
+          icon={<MousePointerClick className="w-4 h-4" />}
+          color="#6366f1"
+        />
+        <StatCard
+          label="CTR"
+          value={campaignsLoading || !campaign ? "—" : campaign.ctr != null ? fmtPct(campaign.ctr * 100) : "—"}
+          sub="Clicks / Impressions"
+          sparkline={statDays.map((d) => (d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0))}
+          icon={<TrendingUp className="w-4 h-4" />}
+          color="#8b5cf6"
+        />
+        <StatCard
+          label="Conversions"
+          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.conversions)}
+          sub={rangeLabel(range)}
+          sparkline={statDays.map((d) => d.conversions)}
+          icon={<Download className="w-4 h-4" />}
+          color="#10b981"
+        />
+        <StatCard
+          label="Avg CPC"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.avgCpc, campaign.currency)}
+          sub="Spend / Clicks"
+          sparkline={statDays.map((d) => (d.clicks > 0 ? d.spend / d.clicks : 0))}
+          icon={<Tag className="w-4 h-4" />}
+          color="#14b8a6"
+        />
+        <StatCard
+          label="Cost/Conv"
+          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.costPerConversion, campaign.currency)}
+          sub="Spend / Conversions"
+          sparkline={statDays.map((d) => (d.conversions > 0 ? d.spend / d.conversions : 0))}
+          icon={<Receipt className="w-4 h-4" />}
+          color="#f43f5e"
+        />
+        <StatCard
+          label="Conv. Rate"
+          value={
+            campaignsLoading || !campaign
+              ? "—"
+              : campaign.conversionRate != null
+                ? fmtPct(campaign.conversionRate * 100)
+                : "—"
+          }
+          sub="Conversions / Clicks"
+          sparkline={statDays.map((d) => (d.clicks > 0 ? (d.conversions / d.clicks) * 100 : 0))}
+          icon={<Percent className="w-4 h-4" />}
+          color="#D94412"
+        />
+        <StatCard
+          label="Proceeds"
+          value={
+            revenueLoading ? "—" : revenueError || !revenueTotals ? "—" : fmtMoneyUsd(revenueTotals.proceedsUsd)
+          }
+          sub={rangeLabel(range)}
+          dim={!revenueLoading && !revenueTotals}
+          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token below" : undefined}
+          sparkline={statDays.map((d) => d.proceeds)}
+          icon={<CircleDollarSign className="w-4 h-4" />}
+          color="#16a34a"
+        />
+      </div>
 
       <GoogleAdsCampaignChart
         spendDays={dailySpend?.days}
@@ -359,6 +464,10 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           query={query}
           rangeDeps={rangeDeps}
           canManageTeam={canManageTeam}
+          data={revenueData}
+          loading={revenueLoading}
+          error={revenueError}
+          refetch={refetchRevenue}
         />
       )}
 
