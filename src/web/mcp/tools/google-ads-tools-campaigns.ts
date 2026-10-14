@@ -176,7 +176,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         languageIds: z
           .array(z.string().regex(/^\d+$/))
           .optional()
-          .describe("Language IDs, e.g. ['1002'] German, ['1001'] English."),
+          .describe("Language IDs, e.g. ['1001'] German, ['1000'] English."),
         ctToken: z
           .string()
           .optional()
@@ -417,7 +417,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         languageIds: z
           .array(z.string().regex(/^\d+$/))
           .optional()
-          .describe("Language IDs, e.g. ['1002'] German, ['1001'] English."),
+          .describe("Language IDs, e.g. ['1001'] German, ['1000'] English."),
       },
     },
     async ({ campaignId, locationIds, languageIds }) => {
