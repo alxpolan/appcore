@@ -1,8 +1,16 @@
-import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { GoogleAdsDailySpendResponse } from "../../types";
+import { useState } from "react";
+import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { GoogleAdsAppleRevenueResponse, GoogleAdsDailySpendResponse } from "../../types";
 import { borderDefault, textMuted, textPrimary } from "../../styles";
+import { fmtNumber } from "../../utils/formatters";
 
-type ChartDay = { date: string; spend: number };
+type ChartDay = {
+  date: string;
+  spend: number;
+  proceeds: number;
+  trialPotential: number;
+  trials: number;
+};
 
 function money(value: number, currency: string): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
@@ -20,10 +28,14 @@ function DailyTooltip({
   active,
   payload,
   currency,
+  showTrials,
+  hasRevenue,
 }: {
   active?: boolean;
   payload?: { payload: ChartDay }[];
   currency: string;
+  showTrials: boolean;
+  hasRevenue: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const day = payload[0].payload;
@@ -31,6 +43,13 @@ function DailyTooltip({
     <div className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl px-3 py-2 shadow-lg text-[12px]`}>
       <div className={`font-semibold ${textPrimary} mb-1`}>{day.date}</div>
       <div className={textMuted}>Spend: {money(day.spend, currency)}</div>
+      {hasRevenue && <div className={textMuted}>Proceeds: {money(day.proceeds, "USD")}</div>}
+      {hasRevenue && showTrials && (
+        <div className={textMuted}>
+          Trial potential: {money(day.trialPotential, "USD")} ({fmtNumber(day.trials)} trials)
+        </div>
+      )}
+      {hasRevenue && showTrials && <div className={textMuted}>Total: {money(day.proceeds + day.trialPotential, "USD")}</div>}
     </div>
   );
 }
@@ -39,17 +58,25 @@ export default function GoogleAdsCampaignChart({
   spendDays,
   startDate,
   endDate,
+  revenue,
   currency,
   loading,
   error,
+  revenueError,
 }: {
   spendDays?: GoogleAdsDailySpendResponse["days"];
   startDate?: string;
   endDate?: string;
+  revenue?: GoogleAdsAppleRevenueResponse;
   currency: string;
   loading: boolean;
   error: boolean;
+  revenueError: boolean;
 }) {
+  const [showTrials, setShowTrials] = useState(true);
+  const hasRevenue = revenue?.mapped === true && !revenueError;
+  const totals = hasRevenue ? revenue?.totals : undefined;
+  const avgPerPurchase = totals && totals.purchases > 0 ? totals.proceedsUsd / totals.purchases : 0;
   // Day buckets follow the resolved backend range; fall back to the last 30
   // days while the range is still loading.
   const fallbackEnd = new Date();
@@ -65,22 +92,56 @@ export default function GoogleAdsCampaignChart({
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   ) {
     const key = cursor.toISOString().slice(0, 10);
-    byDay.set(key, { date: key, spend: 0 });
+    byDay.set(key, { date: key, spend: 0, proceeds: 0, trialPotential: 0, trials: 0 });
   }
   for (const day of spendDays ?? []) {
     const point = byDay.get(day.date);
     if (point) point.spend += day.spend;
   }
+  if (hasRevenue) {
+    for (const day of revenue?.days ?? []) {
+      const point = byDay.get(day.date);
+      if (!point) continue;
+      point.trials += day.trials;
+      point.trialPotential += day.trials * avgPerPurchase;
+      point.proceeds += day.proceedsUsd;
+    }
+  }
   const days = [...byDay.values()];
-  const tooltip = <DailyTooltip currency={currency} />;
+  const trialsTotal = days.reduce((sum, day) => sum + day.trials, 0);
+  const tooltip = <DailyTooltip currency={currency} showTrials={showTrials} hasRevenue={hasRevenue} />;
 
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 mb-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
     >
-      <div className={`text-[16px] font-semibold ${textPrimary}`}>Campaign performance</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className={`text-[16px] font-semibold ${textPrimary}`}>Campaign performance</div>
+        {!loading && !error && hasRevenue && (
+          <label
+            className={`inline-flex items-center gap-2 text-[12px] font-medium cursor-pointer select-none ${textMuted}`}
+          >
+            <input
+              type="checkbox"
+              checked={showTrials}
+              onChange={(e) => setShowTrials(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[#f59e0b]"
+            />
+            Trial potential
+          </label>
+        )}
+      </div>
       <div className={`text-[12px] ${textMuted} mt-0.5 mb-5`}>
-        Daily spend · {chartDate(rangeStart)} – {chartDate(rangeEnd)} · UTC
+        {hasRevenue ? (
+          <>
+            Daily spend vs proceeds{showTrials ? " + trial potential" : ""} · {chartDate(rangeStart)} –{" "}
+            {chartDate(rangeEnd)} · UTC
+          </>
+        ) : (
+          <>
+            Daily spend · {chartDate(rangeStart)} – {chartDate(rangeEnd)} · UTC
+          </>
+        )}
       </div>
       {loading ? (
         <div className={`h-72 flex items-center justify-center text-[13px] ${textMuted}`}>Loading chart…</div>
@@ -95,7 +156,24 @@ export default function GoogleAdsCampaignChart({
               <span className="h-0.5 w-4 bg-[#6366f1]" />
               Spend ({currency})
             </span>
+            {hasRevenue && (
+              <span className={`inline-flex items-center gap-2 text-[12px] font-medium ${textPrimary}`}>
+                <span className="h-2.5 w-2.5 rounded-sm bg-[#10b981]" />
+                Proceeds (USD)
+              </span>
+            )}
+            {showTrials && hasRevenue && (
+              <span className={`inline-flex items-center gap-2 text-[12px] font-medium ${textPrimary}`}>
+                <span className="h-2.5 w-2.5 rounded-sm bg-[#f59e0b]" />
+                Trial potential (USD)
+              </span>
+            )}
           </div>
+          {showTrials && hasRevenue && avgPerPurchase === 0 && trialsTotal > 0 && (
+            <div className={`text-[12px] ${textMuted} mb-2`}>
+              {fmtNumber(trialsTotal)} trials have no purchase reference yet and aren&apos;t valued
+            </div>
+          )}
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart data={days} margin={{ top: 8, right: 12, bottom: 0, left: 0 }} barGap={1}>
               <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" />
@@ -117,6 +195,26 @@ export default function GoogleAdsCampaignChart({
                 tickFormatter={axisMoney}
               />
               <Tooltip content={tooltip} />
+              {hasRevenue && (
+                <Bar
+                  yAxisId="money"
+                  dataKey="proceeds"
+                  stackId="revenue"
+                  fill="#10b981"
+                  maxBarSize={12}
+                  isAnimationActive={false}
+                />
+              )}
+              {showTrials && hasRevenue && (
+                <Bar
+                  yAxisId="money"
+                  dataKey="trialPotential"
+                  stackId="revenue"
+                  fill="#f59e0b"
+                  maxBarSize={12}
+                  isAnimationActive={false}
+                />
+              )}
               <Line
                 yAxisId="money"
                 type="monotone"
@@ -130,7 +228,8 @@ export default function GoogleAdsCampaignChart({
             </ComposedChart>
           </ResponsiveContainer>
           <div className={`flex justify-between text-[11px] ${textMuted} mt-1`}>
-            <span>Spend ({currency})</span>
+            <span>Spend ({currency}){hasRevenue ? " / proceeds (USD)" : ""}</span>
+            {hasRevenue && <span>Trials at avg. proceeds per purchase</span>}
           </div>
         </div>
       )}

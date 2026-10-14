@@ -469,9 +469,11 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         spendDays={dailySpend?.days}
         startDate={dailySpend?.startDate}
         endDate={dailySpend?.endDate}
+        revenue={revenueData ?? undefined}
         currency={currency}
-        loading={spendLoading}
+        loading={spendLoading || revenueLoading}
         error={!!spendError}
+        revenueError={!!revenueError}
       />
 
       {campaignId && (
