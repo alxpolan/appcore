@@ -126,6 +126,8 @@ export async function createGoogleAdsCampaignFull(
         manual_cpc: { enhanced_cpc_enabled: false },
         campaign_budget: budgetTemp,
         network_settings: { target_google_search: true, target_search_network: true },
+        contains_eu_political_advertising:
+          E.EuPoliticalAdvertisingStatus.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING,
         ...(input.startDate ? { start_date: input.startDate.replace(/-/g, "") } : {}),
         ...(input.endDate ? { end_date: input.endDate.replace(/-/g, "") } : {}),
       },

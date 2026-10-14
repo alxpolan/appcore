@@ -300,6 +300,11 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       }
 
       if (op.entity === "campaign" && op.operation === "create") {
+        if (r.contains_eu_political_advertising == null) {
+          throw new Error(
+            "FakeGoogleAdsGateway: EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED (campaign create needs contains_eu_political_advertising)",
+          );
+        }
         const id = String(this.store.nextId++);
         tempIds.set(tempKey(r.resource_name), id);
         const budgetName = resolveTemp(String(r.campaign_budget ?? ""));
