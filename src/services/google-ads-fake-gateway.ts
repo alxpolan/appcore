@@ -279,7 +279,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       return name;
     };
     for (const op of operations) {
-      const r = op.resource;
+      const r: any = op.resource;
+      const removeName = typeof r === "string" ? r : String(r.resource_name ?? "");
 
       if (op.entity === "campaign_budget" && op.operation === "create") {
         const id = String(this.store.nextId++);
@@ -339,11 +340,11 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       }
 
       if (op.entity === "campaign" && op.operation === "remove") {
-        const c = this.store.campaigns.get(resourceId(r.resource_name));
-        if (!c || c.removed) throw new Error(`FakeGoogleAdsGateway: campaign not found: ${r.resource_name}`);
+        const c = this.store.campaigns.get(resourceId(removeName));
+        if (!c || c.removed) throw new Error(`FakeGoogleAdsGateway: campaign not found: ${removeName}`);
 
         c.removed = true;
-        out.push(r.resource_name);
+        out.push(removeName);
         continue;
       }
 
@@ -380,8 +381,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       }
 
       if (op.entity === "ad_group" && op.operation === "remove") {
-        const g = this.store.adGroups.get(resourceId(r.resource_name));
-        if (!g || g.removed) throw new Error(`FakeGoogleAdsGateway: ad group not found: ${r.resource_name}`);
+        const g = this.store.adGroups.get(resourceId(removeName));
+        if (!g || g.removed) throw new Error(`FakeGoogleAdsGateway: ad group not found: ${removeName}`);
 
         g.removed = true;
 
@@ -452,11 +453,11 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       }
 
       if ((op.entity === "ad_group_criterion" || op.entity === "campaign_criterion") && op.operation === "remove") {
-        const k = this.findCriterion(r.resource_name);
-        if (!k) throw new Error(`FakeGoogleAdsGateway: criterion not found: ${r.resource_name}`);
+        const k = this.findCriterion(removeName);
+        if (!k) throw new Error(`FakeGoogleAdsGateway: criterion not found: ${removeName}`);
 
         k.removed = true;
-        out.push(r.resource_name);
+        out.push(removeName);
         continue;
       }
 
@@ -511,10 +512,14 @@ function opBudgetAmount(operations: GoogleAdsMutationOperation[], budgetName: st
   const key = tempKey(String(budgetName ?? ""));
   const op = operations.find(
     (o) =>
-      o.entity === "campaign_budget" && o.operation === "create" && tempKey(String(o.resource.resource_name)) === key,
+      o.entity === "campaign_budget" &&
+      o.operation === "create" &&
+      typeof o.resource === "object" &&
+      tempKey(String(o.resource.resource_name)) === key,
   );
+  const res = op?.resource;
 
-  return op?.resource.amount_micros != null ? Number(op.resource.amount_micros) : null;
+  return typeof res === "object" && res?.amount_micros != null ? Number(res.amount_micros) : null;
 }
 
 function eachDayGaql(from: string, to: string): string[] {

@@ -48,10 +48,11 @@ class RealGoogleAdsGateway implements GoogleAdsGateway {
   }
 
   async mutate(operations: GoogleAdsMutationOperation[]): Promise<string[]> {
+    if (operations.length === 0) return [];
     const res: any = await this.customer().mutateResources(operations as any);
-    const list = res.mutate_operation_responses ?? res.results ?? [];
+    const list = res.mutate_operation_responses ?? res.mutateOperationResponses ?? res.results ?? [];
 
-    return list.map((r: any) => String(r.resource_name ?? ""));
+    return list.map((r: any) => String(r.resource_name ?? r.resourceName ?? ""));
   }
 
   async listAccessibleCustomers(): Promise<string[]> {

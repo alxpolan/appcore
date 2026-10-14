@@ -5,10 +5,14 @@ import {
   resetFakeGoogleAds,
 } from "../src/services/google-ads-fake-gateway";
 import {
+  addGoogleAdsNegativeKeywords,
   createGoogleAdsCampaignFull,
+  deleteGoogleAdsKeywords,
+  deleteGoogleAdsNegativeKeywords,
   validateGoogleAdsCreateCampaignInput,
 } from "../src/services/google-ads-writes";
-import { googleAdsErrorMessage } from "../src/services/google-ads-gateway";
+import { googleAdsErrorMessage, googleAdsGateway } from "../src/services/google-ads-gateway";
+import { listGoogleAdsKeywords, listGoogleAdsNegativeKeywords } from "../src/services/google-ads-reports";
 import type { GoogleAdsCredentials } from "../src/services/google-ads-types";
 
 const creds: GoogleAdsCredentials = { customerId: "999", clientId: "", clientSecret: "", refreshToken: "" };
@@ -43,6 +47,59 @@ describe("google ads: campaign creation", () => {
       gw.mutate([{ entity: "campaign", operation: "create", resource: { resource_name: "x", name: "y" } }]),
       /EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED/,
     );
+  });
+
+  it("deletes keywords by id", async () => {
+    const input = validateGoogleAdsCreateCampaignInput({
+      name: "Delete me",
+      dailyBudgetAmount: 5,
+      adGroups: [
+        {
+          name: "Group 1",
+          defaultBidAmount: 0.5,
+          keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+        },
+      ],
+    });
+    const created = await createGoogleAdsCampaignFull(creds, input);
+    const adGroupId = created.adGroups[0].id;
+    const before = await listGoogleAdsKeywords(creds, created.id, adGroupId);
+    assert.equal(before.length, 1);
+    const deleted = await deleteGoogleAdsKeywords(creds, created.id, adGroupId, [before[0].id]);
+    assert.equal(deleted, 1);
+    assert.deepEqual(await listGoogleAdsKeywords(creds, created.id, adGroupId), []);
+  });
+
+  it("adds and deletes campaign-level negatives", async () => {
+    const input = validateGoogleAdsCreateCampaignInput({
+      name: "Negatives",
+      dailyBudgetAmount: 5,
+      adGroups: [
+        {
+          name: "Group 1",
+          defaultBidAmount: 0.5,
+          keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+        },
+      ],
+    });
+    const created = await createGoogleAdsCampaignFull(creds, input);
+    const added = await addGoogleAdsNegativeKeywords(creds, created.id, null, [{ text: "free", matchType: "BROAD" }]);
+    assert.equal(added.length, 1);
+    assert.ok(added[0].id);
+    const listed = await listGoogleAdsNegativeKeywords(creds, created.id, null);
+    assert.equal(listed.length, 1);
+    const deleted = await deleteGoogleAdsNegativeKeywords(creds, created.id, null, [listed[0].id]);
+    assert.equal(deleted, 1);
+    assert.deepEqual(await listGoogleAdsNegativeKeywords(creds, created.id, null), []);
+  });
+
+  it("empty mutate is a no-op without an API call", async () => {
+    delete process.env.GOOGLE_ADS_FAKE;
+    try {
+      assert.deepEqual(await googleAdsGateway(creds).mutate([]), []);
+    } finally {
+      process.env.GOOGLE_ADS_FAKE = "1";
+    }
   });
 });
 

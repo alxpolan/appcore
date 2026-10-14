@@ -68,7 +68,8 @@ export interface GoogleAdsReportRange {
 export interface GoogleAdsMutationOperation {
   entity: "campaign_budget" | "campaign" | "ad_group" | "ad_group_criterion" | "campaign_criterion";
   operation: "create" | "update" | "remove";
-  resource: Record<string, any>;
+  /** Remove operations carry the bare resource name string, matching the API's `remove` field. */
+  resource: Record<string, any> | string;
 }
 
 export interface GoogleAdsGateway {

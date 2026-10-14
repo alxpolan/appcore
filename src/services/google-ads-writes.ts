@@ -232,7 +232,7 @@ export async function deleteGoogleAdsCampaign(
 ): Promise<{ id: string; deleted: boolean }> {
   const gw = googleAdsGateway(creds);
   await gw.mutate([
-    { entity: "campaign", operation: "remove", resource: { resource_name: ResourceNames.campaign(creds.customerId, campaignId) } },
+    { entity: "campaign", operation: "remove", resource: ResourceNames.campaign(creds.customerId, campaignId) },
   ]);
 
   return { id: campaignId, deleted: true };
@@ -322,7 +322,7 @@ export async function deleteGoogleAdsAdGroup(
 ): Promise<{ id: string; deleted: boolean }> {
   const gw = googleAdsGateway(creds);
   await gw.mutate([
-    { entity: "ad_group", operation: "remove", resource: { resource_name: ResourceNames.adGroup(creds.customerId, adGroupId) } },
+    { entity: "ad_group", operation: "remove", resource: ResourceNames.adGroup(creds.customerId, adGroupId) },
   ]);
 
   return { id: adGroupId, deleted: true };
@@ -404,7 +404,7 @@ export async function deleteGoogleAdsKeywords(
     keywordIds.map((id) => ({
       entity: "ad_group_criterion" as const,
       operation: "remove" as const,
-      resource: { resource_name: ResourceNames.adGroupCriterion(creds.customerId, adGroupId, id) },
+      resource: ResourceNames.adGroupCriterion(creds.customerId, adGroupId, id),
     })),
   );
 
@@ -465,7 +465,7 @@ export async function deleteGoogleAdsNegativeKeywords(
       ids.map((id) => ({
         entity: "ad_group_criterion" as const,
         operation: "remove" as const,
-        resource: { resource_name: ResourceNames.adGroupCriterion(creds.customerId, adGroupId, id) },
+        resource: ResourceNames.adGroupCriterion(creds.customerId, adGroupId, id),
       })),
     );
   } else {
@@ -474,7 +474,7 @@ export async function deleteGoogleAdsNegativeKeywords(
       ids.map((id) => ({
         entity: "campaign_criterion" as const,
         operation: "remove" as const,
-        resource: { resource_name: `${campaignName}/campaignCriteria/${campaignId}~${id}` },
+        resource: `${campaignName}/campaignCriteria/${campaignId}~${id}`,
       })),
     );
   }
