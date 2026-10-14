@@ -100,6 +100,38 @@ function StatCells({ stats, currency }: { stats: GoogleAdsStats; currency: strin
 
 const STAT_HEADERS = ["Spend", "Impressions", "Clicks", "CTR", "Conversions", "Avg CPC", "Cost/Conv", "Conv. Rate"];
 
+const COUNTRY_HEADERS = ["Spend", "Impressions", "Clicks", "CTR", "Installs", "Avg CPC", "Avg CPA", "Conv. Rate"];
+
+function CountryStatCells({ country, currency }: { country: GoogleAdsCountryStats; currency: string | null }) {
+  const installs = country.installs ?? null;
+  return (
+    <>
+      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(country.spend, currency)}</td>
+      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(country.impressions)}</td>
+      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(country.clicks)}</td>
+      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+        {country.ctr != null ? fmtPct(country.ctr * 100) : "—"}
+      </td>
+      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+        {installs == null ? "—" : fmtNumber(installs)}
+      </td>
+      <td className={`${TD} text-right tabular-nums ${textMuted}`}>{fmtMoney(country.avgCpc, currency)}</td>
+      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+        {installs == null || installs <= 0 ? "—" : fmtMoney(country.spend / installs, currency)}
+      </td>
+      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+        {installs == null || country.clicks <= 0 ? "—" : fmtPct((installs / country.clicks) * 100)}
+      </td>
+      <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
+        {country.trials == null ? "—" : fmtNumber(country.trials)}
+      </td>
+      <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
+        {country.proceedsUsd == null ? "—" : fmtMoneyUsd(country.proceedsUsd)}
+      </td>
+    </>
+  );
+}
+
 /** Like useApi, but surfaces the server's error message. */
 function useCountryBreakdown(path: string | null) {
   const [data, setData] = useState<GoogleAdsCountryBreakdownResponse | null>(null);
@@ -131,29 +163,22 @@ function useCountryBreakdown(path: string | null) {
 function CountryStatsTable({
   countries,
   currency,
-  revenueAvailable,
 }: {
   countries: GoogleAdsCountryStats[];
   currency: string | null;
-  revenueAvailable: boolean;
 }) {
   return (
     <table className="w-full text-[12px]">
       <thead>
         <tr>
           <th className={TH}>Country</th>
-          {STAT_HEADERS.map((h) => (
-            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" && !revenueAvailable ? "pr-5" : ""}`}>
+          {COUNTRY_HEADERS.map((h) => (
+            <th key={h} className={`${TH} text-right`}>
               {h}
             </th>
           ))}
-          {revenueAvailable && (
-            <>
-              <th className={`${TH} text-right`}>Installs</th>
-              <th className={`${TH} text-right`}>Trials</th>
-              <th className={`${TH} text-right pr-5`}>Proceeds</th>
-            </>
-          )}
+          <th className={`${TH} text-right`}>Trials</th>
+          <th className={`${TH} text-right pr-5`}>Proceeds</th>
         </tr>
       </thead>
       <tbody>
@@ -163,20 +188,7 @@ function CountryStatsTable({
               <span className={`font-medium ${textPrimary}`}>{c.countryName ?? countryName(c.countryOrRegion)}</span>{" "}
               <span className={textMuted}>{c.countryOrRegion}</span>
             </td>
-            <StatCells stats={c} currency={currency} />
-            {revenueAvailable && (
-              <>
-                <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                  {c.installs == null ? "—" : fmtNumber(c.installs)}
-                </td>
-                <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
-                  {c.trials == null ? "—" : fmtNumber(c.trials)}
-                </td>
-                <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
-                  {c.proceedsUsd == null ? "—" : fmtMoneyUsd(c.proceedsUsd)}
-                </td>
-              </>
-            )}
+            <CountryStatCells country={c} currency={currency} />
           </tr>
         ))}
       </tbody>
@@ -562,11 +574,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No country data for this period.</div>
         ) : (
           <div className="overflow-x-auto">
-            <CountryStatsTable
-              countries={countriesData.countries}
-              currency={currency}
-              revenueAvailable={countriesData.revenueAvailable === true}
-            />
+            <CountryStatsTable countries={countriesData.countries} currency={currency} />
           </div>
         )}
       </div>
