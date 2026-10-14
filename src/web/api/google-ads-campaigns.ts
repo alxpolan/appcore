@@ -70,6 +70,8 @@ googleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) =>
           select: {
             bundleId: true,
             campaign: true,
+            reportDate: true,
+            territory: true,
             downloads: true,
             trials: true,
             purchases: true,

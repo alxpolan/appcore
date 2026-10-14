@@ -4,6 +4,7 @@ import { prisma } from "../../../config";
 import { resolveGoogleAdsRange } from "../../../services/google-ads";
 import { getMcpAllowedAppIds, getMcpUserTeamId, isTeamAdmin, jsonResult, registerMutatingTool, textResult, type ToolSummary } from "./shared";
 import { googleAdsError, rangeSchema } from "./google-ads-tools-shared";
+import { mergeCampaignDayMetrics } from "../../../services/utils/google-ads-mapping";
 
 export async function upsertGoogleAdsAppleMapping(teamId: string, campaignId: string, bundleId: string, ctToken: string) {
   const app = await prisma.app.findFirst({ where: { bundleId, teamId }, select: { id: true } });
@@ -62,12 +63,22 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           },
           orderBy: { reportDate: "asc" },
         });
-        const totals = rows.reduce(
-          (acc, r) => ({
-            downloads: acc.downloads + r.downloads,
-            purchases: acc.purchases + r.purchases,
-            trials: acc.trials + r.trials,
-            proceedsUsd: acc.proceedsUsd + r.proceedsUsd,
+        const days = mergeCampaignDayMetrics(
+          rows.map((r) => ({
+            date: r.reportDate.toISOString().slice(0, 10),
+            territory: r.territory,
+            downloads: r.downloads,
+            purchases: r.purchases,
+            trials: r.trials,
+            proceedsUsd: r.proceedsUsd,
+          })),
+        );
+        const totals = days.reduce(
+          (acc, d) => ({
+            downloads: acc.downloads + d.downloads,
+            purchases: acc.purchases + d.purchases,
+            trials: acc.trials + d.trials,
+            proceedsUsd: acc.proceedsUsd + d.proceedsUsd,
           }),
           { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
         );
@@ -78,13 +89,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           ctToken: mapping.ctToken,
           range,
           totals,
-          days: rows.map((r) => ({
-            date: r.reportDate.toISOString().slice(0, 10),
-            downloads: r.downloads,
-            purchases: r.purchases,
-            trials: r.trials,
-            proceedsUsd: r.proceedsUsd,
-          })),
+          days,
         });
       } catch (err) {
         return googleAdsError("get_google_ads_apple_revenue", err);

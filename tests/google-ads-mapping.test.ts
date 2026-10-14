@@ -4,6 +4,8 @@ import {
   aggregateAppleMetricsByCampaign,
   attachCampaignMappings,
   filterCampaignsByApp,
+  mergeCampaignDayMetrics,
+  mergeDayDownloads,
   needsCampaignBackfill,
   parseCtParam,
   withCtParam,
@@ -119,6 +121,44 @@ describe("google ads: aggregate apple metrics by campaign", () => {
 
   it("returns an empty map without rows", () => {
     assert.equal(aggregateAppleMetricsByCampaign([], keys).size, 0);
+  });
+
+  it("prefers official downloads per day and fills gaps from web rows", () => {
+    const result = aggregateAppleMetricsByCampaign(
+      [
+        // Day 1: official rows win over the web total.
+        { bundleId: "com.example.app", campaign: "tok1", reportDate: new Date("2026-10-03T00:00:00Z"), territory: "DE", downloads: 10, trials: 0, purchases: 0, proceedsUsd: 0 },
+        { bundleId: "com.example.app", campaign: "tok1", reportDate: new Date("2026-10-03T00:00:00Z"), territory: "XW", downloads: 12, trials: 1, purchases: 0, proceedsUsd: 0 },
+        // Day 2: privacy-suppressed officially, web total fills the gap.
+        { bundleId: "com.example.app", campaign: "tok1", reportDate: new Date("2026-10-04T00:00:00Z"), territory: "XW", downloads: 7, trials: 2, purchases: 1, proceedsUsd: 4 },
+      ],
+      keys,
+    );
+    assert.deepEqual(result.get("111"), { downloads: 17, trials: 3, purchases: 1, proceedsUsd: 4 });
+  });
+});
+
+describe("google ads: merge campaign day metrics", () => {
+  it("collapses territories to one row per day with download source", () => {
+    assert.deepEqual(
+      mergeCampaignDayMetrics([
+        { date: "2026-10-03", territory: "DE", downloads: 10, trials: 0, purchases: 0, proceedsUsd: 0 },
+        { date: "2026-10-03", territory: "XW", downloads: 12, trials: 1, purchases: 0, proceedsUsd: 0 },
+        { date: "2026-10-04", territory: "XW", downloads: 7, trials: 2, purchases: 1, proceedsUsd: 4 },
+        { date: "2026-10-05", territory: "DE", downloads: 0, trials: 0, purchases: 0, proceedsUsd: 0 },
+      ]),
+      [
+        { date: "2026-10-03", downloads: 10, trials: 1, purchases: 0, proceedsUsd: 0, downloadsSource: "official" },
+        { date: "2026-10-04", downloads: 7, trials: 2, purchases: 1, proceedsUsd: 4, downloadsSource: "web" },
+        { date: "2026-10-05", downloads: 0, trials: 0, purchases: 0, proceedsUsd: 0, downloadsSource: "none" },
+      ],
+    );
+  });
+
+  it("merges a single day download pair", () => {
+    assert.deepEqual(mergeDayDownloads(5, 9), { downloads: 5, downloadsSource: "official" });
+    assert.deepEqual(mergeDayDownloads(0, 9), { downloads: 9, downloadsSource: "web" });
+    assert.deepEqual(mergeDayDownloads(0, 0), { downloads: 0, downloadsSource: "none" });
   });
 });
 

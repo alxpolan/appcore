@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma, logger } from "../../config";
 import { requireTeamAdmin, loadTeamSettings, memberAllowedApp } from "../auth";
 import { resolveGoogleAdsRange } from "../../services/google-ads";
+import { mergeCampaignDayMetrics } from "../../services/utils/google-ads-mapping";
 
 export const googleAdsAppleRevenueRouter = Router();
 
@@ -36,12 +37,22 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       orderBy: { reportDate: "asc" },
     });
 
-    const totals = rows.reduce(
-      (acc, r) => ({
-        downloads: acc.downloads + r.downloads,
-        purchases: acc.purchases + r.purchases,
-        trials: acc.trials + r.trials,
-        proceedsUsd: acc.proceedsUsd + r.proceedsUsd,
+    const days = mergeCampaignDayMetrics(
+      rows.map((r) => ({
+        date: r.reportDate.toISOString().slice(0, 10),
+        territory: r.territory,
+        downloads: r.downloads,
+        purchases: r.purchases,
+        trials: r.trials,
+        proceedsUsd: r.proceedsUsd,
+      })),
+    );
+    const totals = days.reduce(
+      (acc, d) => ({
+        downloads: acc.downloads + d.downloads,
+        purchases: acc.purchases + d.purchases,
+        trials: acc.trials + d.trials,
+        proceedsUsd: acc.proceedsUsd + d.proceedsUsd,
       }),
       { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
     );
@@ -52,13 +63,7 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       ctToken: mapping.ctToken,
       range,
       totals,
-      days: rows.map((r) => ({
-        date: r.reportDate.toISOString().slice(0, 10),
-        downloads: r.downloads,
-        purchases: r.purchases,
-        trials: r.trials,
-        proceedsUsd: r.proceedsUsd,
-      })),
+      days,
     });
   } catch (err: any) {
     logger.error("[google-ads] apple revenue fetch error", { err: String(err?.message ?? err) });
