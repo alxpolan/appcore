@@ -657,7 +657,7 @@ export interface GoogleAdsCampaignDetail {
 }
 
 export interface GoogleAdsDailySpendResponse {
-  days: { date: string; spend: number }[];
+  days: { date: string; spend: number; impressions: number; clicks: number; conversions: number }[];
   startDate: string;
   endDate: string;
 }
@@ -667,6 +667,7 @@ export interface GoogleAdsDailyStats {
   spend: number;
   impressions: number;
   clicks: number;
+  conversions: number;
 }
 
 export interface GoogleAdsDailyStatsResponse {

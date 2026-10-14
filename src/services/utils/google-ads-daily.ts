@@ -8,13 +8,14 @@ export interface GoogleAdsDailyStats {
   spend: number;
   impressions: number;
   clicks: number;
+  conversions: number;
 }
 
 /** Sums per-(campaign, day) GAQL rows into one series per calendar day. */
 export function aggregateGoogleDailyStats(rows: any[], campaignIds?: string[]): GoogleAdsDailyStats[] {
   const allowed = campaignIds ? new Set(campaignIds.map(String)) : null;
   const byDate = new Map<string, GoogleAdsDailyStats>();
-  const zero = (date: string): GoogleAdsDailyStats => ({ date, spend: 0, impressions: 0, clicks: 0 });
+  const zero = (date: string): GoogleAdsDailyStats => ({ date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
   for (const row of rows) {
     if (allowed && !allowed.has(String(row.campaign?.id))) continue;
     const date = String(row.segments?.date ?? "").slice(0, 10);
@@ -27,6 +28,7 @@ export function aggregateGoogleDailyStats(rows: any[], campaignIds?: string[]): 
     bucket.spend += num(row.metrics?.cost_micros) / 1_000_000;
     bucket.impressions += num(row.metrics?.impressions);
     bucket.clicks += num(row.metrics?.clicks);
+    bucket.conversions += num(row.metrics?.conversions);
     byDate.set(date, bucket);
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));

@@ -221,26 +221,22 @@ export async function getGoogleAdsCampaignDailySpend(
   creds: GoogleAdsCredentials,
   campaignId: string,
   range: GoogleAdsReportRange = resolveGoogleAdsRange({}),
-): Promise<{ date: string; spend: number }[]> {
+): Promise<GoogleAdsDailyStats[]> {
   const gw = googleAdsGateway(creds);
   const rows = await gw.query(
-    "SELECT segments.date, campaign.id, metrics.cost_micros " +
+    "SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
       `FROM campaign WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}' ORDER BY segments.date`,
   );
 
-  const byDay = new Map<string, number>();
-  for (const row of rows) {
-    const day = String(row.segments?.date ?? "").slice(0, 10);
-    if (day) byDay.set(day, num(row.metrics?.cost_micros) / 1_000_000);
-  }
-  const days: { date: string; spend: number }[] = [];
+  const byDay = new Map(aggregateGoogleDailyStats(rows).map((d) => [d.date, d]));
+  const days: GoogleAdsDailyStats[] = [];
   for (
     let t = Date.parse(`${range.startDate}T00:00:00Z`);
     t <= Date.parse(`${range.endDate}T00:00:00Z`);
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
-    days.push({ date, spend: byDay.get(date) ?? 0 });
+    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
   }
 
   return days;
@@ -253,7 +249,7 @@ export async function getGoogleAdsDailyStats(
 ): Promise<GoogleAdsDailyStats[]> {
   const gw = googleAdsGateway(creds);
   const rows = await gw.query(
-    "SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks " +
+    "SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
       `FROM campaign WHERE campaign.status != 'REMOVED' AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}' ORDER BY segments.date`,
   );
 
@@ -265,7 +261,7 @@ export async function getGoogleAdsDailyStats(
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
-    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0 });
+    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
   }
 
   return days;
