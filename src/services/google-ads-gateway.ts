@@ -2,17 +2,28 @@ import { GoogleAdsApi, errors } from "google-ads-api";
 import { FakeGoogleAdsGateway } from "./google-ads-fake-gateway";
 import type { GoogleAdsCredentials, GoogleAdsGateway, GoogleAdsMutationOperation } from "./google-ads-types";
 
+function stringifyDetail(value: unknown): string {
+  if (typeof value === "string" && value) return value;
+  try {
+    const json = JSON.stringify(value);
+    if (json && json !== "{}" && json !== "[]") return json.slice(0, 2000);
+  } catch {
+    /* fall through */
+  }
+  return String(value);
+}
+
 export function googleAdsErrorMessage(err: any, context: string): string {
   if (err instanceof errors.GoogleAdsFailure) {
     const details = (err.errors ?? [])
-      .map((e: any) => e?.message ?? e?.error_code?.toString?.() ?? JSON.stringify(e))
+      .map((e: any) => e?.message ?? e?.error_code?.toString?.() ?? stringifyDetail(e))
       .filter(Boolean)
       .join("; ");
 
     return `Google Ads ${context} failed${details ? `: ${details}` : ""}`;
   }
 
-  return `Google Ads ${context} failed: ${String(err?.message ?? err)}`;
+  return `Google Ads ${context} failed: ${stringifyDetail(err?.message ?? err?.errors ?? err)}`;
 }
 
 class RealGoogleAdsGateway implements GoogleAdsGateway {

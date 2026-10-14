@@ -2,7 +2,7 @@ import { z } from "zod/v3";
 import { logger, prisma } from "../../../config";
 import { decryptNullable } from "../../../config/encryption";
 import { getMcpUserTeamId, textResult } from "./shared";
-import type { GoogleAdsCredentials } from "../../../services/google-ads";
+import { googleAdsErrorMessage, type GoogleAdsCredentials } from "../../../services/google-ads";
 
 export const rangeSchema = {
   days: z
@@ -74,7 +74,8 @@ export async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpC
 }
 
 export function googleAdsError(tool: string, err: unknown) {
-  logger.error(`[mcp] ${tool} error`, { err: String((err as any)?.message ?? err) });
+  const message = googleAdsErrorMessage(err, "request");
+  logger.error(`[mcp] ${tool} error`, { err: message });
 
-  return textResult(`Google Ads request failed: ${String((err as any)?.message ?? err)}`);
+  return textResult(message);
 }
