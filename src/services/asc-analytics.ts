@@ -309,39 +309,6 @@ export interface CampaignMetricsRow {
   proceedsUsd: number;
 }
 
-/** Aggregate Detailed downloads rows by (day, campaign token, territory).
- * Only counts rows Apple labels "First-time download" — other Download Types
- * (Auto-update, Manual update, Redownload, ...) are existing users, not
- * acquisitions driven by the campaign, and must not be counted as downloads. */
-export function parseCampaignDownloadsSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
-  const byKey = new Map<string, CampaignMetricsRow>();
-
-  for (const row of rows) {
-    const dateStr = (row["Date"] ?? "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
-    const campaign = (row["Campaign"] ?? "").trim();
-    if (!campaign) continue;
-    if (!/first/i.test(row["Download Type"] ?? "")) continue;
-
-    const territory = (row["Territory"] ?? "").trim().toUpperCase() || "ZZ";
-    const key = `${dateStr}::${campaign}::${territory}`;
-    const counts = parseInt(row["Counts"] ?? "0", 10) || 0;
-    const bucket = byKey.get(key) ?? {
-      dateStr,
-      campaign,
-      territory,
-      downloads: 0,
-      purchases: 0,
-      trials: 0,
-      proceedsUsd: 0,
-    };
-    bucket.downloads += counts;
-    byKey.set(key, bucket);
-  }
-
-  return [...byKey.values()];
-}
-
 /** Aggregate Detailed purchases rows by (day, campaign token, territory).
  * Trials are best-effort: purchase rows whose type mentions a trial. */
 export function parseCampaignPurchasesSegment(rows: Record<string, string>[]): CampaignMetricsRow[] {
@@ -1107,8 +1074,9 @@ export class AscAnalyticsService {
               const purchaseRows = parsePurchasesSegment(rows);
               storedRows += await storePurchasesSegment(bundleId, purchaseRows);
             } else if (reportItem.kind === "downloadsDetailed") {
-              const campaignRows = parseCampaignDownloadsSegment(rows);
-              storedRows += await storeCampaignMetricsSegment(bundleId, campaignRows, ["downloads"]);
+              // Superseded: private web sync (storefront-grouped totalDownloads)
+              // is the only campaign downloads writer now.
+              logger.debug("Skipping official campaign downloads segment (superseded by web sync)");
             } else if (reportItem.kind === "purchasesDetailed") {
               const campaignRows = parseCampaignPurchasesSegment(rows);
               storedRows += await storeCampaignMetricsSegment(bundleId, campaignRows, [
