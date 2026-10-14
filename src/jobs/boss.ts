@@ -37,6 +37,10 @@ import {
 import { QUEUE_NAME as ASC_MAILBOX_QUEUE, handler as ascMailboxHandler } from "./workers/asc-mailbox.worker";
 import { QUEUE_NAME as SYNC_REVENUECAT_QUEUE, handler as syncRevenueCatHandler } from "./workers/sync-revenuecat.worker";
 import type { SyncRevenueCatData } from "./workers/sync-revenuecat.worker";
+import {
+  QUEUE_NAME as SYNC_ASC_WEB_ANALYTICS_QUEUE,
+  handler as syncAscWebAnalyticsHandler,
+} from "./workers/sync-asc-web-analytics.worker";
 
 async function loadTeamApps() {
   return prisma.team.findMany({
@@ -275,8 +279,16 @@ export class BossScheduler {
     await this.boss.work(SYNC_REVENUECAT_QUEUE, syncRevenueCatHandler);
     await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "0 3 * * *", {}, { tz: "Europe/Berlin" });
 
+    // ── sync-asc-web-analytics (private timeseries: campaign trials/purchases/proceeds) ──
+    await this.boss.work(SYNC_ASC_WEB_ANALYTICS_QUEUE, syncAscWebAnalyticsHandler);
+    if (env.ASC_ANALYTICS_COOKIES) {
+      await this.boss.schedule(SYNC_ASC_WEB_ANALYTICS_QUEUE, "0 5,17 * * *", {}, { tz: "Europe/Berlin" });
+    } else {
+      logger.info(`[BOSS] ${SYNC_ASC_WEB_ANALYTICS_QUEUE} not scheduled — ASC_ANALYTICS_COOKIES not configured`);
+    }
+
     logger.info(
-      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}, ${ASC_MAILBOX_QUEUE}, ${SYNC_REVENUECAT_QUEUE}`,
+      `[BOSS] Scheduler started — queues: ${TRACK_KEYWORDS_QUEUE}, ${SCRAPE_QUEUE}, ${SYNC_ANALYTICS_QUEUE}, ${EXTRACT_KEYWORDS_QUEUE}, ${DISCOVER_KEYWORDS_QUEUE}, ${DISCOVER_COMPETITORS_QUEUE}, ${ANALYZE_QUEUE}, ${SYNC_METADATA_QUEUE}, ${COMPETITOR_INTEL_QUEUE}, ${TRANSLATE_LOCALIZATION_QUEUE}, ${ASC_MAILBOX_QUEUE}, ${SYNC_REVENUECAT_QUEUE}, ${SYNC_ASC_WEB_ANALYTICS_QUEUE}`,
     );
     this._running = true;
   }

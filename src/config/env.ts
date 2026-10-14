@@ -106,6 +106,10 @@ const envSchema = z.object({
   // "accept" flow demands a fresh interactive sign-in from a throwaway session
   // no matter how recent, but generally trusts a continuously-used real profile.
   ASC_MAILBOX_PROFILE_DIR: z.string().default("./keys/asc-mailbox-profile"),
+
+  // Raw Cookie header from a signed-in appstoreconnect.apple.com browser session.
+  // Powers the private analytics timeseries endpoint (campaign trials/purchases/proceeds).
+  ASC_ANALYTICS_COOKIES: z.string().optional(),
 });
 
 function loadEnv() {
