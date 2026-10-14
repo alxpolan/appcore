@@ -7,7 +7,9 @@ import type {
   GoogleAdsCreateCampaignInput,
   GoogleAdsCreateKeywordInput,
   GoogleAdsCreateNegativeInput,
+  GoogleAdsCreateRsaInput,
   GoogleAdsCreatedCampaign,
+  GoogleAdsCreatedRsa,
   GoogleAdsCredentials,
   GoogleAdsKeywordMatchType,
   GoogleAdsMutationOperation,
@@ -34,6 +36,39 @@ function asDate(value: unknown, label: string): string {
   }
 
   return value;
+}
+
+export function validateRsaInput(ad: any, label: string): GoogleAdsCreateRsaInput {
+  if (!ad || typeof ad !== "object") throw new Error(`${label} must be an object`);
+  const headlines = Array.isArray(ad.headlines) ? ad.headlines.map((t: any) => String(t ?? "").trim()) : [];
+  if (headlines.length < 3 || headlines.length > 15) throw new Error(`${label} needs 3-15 headlines`);
+  headlines.forEach((t: string, i: number) => {
+    if (!t || t.length > 30) throw new Error(`${label} headline ${i + 1} must be 1-30 characters`);
+  });
+  const descriptions = Array.isArray(ad.descriptions) ? ad.descriptions.map((t: any) => String(t ?? "").trim()) : [];
+  if (descriptions.length < 2 || descriptions.length > 4) throw new Error(`${label} needs 2-4 descriptions`);
+  descriptions.forEach((t: string, i: number) => {
+    if (!t || t.length > 90) throw new Error(`${label} description ${i + 1} must be 1-90 characters`);
+  });
+  const finalUrl = String(ad.finalUrl ?? "").trim();
+  if (!/^https?:\/\/.+\..+/.test(finalUrl)) throw new Error(`${label} finalUrl must be an http(s) URL`);
+  const pathOf = (v: any, name: string): string | undefined => {
+    if (v == null) return undefined;
+    const p = String(v).trim();
+    if (!p || p.length > 15) throw new Error(`${label} ${name} must be 1-15 characters`);
+    return p;
+  };
+  const status = ad.status == null ? "PAUSED" : String(ad.status).toUpperCase();
+  if (status !== "ENABLED" && status !== "PAUSED") throw new Error(`${label} status must be "ENABLED" or "PAUSED"`);
+
+  return {
+    headlines,
+    descriptions,
+    finalUrl,
+    path1: pathOf(ad.path1, "path1"),
+    path2: pathOf(ad.path2, "path2"),
+    status: status as "ENABLED" | "PAUSED",
+  };
 }
 
 export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreateCampaignInput {
@@ -93,12 +128,16 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
         throw new Error(`${label}: status must be "ENABLED" or "PAUSED"`);
       }
 
+      if (g?.ads != null && !Array.isArray(g.ads)) throw new Error(`${label}: ads must be an array`);
+      const ads = (g?.ads ?? []).map((a: any, i: number) => validateRsaInput(a, `${label} ad ${i + 1}`));
+
       return {
         name: groupName,
         defaultBidAmount: asPositiveNumber(g?.defaultBidAmount, `${label} defaultBidAmount`),
         status: groupStatus as "ENABLED" | "PAUSED",
         keywords: keywordsOf(g?.keywords, label),
         negativeKeywords: negativesOf(g?.negativeKeywords, label),
+        ads,
       };
     }),
     negativeKeywords: negativesOf(body.negativeKeywords, "Campaign"),
@@ -194,10 +233,13 @@ export async function createGoogleAdsCampaignFull(
       );
     }
 
+    const createdAds = await createGoogleAdsResponsiveSearchAds(creds, adGroupId, group.ads ?? []);
+
     adGroups.push({
       id: adGroupId,
       name: group.name,
       keywords: keywordNames.map((n, i) => ({ id: n.split("~").pop()!, text: group.keywords[i].text })),
+      ads: createdAds,
     });
   }
 
@@ -520,6 +562,40 @@ export async function deleteGoogleAdsNegativeKeywords(
   }
 
   return ids.length;
+}
+
+export async function createGoogleAdsResponsiveSearchAds(
+  creds: GoogleAdsCredentials,
+  adGroupId: string,
+  ads: GoogleAdsCreateRsaInput[],
+): Promise<GoogleAdsCreatedRsa[]> {
+  const gw = googleAdsGateway(creds);
+  const groupName = ResourceNames.adGroup(creds.customerId, adGroupId);
+  const names = await gw.mutate(
+    ads.map((a, i) => {
+      const ad = validateRsaInput(a, `Ad ${i + 1}`);
+
+      return {
+        entity: "ad_group_ad" as const,
+        operation: "create" as const,
+        resource: {
+          ad_group: groupName,
+          status: E.AdGroupAdStatus[ad.status ?? "PAUSED"],
+          ad: {
+            final_urls: [ad.finalUrl],
+            responsive_search_ad: {
+              headlines: ad.headlines.map((text) => ({ text })),
+              descriptions: ad.descriptions.map((text) => ({ text })),
+              ...(ad.path1 ? { path1: ad.path1 } : {}),
+              ...(ad.path2 ? { path2: ad.path2 } : {}),
+            },
+          },
+        },
+      };
+    }),
+  );
+
+  return names.map((n) => ({ id: n.split("~").pop() ?? "", resourceName: n }));
 }
 
 export function validateTargetingIds(list: unknown, label: string): string[] {

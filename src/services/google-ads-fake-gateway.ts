@@ -51,6 +51,7 @@ interface FakeStore {
   campaigns: Map<string, FakeCampaign>;
   adGroups: Map<string, FakeAdGroup>;
   criteria: Map<string, FakeCriterion>;
+  ads: Map<string, { id: string; adGroupId: string }>;
   countries: Map<string, { code: string; name: string; metrics: FakeMetrics }[]>;
   nextId: number;
 }
@@ -65,6 +66,7 @@ function fakeStoreFor(customerId: string): FakeStore {
       campaigns: new Map(),
       adGroups: new Map(),
       criteria: new Map(),
+      ads: new Map(),
       countries: new Map(),
       nextId: 1000,
     };
@@ -369,6 +371,22 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
         });
 
         out.push(`customers/${this.customerId}/adGroups/${id}`);
+        continue;
+      }
+
+      if (op.entity === "ad_group_ad" && op.operation === "create") {
+        const rsa = r.ad?.responsive_search_ad ?? {};
+        const headlines = Array.isArray(rsa.headlines) ? rsa.headlines : [];
+        const descriptions = Array.isArray(rsa.descriptions) ? rsa.descriptions : [];
+        if (headlines.length < 3) throw new Error("FakeGoogleAdsGateway: responsive search ad needs 3-15 headlines");
+        if (descriptions.length < 2) throw new Error("FakeGoogleAdsGateway: responsive search ad needs 2-4 descriptions");
+        if (!Array.isArray(r.ad?.final_urls) || r.ad.final_urls.length === 0) {
+          throw new Error("FakeGoogleAdsGateway: responsive search ad needs a final URL");
+        }
+        const id = String(this.store.nextId++);
+        const adGroupId = resourceId(String(r.ad_group ?? ""));
+        this.store.ads.set(id, { id, adGroupId });
+        out.push(`customers/${this.customerId}/adGroupAds/${adGroupId}~${id}`);
         continue;
       }
 

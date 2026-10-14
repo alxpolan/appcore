@@ -4,6 +4,7 @@ import {
   addGoogleAdsKeywords,
   addGoogleAdsNegativeKeywords,
   createGoogleAdsAdGroup,
+  createGoogleAdsResponsiveSearchAds,
   deleteGoogleAdsAdGroup,
   deleteGoogleAdsKeywords,
   deleteGoogleAdsNegativeKeywords,
@@ -20,6 +21,7 @@ import {
   previousGoogleNegativeTexts,
   summarizeGoogleAddKeywords,
   summarizeGoogleCreateAdGroup,
+  summarizeGoogleCreateRsa,
   summarizeGoogleDeleteAdGroup,
   summarizeGoogleDeleteKeywords,
   summarizeGoogleUpdateAdGroup,
@@ -359,5 +361,53 @@ export function registerGoogleAdsAdGroupTools(server: McpServer, userId: string)
       }
     },
     { summarize: summarizeGoogleUpdateNegatives },
+  );
+
+  registerMutatingTool(
+    server,
+    userId,
+    "create_google_ads_rsa",
+    {
+      description:
+        "Create responsive search ads in a Google Ads ad group: 3-15 headlines (max 30 chars each), " +
+        "2-4 descriptions (max 90 chars each) and a final URL per ad. " +
+        "Ads start PAUSED unless status ENABLED is passed. " +
+        "Requires team admin rights. Use get_google_ads_campaign_detail first to find campaign and ad group IDs.",
+      inputSchema: {
+        campaignId: z.string().describe("Google Ads campaign ID (numeric string)."),
+        adGroupId: z.string().describe("Ad group ID (numeric string)."),
+        ads: z
+          .array(
+            z.object({
+              headlines: z.array(z.string()).min(3).max(15).describe("3-15 headlines, max 30 chars each."),
+              descriptions: z.array(z.string()).min(2).max(4).describe("2-4 descriptions, max 90 chars each."),
+              finalUrl: z.string().describe("Final URL, e.g. an App Store campaign link with ct token."),
+              path1: z.string().max(15).optional().describe("Optional display path segment 1 (max 15 chars)."),
+              path2: z.string().max(15).optional().describe("Optional display path segment 2 (max 15 chars)."),
+              status: z.enum(["ENABLED", "PAUSED"]).optional().describe("Ad status, defaults to PAUSED."),
+            }),
+          )
+          .min(1)
+          .max(10)
+          .describe("Ads to create."),
+      },
+    },
+    async ({ campaignId, adGroupId, ads }) => {
+      const ctx = await getGoogleAdsContext(userId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      if (!(await isTeamAdmin(userId, ctx.teamId))) {
+        return textResult("Creating ads requires the team admin role.");
+      }
+
+      try {
+        const created = await createGoogleAdsResponsiveSearchAds(ctx.creds, adGroupId, ads);
+
+        return jsonResult({ campaignId, adGroupId, ads: created });
+      } catch (err) {
+        return googleAdsError("create_google_ads_rsa", err);
+      }
+    },
+    { summarize: summarizeGoogleCreateRsa },
   );
 }

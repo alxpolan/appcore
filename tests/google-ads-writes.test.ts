@@ -7,10 +7,12 @@ import {
 import {
   addGoogleAdsNegativeKeywords,
   createGoogleAdsCampaignFull,
+  createGoogleAdsResponsiveSearchAds,
   deleteGoogleAdsKeywords,
   deleteGoogleAdsNegativeKeywords,
   replaceGoogleAdsCampaignTargeting,
   validateGoogleAdsCreateCampaignInput,
+  validateRsaInput,
   validateTargetingIds,
 } from "../src/services/google-ads-writes";
 import { googleAdsErrorMessage, googleAdsGateway, parseMutateResourceNames } from "../src/services/google-ads-gateway";
@@ -204,6 +206,77 @@ describe("google ads: campaign creation", () => {
     assert.deepEqual(validateTargetingIds(["2276", 2040], "locationIds"), ["2276", "2040"]);
     assert.throws(() => validateTargetingIds(null, "locationIds"), /locationIds is required/);
     assert.throws(() => validateTargetingIds(["xx"], "locationIds"), /locationIds \[1\] must be a numeric id/);
+  });
+
+  it("creates responsive search ads in the create flow", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Ads",
+        dailyBudgetAmount: 5,
+        adGroups: [
+          {
+            name: "Group 1",
+            defaultBidAmount: 0.5,
+            keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+            ads: [
+              {
+                headlines: ["Habit Tracker", "Track Habits Daily", "Build Streaks"],
+                descriptions: ["Track your habits every day.", "Simple streaks and reminders."],
+                finalUrl: "https://apps.apple.com/app/id123?ct=test",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    assert.equal(created.adGroups[0].ads.length, 1);
+    assert.ok(created.adGroups[0].ads[0].id);
+    assert.match(created.adGroups[0].ads[0].resourceName, /adGroupAds\//);
+  });
+
+  it("creates responsive search ads directly", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Ads direct",
+        dailyBudgetAmount: 5,
+        adGroups: [
+          {
+            name: "Group 1",
+            defaultBidAmount: 0.5,
+            keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+          },
+        ],
+      }),
+    );
+    const ads = await createGoogleAdsResponsiveSearchAds(creds, created.adGroups[0].id, [
+      {
+        headlines: ["Habit Tracker", "Track Habits Daily", "Build Streaks"],
+        descriptions: ["Track your habits every day.", "Simple streaks and reminders."],
+        finalUrl: "https://apps.apple.com/app/id123?ct=test",
+        path1: "habits",
+        status: "PAUSED",
+      },
+    ]);
+    assert.equal(ads.length, 1);
+    assert.ok(ads[0].id);
+  });
+
+  it("validates responsive search ads", () => {
+    const good = {
+      headlines: ["a", "b", "c"],
+      descriptions: ["d1", "d2"],
+      finalUrl: "https://example.com/x",
+    };
+    assert.equal(validateRsaInput(good, "Ad").status, "PAUSED");
+    assert.throws(() => validateRsaInput({ ...good, headlines: ["a", "b"] }, "Ad"), /needs 3-15 headlines/);
+    assert.throws(() => validateRsaInput({ ...good, descriptions: ["d1"] }, "Ad"), /needs 2-4 descriptions/);
+    assert.throws(() => validateRsaInput({ ...good, finalUrl: "notaurl" }, "Ad"), /must be an http\(s\) URL/);
+    assert.throws(
+      () => validateRsaInput({ ...good, headlines: ["x".repeat(31), "b", "c"] }, "Ad"),
+      /headline 1 must be 1-30 characters/,
+    );
   });
 });
 

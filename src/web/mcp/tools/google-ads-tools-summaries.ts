@@ -292,6 +292,20 @@ export async function previousGoogleCampaignTargeting(creds: GoogleAdsCredential
   };
 }
 
+export const summarizeGoogleCreateRsa = (args: any): ToolSummary => {
+  const first = (args?.ads ?? [])
+    .map((a: any) => (a?.headlines ?? [])[0])
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
+
+  return {
+    summary: `Created ${args?.ads?.length ?? 0} responsive search ad(s)${first ? ` (${first})` : ""} in ad group ${args?.adGroupId}`,
+    entityType: "google_ads_campaign",
+    entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
+  };
+};
+
 export const summarizeGoogleCampaignTargeting = (args: any, text: string): ToolSummary => {
   const prev = tryParseJson(text)?.previous;
   const parts: string[] = [];

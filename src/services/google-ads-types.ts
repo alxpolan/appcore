@@ -66,7 +66,7 @@ export interface GoogleAdsReportRange {
 }
 
 export interface GoogleAdsMutationOperation {
-  entity: "campaign_budget" | "campaign" | "ad_group" | "ad_group_criterion" | "campaign_criterion";
+  entity: "campaign_budget" | "campaign" | "ad_group" | "ad_group_criterion" | "campaign_criterion" | "ad_group_ad";
   operation: "create" | "update" | "remove";
   /** Remove operations carry the bare resource name string, matching the API's `remove` field. */
   resource: Record<string, any> | string;
@@ -91,12 +91,27 @@ export interface GoogleAdsCreateNegativeInput {
   matchType: GoogleAdsKeywordMatchType;
 }
 
+export interface GoogleAdsCreateRsaInput {
+  headlines: string[];
+  descriptions: string[];
+  finalUrl: string;
+  path1?: string;
+  path2?: string;
+  status?: "ENABLED" | "PAUSED";
+}
+
+export interface GoogleAdsCreatedRsa {
+  id: string;
+  resourceName: string;
+}
+
 export interface GoogleAdsCreateAdGroupInput {
   name: string;
   defaultBidAmount: number;
   status: "ENABLED" | "PAUSED";
   keywords: GoogleAdsCreateKeywordInput[];
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
+  ads?: GoogleAdsCreateRsaInput[];
 }
 
 export interface GoogleAdsCreateCampaignInput {
@@ -122,7 +137,7 @@ export interface GoogleAdsCreatedCampaign {
   name: string;
   status: string;
   budgetResourceName: string;
-  adGroups: { id: string; name: string; keywords: { id: string; text: string }[] }[];
+  adGroups: { id: string; name: string; keywords: { id: string; text: string }[]; ads: GoogleAdsCreatedRsa[] }[];
   locations: string[];
   languages: string[];
   targetingResourceNames: string[];
