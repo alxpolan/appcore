@@ -55,20 +55,12 @@ export interface AppleCampaignTotals {
 }
 
 /**
- * Merges official per-territory downloads with private-web (XW) campaign totals.
- * Official rows win per day where present; web fills only privacy-suppressed gaps,
- * so the two sources are never double-counted. Trials/purchases/proceeds only ever
- * come from web rows (official campaign sync carries none) and are summed as-is.
+ * Downloads are an exact sum: per-territory rows (grouped web split plus any
+ * legacy official rows it doesn't cover) plus the XW unattributed remainder.
+ * The sync computes the remainder as units − split − legacy, so this sum
+ * always equals the units total with no double-count. Trials/purchases/
+ * proceeds only ever come from web rows and are summed as-is.
  */
-export function mergeDayDownloads(
-  officialDownloads: number,
-  webDownloads: number,
-): { downloads: number; downloadsSource: "official" | "web" | "none" } {
-  if (officialDownloads > 0) return { downloads: officialDownloads, downloadsSource: "official" };
-  if (webDownloads > 0) return { downloads: webDownloads, downloadsSource: "web" };
-  return { downloads: 0, downloadsSource: "none" };
-}
-
 export interface CampaignDayMetricsInput {
   date: string;
   territory: string;
@@ -97,29 +89,23 @@ export function mergeCampaignDayMetrics(rows: CampaignDayMetricsInput[]): Merged
   }
   return [...byDate.entries()]
     .map(([date, group]) => {
-      const officialDownloads = group
-        .filter((r) => r.territory !== WEB_METRICS_TERRITORY)
-        .reduce((acc, r) => acc + r.downloads, 0);
-      const webDownloads = group
-        .filter((r) => r.territory === WEB_METRICS_TERRITORY)
-        .reduce((acc, r) => acc + r.downloads, 0);
-      const merged = mergeDayDownloads(officialDownloads, webDownloads);
+      const downloads = group.reduce((acc, r) => acc + r.downloads, 0);
+      const webManaged = group.some((r) => r.territory === WEB_METRICS_TERRITORY);
       return {
         date,
-        downloads: merged.downloads,
+        downloads,
         trials: group.reduce((acc, r) => acc + r.trials, 0),
         purchases: group.reduce((acc, r) => acc + r.purchases, 0),
         proceedsUsd: group.reduce((acc, r) => acc + r.proceedsUsd, 0),
-        downloadsSource: merged.downloadsSource,
+        downloadsSource: downloads <= 0 ? "none" : webManaged ? "web" : "official",
       };
     })
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 /**
- * Sums merged (official-first, web-gap-filled) downloads per day across campaigns.
- * Rows without a reportDate are skipped; each (bundle, token) group is merged
- * separately so gap-filling never leaks across campaigns.
+ * Sums downloads per day across campaigns. Each (bundle, token) group is
+ * merged separately; rows without a reportDate are skipped.
  */
 export function sumMergedDownloadsPerDay(rows: AppleMetricsRow[]): Map<string, number> {
   const byCampaign = new Map<string, CampaignDayMetricsInput[]>();
@@ -152,31 +138,15 @@ export function aggregateAppleMetricsByCampaign(
   keys: AppleMetricsKey[],
 ): Map<string, AppleCampaignTotals> {
   const campaignByBundleToken = new Map(keys.map((k) => [`${k.bundleId}\n${k.ctToken}`, k.googleCampaignId]));
-  // Group per campaign + day so web downloads only fill gaps (rows without a
-  // reportDate keep legacy straight-sum behavior via their own group each).
-  const byDay = new Map<string, { id: string; rows: AppleMetricsRow[] }>();
-  rows.forEach((row, i) => {
-    const id = campaignByBundleToken.get(`${row.bundleId}\n${row.campaign}`);
-    if (!id) return;
-    const day = row.reportDate ? new Date(row.reportDate).toISOString().slice(0, 10) : `#${i}`;
-    const key = `${id}\n${day}`;
-    const group = byDay.get(key) ?? { id, rows: [] };
-    group.rows.push(row);
-    byDay.set(key, group);
-  });
   const totals = new Map<string, AppleCampaignTotals>();
-  for (const { id, rows: group } of byDay.values()) {
-    const officialDownloads = group
-      .filter((r) => (r.territory ?? "") !== WEB_METRICS_TERRITORY)
-      .reduce((acc, r) => acc + r.downloads, 0);
-    const webDownloads = group
-      .filter((r) => r.territory === WEB_METRICS_TERRITORY)
-      .reduce((acc, r) => acc + r.downloads, 0);
+  for (const row of rows) {
+    const id = campaignByBundleToken.get(`${row.bundleId}\n${row.campaign}`);
+    if (!id) continue;
     const t = totals.get(id) ?? { downloads: 0, trials: 0, purchases: 0, proceedsUsd: 0 };
-    t.downloads += mergeDayDownloads(officialDownloads, webDownloads).downloads;
-    t.trials += group.reduce((acc, r) => acc + r.trials, 0);
-    t.purchases += group.reduce((acc, r) => acc + r.purchases, 0);
-    t.proceedsUsd += group.reduce((acc, r) => acc + r.proceedsUsd, 0);
+    t.downloads += row.downloads;
+    t.trials += row.trials;
+    t.purchases += row.purchases;
+    t.proceedsUsd += row.proceedsUsd;
     totals.set(id, t);
   }
   return totals;

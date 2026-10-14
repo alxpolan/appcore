@@ -149,9 +149,11 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
           logger.warn(`[asc-web-analytics] ${bundleId} ${ctToken}: downloads fetch failed (${(err as Error)?.message})`);
         }
         // Territory split; XW keeps only the unattributed remainder so
-        // territories + remainder add up to the units total. Falls back to
-        // full units on XW when the grouped request fails.
-        let xwDownloadsByDate = unitsByDate;
+        // territories + remainder add up to the units total. XW downloads are
+        // only rewritten when both downloads requests succeeded, otherwise
+        // the previous remainder stays (stale but never double-counted).
+        let xwDownloadsByDate = new Map<string, number>();
+        let storeXwDownloads = false;
         try {
           const grouped = await fetchWebCampaignGroupedDownloads(cookies, trackId, ctToken, start, end);
           if (grouped.unknownKeys.length > 0) {
@@ -194,8 +196,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
                 downloads: o.downloads,
               })),
             });
-          } else {
-            xwDownloadsByDate = new Map();
+            storeXwDownloads = true;
           }
         } catch (err) {
           logger.warn(
@@ -211,12 +212,11 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
           trials: Math.round(d.trials),
           proceedsUsd: d.proceedsUsd,
         }));
-        rows += await storeCampaignMetricsSegment(bundleId, storeRows, [
-          "downloads",
-          "purchases",
-          "trials",
-          "proceedsUsd",
-        ]);
+        rows += await storeCampaignMetricsSegment(
+          bundleId,
+          storeRows,
+          storeXwDownloads ? ["downloads", "purchases", "trials", "proceedsUsd"] : ["purchases", "trials", "proceedsUsd"],
+        );
       }
       logger.info(`[asc-web-analytics] ${bundleId} ${ctToken}: web metrics synced`);
     }
