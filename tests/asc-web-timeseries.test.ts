@@ -42,9 +42,29 @@ describe("asc web analytics: timeseries parsing", () => {
 
   it("merges multi-measure results into day rows", () => {
     assert.deepEqual(parseWebTimeseries(body), [
-      { dateStr: "2026-10-03", trials: 1, purchases: 2, proceedsUsd: 4 },
-      { dateStr: "2026-10-04", trials: 0, purchases: 0, proceedsUsd: 0 },
+      { dateStr: "2026-10-03", trials: 1, purchases: 2, proceedsUsd: 4, downloads: 0 },
+      { dateStr: "2026-10-04", trials: 0, purchases: 0, proceedsUsd: 0, downloads: 0 },
     ]);
+  });
+
+  it("parses units into download day rows", () => {
+    assert.deepEqual(
+      parseWebTimeseries({
+        results: [
+          {
+            totals: { key: "units" },
+            data: [
+              { units: 5, date: "2026-10-03T00:00:00Z" },
+              { units: 0, date: "2026-10-04T00:00:00Z" },
+            ],
+          },
+        ],
+      }),
+      [
+        { dateStr: "2026-10-03", trials: 0, purchases: 0, proceedsUsd: 0, downloads: 5 },
+        { dateStr: "2026-10-04", trials: 0, purchases: 0, proceedsUsd: 0, downloads: 0 },
+      ],
+    );
   });
 
   it("ignores unknown measures and malformed dates", () => {

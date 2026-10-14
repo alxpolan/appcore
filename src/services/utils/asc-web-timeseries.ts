@@ -3,12 +3,14 @@ export interface WebCampaignDayRow {
   trials: number;
   purchases: number;
   proceedsUsd: number;
+  downloads: number;
 }
 
 const MEASURE_FIELDS: Record<string, keyof Omit<WebCampaignDayRow, "dateStr">> = {
   "subscription-events-offerstarts-freetrial": "trials",
   "subscription-events-paidstarts": "purchases",
   proceeds: "proceedsUsd",
+  units: "downloads",
 };
 
 export function parseWebTimeseries(body: any): WebCampaignDayRow[] {
@@ -29,7 +31,7 @@ export function parseWebTimeseries(body: any): WebCampaignDayRow[] {
           break;
         }
       }
-      const row = byDate.get(dateStr) ?? { dateStr, trials: 0, purchases: 0, proceedsUsd: 0 };
+      const row = byDate.get(dateStr) ?? { dateStr, trials: 0, purchases: 0, proceedsUsd: 0, downloads: 0 };
       row[field] += value;
       byDate.set(dateStr, row);
     }

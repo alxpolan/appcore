@@ -2,6 +2,7 @@ import axios from "./utils/http";
 import { prisma, logger, env } from "../config";
 import { storeCampaignMetricsSegment, type CampaignMetricsRow } from "./asc-analytics";
 import { parseWebTimeseries } from "./utils/asc-web-timeseries";
+import { WEB_METRICS_TERRITORY } from "./utils/google-ads-mapping";
 
 const TIMESERIES_URL = "https://appstoreconnect.apple.com/analytics/api/v1/data/timeseries";
 const MEASURES = [
@@ -9,6 +10,9 @@ const MEASURES = [
   "subscription-events-paidstarts",
   "proceeds",
 ];
+// Separate request: downloads must not break the proven measures above.
+// "units" = App Units (downloads), verified against the live API.
+const DOWNLOADS_MEASURES = ["units"];
 const CHUNK_DAYS = 90;
 
 export class WebSessionExpiredError extends Error {}
@@ -23,6 +27,7 @@ export async function fetchWebCampaignSeries(
   ctToken: string,
   startDay: string,
   endDay: string,
+  measures: string[] = MEASURES,
 ) {
   let res;
   try {
@@ -32,7 +37,7 @@ export async function fetchWebCampaignSeries(
         adamId: [adamId],
         startTime: `${startDay}T00:00:00Z`,
         endTime: `${endDay}T00:00:00Z`,
-        measures: MEASURES,
+        measures,
         dimensionFilters: [{ dimensionKey: "campaignId", optionKeys: [ctToken] }],
         frequency: "day",
       },
@@ -89,7 +94,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
   for (const { bundleId, trackId, tokens: ctTokens } of byApp.values()) {
     for (const ctToken of ctTokens) {
       const existing = await prisma.appStoreCampaignMetrics.findFirst({
-        where: { bundleId, campaign: ctToken },
+        where: { bundleId, campaign: ctToken, territory: WEB_METRICS_TERRITORY },
         select: { reportDate: true },
       });
       const daysBack = existing ? 14 : 365;
@@ -102,16 +107,28 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
       tokens++;
       for (const [start, end] of chunks) {
         const days = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end);
+        let dlByDate = new Map<string, number>();
+        try {
+          const dlDays = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end, DOWNLOADS_MEASURES);
+          dlByDate = new Map(dlDays.map((d) => [d.dateStr, Math.round(d.downloads)]));
+        } catch (err) {
+          logger.warn(`[asc-web-analytics] ${bundleId} ${ctToken}: downloads fetch failed (${(err as Error)?.message})`);
+        }
         const storeRows: CampaignMetricsRow[] = days.map((d) => ({
           dateStr: d.dateStr,
           campaign: ctToken,
-          territory: "ZZ",
-          downloads: 0,
+          territory: WEB_METRICS_TERRITORY,
+          downloads: dlByDate.get(d.dateStr) ?? 0,
           purchases: Math.round(d.purchases),
           trials: Math.round(d.trials),
           proceedsUsd: d.proceedsUsd,
         }));
-        rows += await storeCampaignMetricsSegment(bundleId, storeRows, ["purchases", "trials", "proceedsUsd"]);
+        rows += await storeCampaignMetricsSegment(bundleId, storeRows, [
+          "downloads",
+          "purchases",
+          "trials",
+          "proceedsUsd",
+        ]);
       }
       logger.info(`[asc-web-analytics] ${bundleId} ${ctToken}: web metrics synced`);
     }
