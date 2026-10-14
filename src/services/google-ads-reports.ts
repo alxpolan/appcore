@@ -18,6 +18,23 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const GOOGLE_ADS_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ENABLED", "PAUSED", "REMOVED"];
+
+/**
+ * The live API returns status enums as numbers (2 = ENABLED, 3 = PAUSED)
+ * while the fake gateway uses names. Normalize both to names.
+ */
+export function normalizeGoogleAdsStatus(value: unknown): string {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return GOOGLE_ADS_STATUS_NAMES[value] ?? String(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return GOOGLE_ADS_STATUS_NAMES[n] ?? value;
+  }
+  return String(value ?? "");
+}
+
 function statsFromMetrics(m: any): GoogleAdsStats {
   const spend = num(m?.cost_micros) / 1_000_000;
   const impressions = num(m?.impressions);
@@ -101,7 +118,7 @@ export async function listGoogleAdsCampaigns(
     return {
       id: String(c.id),
       name: String(c.name ?? ""),
-      status: String(c.status ?? ""),
+      status: normalizeGoogleAdsStatus(c.status),
       dailyBudget:
         row.campaign_budget?.amount_micros != null ? Number(row.campaign_budget.amount_micros) / 1_000_000 : null,
       currency,
@@ -126,7 +143,7 @@ export async function listGoogleAdsAdGroups(
     return {
       id: String(g.id),
       name: String(g.name ?? ""),
-      status: String(g.status ?? ""),
+      status: normalizeGoogleAdsStatus(g.status),
       defaultCpcBid: g.cpc_bid_micros != null ? Number(g.cpc_bid_micros) / 1_000_000 : null,
     };
   });
@@ -162,7 +179,7 @@ export async function getGoogleAdsCampaignDetail(
         id,
         campaignId: String(campaignId),
         name: String(g.name ?? ""),
-        status: String(g.status ?? ""),
+        status: normalizeGoogleAdsStatus(g.status),
         defaultCpcBid: g.cpc_bid_micros != null ? Number(g.cpc_bid_micros) / 1_000_000 : null,
         currency,
         ...statsFromMetrics(metricsById.get(id) ?? {}),
@@ -210,7 +227,7 @@ export async function listGoogleAdsKeywords(
       adGroupId: String(adGroupId),
       text: String(k.keyword?.text ?? ""),
       matchType: String(k.keyword?.match_type ?? ""),
-      status: String(k.status ?? ""),
+      status: normalizeGoogleAdsStatus(k.status),
       cpcBid: k.cpc_bid_micros != null ? Number(k.cpc_bid_micros) / 1_000_000 : null,
       currency: ccy,
       ...statsFromMetrics(metricsById.get(id) ?? {}),
@@ -332,7 +349,7 @@ export async function listGoogleAdsNegativeKeywords(
         id: String(k.criterion_id),
         text: String(k.keyword?.text ?? ""),
         matchType: String(k.keyword?.match_type ?? ""),
-        status: String(k.status ?? ""),
+        status: normalizeGoogleAdsStatus(k.status),
       };
     });
   }
@@ -351,7 +368,7 @@ export async function listGoogleAdsNegativeKeywords(
       id: String(k.criterion_id),
       text: String(k.keyword?.text ?? ""),
       matchType: String(k.keyword?.match_type ?? ""),
-      status: String(k.status ?? ""),
+      status: normalizeGoogleAdsStatus(k.status),
     };
   });
 }
