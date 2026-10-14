@@ -65,6 +65,16 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
       return { text, matchType: asMatchType(k?.matchType, `${label} negative keyword ${i + 1} matchType`) };
     });
   };
+  const idsOf = (list: any, label: string): (string | number)[] => {
+    if (list == null) return [];
+    if (!Array.isArray(list)) throw new Error(`${label} must be an array of numeric ids`);
+
+    return list.map((v: any, i: number) => {
+      const id = String(v ?? "").trim();
+      if (!/^\d+$/.test(id)) throw new Error(`${label} [${i + 1}] must be a numeric id`);
+      return id;
+    });
+  };
 
   return {
     name,
@@ -92,6 +102,8 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
       };
     }),
     negativeKeywords: negativesOf(body.negativeKeywords, "Campaign"),
+    locationIds: idsOf(body.locationIds, "locationIds"),
+    languageIds: idsOf(body.languageIds, "languageIds"),
   };
 }
 
@@ -203,7 +215,35 @@ export async function createGoogleAdsCampaignFull(
     );
   }
 
-  return { id: campaignId, name: input.name, status: input.status, budgetResourceName: budgetName, adGroups };
+  const targeting: GoogleAdsMutationOperation[] = [];
+  for (const raw of input.locationIds ?? []) {
+    const id = String(raw);
+    targeting.push({
+      entity: "campaign_criterion",
+      operation: "create",
+      resource: { campaign: campaignName, location: { geo_target_constant: `geoTargetConstants/${id}` } },
+    });
+  }
+  for (const raw of input.languageIds ?? []) {
+    const id = String(raw);
+    targeting.push({
+      entity: "campaign_criterion",
+      operation: "create",
+      resource: { campaign: campaignName, language: { language_constant: `languageConstants/${id}` } },
+    });
+  }
+  const targetingNames = await gw.mutate(targeting);
+
+  return {
+    id: campaignId,
+    name: input.name,
+    status: input.status,
+    budgetResourceName: budgetName,
+    adGroups,
+    locations: (input.locationIds ?? []).map(String),
+    languages: (input.languageIds ?? []).map(String),
+    targetingResourceNames: targetingNames,
+  };
 }
 
 export async function updateGoogleAdsCampaignStatus(

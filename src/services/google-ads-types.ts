@@ -108,6 +108,8 @@ export interface GoogleAdsCreateCampaignInput {
   endDate?: string;
   adGroups: GoogleAdsCreateAdGroupInput[];
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
+  locationIds?: (string | number)[];
+  languageIds?: (string | number)[];
 }
 
 export interface GoogleAdsCreatedCampaign {
@@ -116,6 +118,9 @@ export interface GoogleAdsCreatedCampaign {
   status: string;
   budgetResourceName: string;
   adGroups: { id: string; name: string; keywords: { id: string; text: string }[] }[];
+  locations: string[];
+  languages: string[];
+  targetingResourceNames: string[];
 }
 
 export interface GoogleAdsAddKeywordInput {

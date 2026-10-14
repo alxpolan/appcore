@@ -41,6 +41,45 @@ describe("google ads: campaign creation", () => {
     assert.equal(created.adGroups[0].keywords.length, 1);
   });
 
+  it("creates geo and language targeting", async () => {
+    const input = validateGoogleAdsCreateCampaignInput({
+      name: "Geo campaign",
+      dailyBudgetAmount: 5,
+      locationIds: [2276, "2040"],
+      languageIds: ["1002"],
+      adGroups: [
+        {
+          name: "Group 1",
+          defaultBidAmount: 0.5,
+          keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+        },
+      ],
+    });
+    const created = await createGoogleAdsCampaignFull(creds, input);
+    assert.deepEqual(created.locations, ["2276", "2040"]);
+    assert.deepEqual(created.languages, ["1002"]);
+    assert.equal(created.targetingResourceNames.length, 3);
+  });
+
+  it("rejects non-numeric targeting ids", () => {
+    assert.throws(
+      () =>
+        validateGoogleAdsCreateCampaignInput({
+          name: "Bad geo",
+          dailyBudgetAmount: 5,
+          locationIds: ["germany"],
+          adGroups: [
+            {
+              name: "Group 1",
+              defaultBidAmount: 0.5,
+              keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+            },
+          ],
+        }),
+      /locationIds \[1\] must be a numeric id/,
+    );
+  });
+
   it("fake gateway rejects campaign creates without the EU declaration", async () => {
     const gw = new FakeGoogleAdsGateway(creds);
     await assert.rejects(
