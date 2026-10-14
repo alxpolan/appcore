@@ -4,6 +4,7 @@ import { storeCampaignMetricsSegment, type CampaignMetricsRow } from "./asc-anal
 import {
   collectUnknownStorefrontKeys,
   parseGroupedWebTimeseries,
+  parseWebTimeseries,
   splitRemainderPerDay,
   type GroupedWebDayRow,
 } from "./utils/asc-web-timeseries";
