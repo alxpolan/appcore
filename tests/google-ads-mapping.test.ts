@@ -7,6 +7,7 @@ import {
   mergeCampaignDayMetrics,
   mergeDayDownloads,
   needsCampaignBackfill,
+  sumMergedDownloadsPerDay,
   parseCtParam,
   withCtParam,
 } from "../src/services/utils/google-ads-mapping";
@@ -159,6 +160,20 @@ describe("google ads: merge campaign day metrics", () => {
     assert.deepEqual(mergeDayDownloads(5, 9), { downloads: 5, downloadsSource: "official" });
     assert.deepEqual(mergeDayDownloads(0, 9), { downloads: 9, downloadsSource: "web" });
     assert.deepEqual(mergeDayDownloads(0, 0), { downloads: 0, downloadsSource: "none" });
+  });
+
+  it("sums merged downloads per day across campaigns", () => {
+    const result = sumMergedDownloadsPerDay([
+      { bundleId: "b", campaign: "tok1", reportDate: new Date("2026-10-03T00:00:00Z"), territory: "DE", downloads: 10, trials: 0, purchases: 0, proceedsUsd: 0 },
+      { bundleId: "b", campaign: "tok1", reportDate: new Date("2026-10-03T00:00:00Z"), territory: "XW", downloads: 12, trials: 1, purchases: 0, proceedsUsd: 0 },
+      { bundleId: "b", campaign: "tok2", reportDate: new Date("2026-10-03T00:00:00Z"), territory: "XW", downloads: 7, trials: 0, purchases: 0, proceedsUsd: 0 },
+      { bundleId: "b", campaign: "tok2", reportDate: new Date("2026-10-04T00:00:00Z"), territory: "XW", downloads: 3, trials: 0, purchases: 0, proceedsUsd: 0 },
+      { bundleId: "b", campaign: "tok1", downloads: 99, trials: 0, purchases: 0, proceedsUsd: 0 },
+    ]);
+    assert.deepEqual([...result.entries()], [
+      ["2026-10-03", 17],
+      ["2026-10-04", 3],
+    ]);
   });
 });
 

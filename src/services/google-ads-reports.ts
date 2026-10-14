@@ -237,7 +237,7 @@ export async function getGoogleAdsCampaignDailySpend(
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
-    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0, installs: 0 });
   }
 
   return days;
@@ -262,7 +262,7 @@ export async function getGoogleAdsDailyStats(
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
-    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0, installs: 0 });
   }
 
   return days;

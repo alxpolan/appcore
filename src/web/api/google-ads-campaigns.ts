@@ -5,6 +5,7 @@ import {
   aggregateAppleMetricsByCampaign,
   attachCampaignMappings,
   filterCampaignsByApp,
+  sumMergedDownloadsPerDay,
   type AppleMetricsKey,
 } from "../../services/utils/google-ads-mapping";
 import { logActivity } from "../../services/activity-log";
@@ -111,6 +112,32 @@ googleAdsCampaignsRouter.get("/daily", loadTeamSettings, async (req, res) => {
     }
 
     const days = await getGoogleAdsDailyStats(googleAdsCreds(s), range, campaignIds);
+    const installKeys = await prisma.googleAdsCampaignToken.findMany({
+      where: { teamId: req.user!.teamId!, ...(appId ? { appId } : {}) },
+      include: { app: { select: { bundleId: true } } },
+    });
+    if (installKeys.length > 0) {
+      const end = new Date(`${range.endDate}T00:00:00Z`);
+      end.setUTCDate(end.getUTCDate() + 1);
+      const metricsRows = await prisma.appStoreCampaignMetrics.findMany({
+        where: {
+          OR: installKeys.map((k) => ({ bundleId: k.app.bundleId, campaign: k.ctToken })),
+          reportDate: { gte: new Date(`${range.startDate}T00:00:00Z`), lt: end },
+        },
+        select: {
+          bundleId: true,
+          campaign: true,
+          reportDate: true,
+          territory: true,
+          downloads: true,
+          trials: true,
+          purchases: true,
+          proceedsUsd: true,
+        },
+      });
+      const installsByDay = sumMergedDownloadsPerDay(metricsRows);
+      for (const d of days) d.installs = installsByDay.get(d.date) ?? 0;
+    }
     res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     logger.error("[google-ads] daily stats fetch error", { err: String(err?.message ?? err) });

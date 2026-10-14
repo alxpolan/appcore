@@ -9,13 +9,15 @@ export interface GoogleAdsDailyStats {
   impressions: number;
   clicks: number;
   conversions: number;
+  /** Apple installs attributed via campaign tokens (filled by the API route, 0 from Google rows). */
+  installs: number;
 }
 
 /** Sums per-(campaign, day) GAQL rows into one series per calendar day. */
 export function aggregateGoogleDailyStats(rows: any[], campaignIds?: string[]): GoogleAdsDailyStats[] {
   const allowed = campaignIds ? new Set(campaignIds.map(String)) : null;
   const byDate = new Map<string, GoogleAdsDailyStats>();
-  const zero = (date: string): GoogleAdsDailyStats => ({ date, spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+  const zero = (date: string): GoogleAdsDailyStats => ({ date, spend: 0, impressions: 0, clicks: 0, conversions: 0, installs: 0 });
   for (const row of rows) {
     if (allowed && !allowed.has(String(row.campaign?.id))) continue;
     const date = String(row.segments?.date ?? "").slice(0, 10);

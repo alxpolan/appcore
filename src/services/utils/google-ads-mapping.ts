@@ -116,6 +116,36 @@ export function mergeCampaignDayMetrics(rows: CampaignDayMetricsInput[]): Merged
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/**
+ * Sums merged (official-first, web-gap-filled) downloads per day across campaigns.
+ * Rows without a reportDate are skipped; each (bundle, token) group is merged
+ * separately so gap-filling never leaks across campaigns.
+ */
+export function sumMergedDownloadsPerDay(rows: AppleMetricsRow[]): Map<string, number> {
+  const byCampaign = new Map<string, CampaignDayMetricsInput[]>();
+  for (const row of rows) {
+    if (!row.reportDate) continue;
+    const key = `${row.bundleId}\n${row.campaign}`;
+    const group = byCampaign.get(key) ?? [];
+    group.push({
+      date: new Date(row.reportDate).toISOString().slice(0, 10),
+      territory: row.territory ?? "",
+      downloads: row.downloads,
+      trials: 0,
+      purchases: 0,
+      proceedsUsd: 0,
+    });
+    byCampaign.set(key, group);
+  }
+  const perDay = new Map<string, number>();
+  for (const group of byCampaign.values()) {
+    for (const d of mergeCampaignDayMetrics(group)) {
+      perDay.set(d.date, (perDay.get(d.date) ?? 0) + d.downloads);
+    }
+  }
+  return perDay;
+}
+
 /** Sums Apple campaign metrics per Google campaign; rows without a known key are ignored. */
 export function aggregateAppleMetricsByCampaign(
   rows: AppleMetricsRow[],
