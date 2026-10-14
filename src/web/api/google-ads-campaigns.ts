@@ -6,6 +6,7 @@ import {
   attachCampaignMappings,
   filterCampaignsByApp,
   sumMergedDownloadsPerDay,
+  WEB_METRICS_TERRITORY,
   type AppleMetricsKey,
 } from "../../services/utils/google-ads-mapping";
 import { logActivity } from "../../services/activity-log";
@@ -287,8 +288,42 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
       req.params.campaignId as string,
       range,
     );
+    // Apple installs per country (official per-territory rows only — XW web
+    // totals can't be split by country and stay in the revenue section).
+    const mapping = await prisma.googleAdsCampaignToken.findUnique({
+      where: { teamId_googleCampaignId: { teamId: req.user!.teamId!, googleCampaignId: req.params.campaignId as string } },
+      include: { app: { select: { bundleId: true } } },
+    });
+    const installsAllowed =
+      !!mapping &&
+      (req.user!.role === "ADMIN" || (await memberAllowedApp(req.user!.userId, req.user!.teamId!, mapping.appId)));
+    let installsByTerritory = new Map<string, number>();
+    if (installsAllowed && mapping) {
+      const end = new Date(`${range.endDate}T00:00:00Z`);
+      end.setUTCDate(end.getUTCDate() + 1);
+      const rows = await prisma.appStoreCampaignMetrics.findMany({
+        where: {
+          bundleId: mapping.app.bundleId,
+          campaign: mapping.ctToken,
+          territory: { not: WEB_METRICS_TERRITORY },
+          reportDate: { gte: new Date(`${range.startDate}T00:00:00Z`), lt: end },
+        },
+        select: { territory: true, downloads: true },
+      });
+      for (const r of rows) {
+        installsByTerritory.set(r.territory, (installsByTerritory.get(r.territory) ?? 0) + r.downloads);
+      }
+    }
 
-    res.json({ countries, startDate: range.startDate, endDate: range.endDate });
+    res.json({
+      countries: countries.map((c) => ({
+        ...c,
+        installs: installsAllowed ? (installsByTerritory.get(c.countryOrRegion) ?? 0) : null,
+      })),
+      installsAvailable: installsAllowed,
+      startDate: range.startDate,
+      endDate: range.endDate,
+    });
   } catch (err: any) {
     logger.error("[google-ads] campaign country breakdown fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "country breakdown") });

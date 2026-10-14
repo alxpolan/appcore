@@ -680,10 +680,12 @@ export interface GoogleAdsDailyStatsResponse {
 export interface GoogleAdsCountryStats extends GoogleAdsStats {
   countryOrRegion: string;
   countryName: string | null;
+  installs?: number | null;
 }
 
 export interface GoogleAdsCountryBreakdownResponse {
   countries: GoogleAdsCountryStats[];
+  installsAvailable?: boolean;
   startDate: string;
   endDate: string;
 }

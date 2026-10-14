@@ -128,17 +128,26 @@ function useCountryBreakdown(path: string | null) {
   return { data, loading, error };
 }
 
-function CountryStatsTable({ countries, currency }: { countries: GoogleAdsCountryStats[]; currency: string | null }) {
+function CountryStatsTable({
+  countries,
+  currency,
+  installsAvailable,
+}: {
+  countries: GoogleAdsCountryStats[];
+  currency: string | null;
+  installsAvailable: boolean;
+}) {
   return (
     <table className="w-full text-[12px]">
       <thead>
         <tr>
           <th className={TH}>Country</th>
           {STAT_HEADERS.map((h) => (
-            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" ? "pr-5" : ""}`}>
+            <th key={h} className={`${TH} text-right ${h === "Conv. Rate" && !installsAvailable ? "pr-5" : ""}`}>
               {h}
             </th>
           ))}
+          {installsAvailable && <th className={`${TH} text-right pr-5`}>Installs</th>}
         </tr>
       </thead>
       <tbody>
@@ -149,6 +158,11 @@ function CountryStatsTable({ countries, currency }: { countries: GoogleAdsCountr
               <span className={textMuted}>{c.countryOrRegion}</span>
             </td>
             <StatCells stats={c} currency={currency} />
+            {installsAvailable && (
+              <td className={`${TD} text-right pr-5 tabular-nums ${textPrimary}`}>
+                {c.installs == null ? "—" : fmtNumber(c.installs)}
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
@@ -538,7 +552,11 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No country data for this period.</div>
         ) : (
           <div className="overflow-x-auto">
-            <CountryStatsTable countries={countriesData.countries} currency={currency} />
+            <CountryStatsTable
+              countries={countriesData.countries}
+              currency={currency}
+              installsAvailable={countriesData.installsAvailable === true}
+            />
           </div>
         )}
       </div>
