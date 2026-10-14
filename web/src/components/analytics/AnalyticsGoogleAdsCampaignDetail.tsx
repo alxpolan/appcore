@@ -18,6 +18,7 @@ import {
   type GoogleSortDir,
 } from "../../utils/googleKeywordTable";
 import GoogleAdsCampaignChart from "./GoogleAdsCampaignChart";
+import GoogleAdsProfitCalculator from "./GoogleAdsProfitCalculator";
 import GoogleAdsAppleRevenue from "./GoogleAdsAppleRevenue";
 import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
@@ -199,6 +200,18 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     refetch: refetchRevenue,
   } = useApi<GoogleAdsAppleRevenueResponse>(`/google-ads/campaigns/${campaignId}/apple-revenue${query}`, [campaignId, ...rangeDeps], true);
   const revenueTotals = revenueData?.mapped ? revenueData.totals : undefined;
+  const trialEconomics = useMemo(() => {
+    const downloads = revenueTotals?.downloads ?? 0;
+    const started = revenueTotals?.trials ?? 0;
+    const converted = revenueTotals?.purchases ?? 0;
+    const proceeds = revenueTotals?.proceedsUsd ?? 0;
+    return {
+      downloads,
+      started,
+      converted,
+      proceedsPerConverted: converted > 0 ? proceeds / converted : 0,
+    };
+  }, [revenueTotals]);
 
   const {
     data: countriesData,
@@ -474,6 +487,16 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         loading={spendLoading || revenueLoading}
         error={!!spendError}
         revenueError={!!revenueError}
+      />
+
+      <GoogleAdsProfitCalculator
+        campaign={campaign}
+        mapped={revenueData?.mapped === true && !revenueError}
+        downloads={trialEconomics.downloads}
+        trialStarts={trialEconomics.started}
+        convertedTrials={trialEconomics.converted}
+        proceedsPerConverted={trialEconomics.proceedsPerConverted}
+        loading={campaignsLoading || revenueLoading}
       />
 
       {campaignId && (
