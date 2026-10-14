@@ -397,7 +397,7 @@ export default function AnalyticsAds({ addToast }: Props) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/analytics/ads/${c.id}`);
+                navigate(`/apple-ads/${c.id}`);
               }}
               className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
             >

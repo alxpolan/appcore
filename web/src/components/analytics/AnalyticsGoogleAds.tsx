@@ -1,13 +1,25 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Megaphone, ArrowRight, Check, ExternalLink, Pause, Plus, X } from "lucide-react";
+import {
+  Megaphone,
+  ArrowRight,
+  Check,
+  DollarSign,
+  ExternalLink,
+  Eye,
+  MousePointerClick,
+  Pause,
+  Plus,
+  X,
+} from "lucide-react";
 import { getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { AppItem, GoogleAdsCampaign, GoogleAdsStatus } from "../../types";
+import type { AppItem, GoogleAdsCampaign, GoogleAdsDailyStatsResponse, GoogleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsGoogleAdsCreateCampaign from "./AnalyticsGoogleAdsCreateCampaign";
+import { StatCard } from "../StatCard";
 
 function fmtMoney(amount: number, currency: string | null): string {
   return new Intl.NumberFormat(undefined, {
@@ -69,6 +81,12 @@ export default function AnalyticsGoogleAds() {
     [status?.connected, activeAppId, ...rangeDeps],
     false,
   );
+  const { data: dailyData } = useApi<GoogleAdsDailyStatsResponse>(
+    `/google-ads/daily${query}`,
+    [status?.connected, activeAppId, ...rangeDeps],
+    false,
+  );
+  const days = dailyData?.days ?? [];
 
   const campaigns = campaignsData?.campaigns ?? [];
   const totals = campaigns.reduce(
@@ -76,9 +94,8 @@ export default function AnalyticsGoogleAds() {
       spend: acc.spend + c.spend,
       impressions: acc.impressions + c.impressions,
       clicks: acc.clicks + c.clicks,
-      proceeds: acc.proceeds + (c.apple?.proceedsUsd ?? 0),
     }),
-    { spend: 0, impressions: 0, clicks: 0, proceeds: 0 },
+    { spend: 0, impressions: 0, clicks: 0 },
   );
   const currency = campaigns.find((c) => c.currency)?.currency ?? "USD";
 
@@ -146,21 +163,31 @@ export default function AnalyticsGoogleAds() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-            {[
-              { label: "Spend", value: fmtMoney(totals.spend, currency) },
-              { label: "Impressions", value: fmtNumber(totals.impressions) },
-              { label: "Clicks", value: fmtNumber(totals.clicks) },
-              { label: "Proceeds (Apple)", value: fmtMoney(totals.proceeds, "USD") },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
-              >
-                <div className={`text-[13px] font-semibold ${textPrimary} mb-2`}>{s.label}</div>
-                <div className={`text-[28px] font-bold leading-none ${textPrimary}`}>{s.value}</div>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+            <StatCard
+              label="Spend"
+              value={loading ? "—" : fmtMoney(totals.spend, currency)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.spend)}
+              icon={<DollarSign className="w-4 h-4" />}
+              color="#f59e0b"
+            />
+            <StatCard
+              label="Impressions"
+              value={loading ? "—" : fmtNumber(totals.impressions)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.impressions)}
+              icon={<Eye className="w-4 h-4" />}
+              color="#0ea5e9"
+            />
+            <StatCard
+              label="Clicks"
+              value={loading ? "—" : fmtNumber(totals.clicks)}
+              sub={rangeLabel(range)}
+              sparkline={days.map((d) => d.clicks)}
+              icon={<MousePointerClick className="w-4 h-4" />}
+              color="#6366f1"
+            />
           </div>
 
           <div
@@ -223,7 +250,7 @@ export default function AnalyticsGoogleAds() {
                     {campaigns.map((c) => (
                       <tr
                         key={c.id}
-                        onClick={() => navigate(`/analytics/google-ads/${c.id}`)}
+                        onClick={() => navigate(`/google-ads/${c.id}`)}
                         className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors cursor-pointer"
                       >
                         <td className={TD}>
@@ -261,7 +288,7 @@ export default function AnalyticsGoogleAds() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/analytics/google-ads/${c.id}`);
+                              navigate(`/google-ads/${c.id}`);
                             }}
                             className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
                           >

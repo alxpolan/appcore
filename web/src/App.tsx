@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { usePostHog } from "@posthog/react";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "./styles";
-import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import {
   useApi,
   apiPost,
@@ -124,7 +124,7 @@ const settingsLinks: SidebarLink[] = [
 const railLinks: SidebarLink[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/analytics", label: "Analytics", icon: BarChart2 },
-  { to: "/analytics/ads", label: "Ads", icon: Megaphone },
+  { to: "/apple-ads", label: "Ads", icon: Megaphone },
   { to: "/keywords", label: "Keywords", icon: Search },
   { to: "/competitors", label: "Competitors", icon: Users },
   { to: "/suggestions", label: "Suggestions", icon: Layers, fringeloOnly: true },
@@ -586,17 +586,10 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
   const [expanded, setExpanded] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const isAnyAnalyticsActive =
-    location.pathname.startsWith("/analytics") &&
-    !location.pathname.startsWith("/analytics/ads") &&
-    !location.pathname.startsWith("/analytics/google-ads");
+  const isAnyAnalyticsActive = location.pathname.startsWith("/analytics");
 
   useEffect(() => {
-    if (
-      location.pathname.startsWith("/analytics") &&
-      !location.pathname.startsWith("/analytics/ads") &&
-      !location.pathname.startsWith("/analytics/google-ads")
-    ) {
+    if (location.pathname.startsWith("/analytics")) {
       setExpanded(true);
     }
   }, []);
@@ -656,20 +649,27 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
   );
 }
 
+// Redirects legacy /analytics/ads* URLs to their top-level counterparts,
+// preserving an optional campaign id segment.
+function AdsLegacyRedirect({ base }: { base: string }) {
+  const { campaignId } = useParams<{ campaignId: string }>();
+  return <Navigate to={campaignId ? `${base}/${campaignId}` : base} replace />;
+}
+
 function AdsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActive: boolean }) => string }) {
   const [expanded, setExpanded] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const isAnyAdsActive =
-    location.pathname.startsWith("/analytics/ads") || location.pathname.startsWith("/analytics/google-ads");
+    location.pathname.startsWith("/apple-ads") || location.pathname.startsWith("/google-ads");
 
   useEffect(() => {
     if (isAnyAdsActive) setExpanded(true);
   }, []);
 
   const subLinks = [
-    { to: "/analytics/ads", label: "Apple Ads" },
-    { to: "/analytics/google-ads", label: "Google Ads" },
+    { to: "/apple-ads", label: "Apple Ads" },
+    { to: "/google-ads", label: "Google Ads" },
   ];
 
   const handleHeaderClick = () => {
@@ -1542,10 +1542,15 @@ export default function App() {
               <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail addToast={addToast} />} />
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
-              <Route path="/analytics/ads" element={<AnalyticsAds addToast={addToast} />} />
-              <Route path="/analytics/ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
-              <Route path="/analytics/google-ads" element={<AnalyticsGoogleAds />} />
-              <Route path="/analytics/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
+              <Route path="/apple-ads" element={<AnalyticsAds addToast={addToast} />} />
+              <Route path="/apple-ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
+              <Route path="/google-ads" element={<AnalyticsGoogleAds />} />
+              <Route path="/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
+              {/* Legacy /analytics/* ads URLs (bookmarks, MCP links) */}
+              <Route path="/analytics/ads" element={<AdsLegacyRedirect base="/apple-ads" />} />
+              <Route path="/analytics/ads/:campaignId" element={<AdsLegacyRedirect base="/apple-ads" />} />
+              <Route path="/analytics/google-ads" element={<AdsLegacyRedirect base="/google-ads" />} />
+              <Route path="/analytics/google-ads/:campaignId" element={<AdsLegacyRedirect base="/google-ads" />} />
               <Route path="/versions/:versionId" element={<Versions addToast={addToast} />} />
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/product-pages" element={<ProductPages addToast={addToast} />} />
