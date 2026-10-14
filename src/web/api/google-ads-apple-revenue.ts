@@ -88,57 +88,6 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
   }
 });
 
-googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue/countries", loadTeamSettings, async (req, res) => {
-  try {
-    const mapping = await prisma.googleAdsCampaignToken.findUnique({
-      where: { teamId_googleCampaignId: { teamId: req.user!.teamId!, googleCampaignId: req.params.campaignId as string } },
-      include: { app: { select: { id: true, bundleId: true } } },
-    });
-
-    if (!mapping) {
-      res.json({ mapped: false, countries: [] });
-
-      return;
-    }
-
-    if (req.user!.role !== "ADMIN" && !(await memberAllowedApp(req.user!.userId, req.user!.teamId!, mapping.appId))) {
-      res.status(404).json({ error: "Not found" });
-
-      return;
-    }
-
-    const range = resolveGoogleAdsRange(req.query);
-    const end = new Date(`${range.endDate}T00:00:00Z`);
-    end.setUTCDate(end.getUTCDate() + 1);
-    const rows = await prisma.appStoreCampaignMetrics.findMany({
-      where: {
-        bundleId: mapping.app.bundleId,
-        campaign: mapping.ctToken,
-        reportDate: { gte: new Date(`${range.startDate}T00:00:00Z`), lt: end },
-      },
-      select: { territory: true, downloads: true, purchases: true, trials: true, proceedsUsd: true },
-    });
-
-    const byTerritory = new Map<string, { downloads: number; purchases: number; trials: number; proceedsUsd: number }>();
-    for (const r of rows) {
-      const t = byTerritory.get(r.territory) ?? { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 };
-      t.downloads += r.downloads;
-      t.purchases += r.purchases;
-      t.trials += r.trials;
-      t.proceedsUsd += r.proceedsUsd;
-      byTerritory.set(r.territory, t);
-    }
-    const countries = [...byTerritory.entries()]
-      .map(([territory, totals]) => ({ territory, ...totals }))
-      .sort((a, b) => b.downloads - a.downloads);
-
-    res.json({ mapped: true, range, countries });
-  } catch (err: any) {
-    logger.error("[google-ads] apple revenue countries fetch error", { err: String(err?.message ?? err) });
-    res.status(500).json({ error: "Failed to load Apple revenue by country" });
-  }
-});
-
 googleAdsAppleRevenueRouter.patch("/campaigns/:campaignId/apple-mapping", async (req, res) => {
   try {
     if (!(await requireTeamAdmin(req, res))) return;
