@@ -25,6 +25,7 @@ import {
   getGoogleAdsCampaignCountryBreakdown,
   getGoogleAdsCampaignDailySpend,
   getGoogleAdsCampaignDetail,
+  getGoogleAdsDailyStats,
   googleAdsErrorMessage,
   googleAdsGateway,
   listGoogleAdsAdGroups,
@@ -137,6 +138,32 @@ googleAdsRouter.get("/campaigns", loadTeamSettings, async (req, res) => {
   } catch (err: any) {
     logger.error("[google-ads] campaigns fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "campaign list") });
+  }
+});
+
+googleAdsRouter.get("/daily", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+  if (googleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Google Ads is not connected" });
+    return;
+  }
+
+  try {
+    const range = resolveGoogleAdsRange(req.query);
+    const appId = typeof req.query.appId === "string" && req.query.appId ? req.query.appId : undefined;
+    let campaignIds: string[] | undefined;
+    if (appId) {
+      const stored = await prisma.googleAdsCampaignToken.findMany({
+        where: { teamId: req.user!.teamId!, appId },
+        select: { googleCampaignId: true },
+      });
+      campaignIds = stored.map((m) => m.googleCampaignId);
+    }
+    const days = await getGoogleAdsDailyStats(googleAdsCreds(s), range, campaignIds);
+    res.json({ days, startDate: range.startDate, endDate: range.endDate });
+  } catch (err: any) {
+    logger.error("[google-ads] daily stats fetch error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: googleAdsErrorMessage(err, "daily stats") });
   }
 });
 

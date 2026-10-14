@@ -662,6 +662,19 @@ export interface GoogleAdsDailySpendResponse {
   endDate: string;
 }
 
+export interface GoogleAdsDailyStats {
+  date: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+}
+
+export interface GoogleAdsDailyStatsResponse {
+  days: GoogleAdsDailyStats[];
+  startDate: string;
+  endDate: string;
+}
+
 export interface GoogleAdsCountryStats extends GoogleAdsStats {
   countryOrRegion: string;
   countryName: string | null;

@@ -1,4 +1,5 @@
 import { GoogleAdsApi, ResourceNames, enums, errors, toMicros } from "google-ads-api";
+import { aggregateGoogleDailyStats, type GoogleAdsDailyStats } from "./utils/google-ads-daily";
 
 // Runtime enum lookup (verified: enums.CampaignStatus.ENABLED === 2).
 const E: any = enums;
@@ -840,6 +841,31 @@ export async function getGoogleAdsCampaignDailySpend(
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
     days.push({ date, spend: byDay.get(date) ?? 0 });
+  }
+  return days;
+}
+
+/** Daily spend/impressions/clicks across campaigns, zero-filled over the range.
+ * With campaignIds the series aggregates only those campaigns (per-app overview sparklines). */
+export async function getGoogleAdsDailyStats(
+  creds: GoogleAdsCredentials,
+  range: GoogleAdsReportRange = resolveGoogleAdsRange({}),
+  campaignIds?: string[],
+): Promise<GoogleAdsDailyStats[]> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks " +
+      `FROM campaign WHERE campaign.status != 'REMOVED' AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}' ORDER BY segments.date`,
+  );
+  const byDay = new Map(aggregateGoogleDailyStats(rows, campaignIds).map((d) => [d.date, d]));
+  const days: GoogleAdsDailyStats[] = [];
+  for (
+    let t = Date.parse(`${range.startDate}T00:00:00Z`);
+    t <= Date.parse(`${range.endDate}T00:00:00Z`);
+    t += 86_400_000
+  ) {
+    const date = new Date(t).toISOString().slice(0, 10);
+    days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0 });
   }
   return days;
 }
