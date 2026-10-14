@@ -191,7 +191,7 @@ export default function GoogleAdsAppleRevenue({
                       <tr key={c.territory} className="border-t border-[#f3f4f6] dark:border-[#2a2f3d]">
                         <td className={`py-1.5 ${textPrimary}`}>
                           {c.territory === "XW"
-                            ? "All territories (web)"
+                            ? "Other (web)"
                             : c.territory === "ZZ"
                               ? "Unknown (pre-tracking)"
                               : countryName(c.territory)}{" "}
