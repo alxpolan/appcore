@@ -33,6 +33,7 @@ export async function getMcpUserTeamId(userId: string): Promise<string | null> {
     orderBy: { createdAt: "asc" },
     select: { teamId: true },
   });
+
   return membership?.teamId ?? null;
 }
 
@@ -45,6 +46,7 @@ export async function getMcpAllowedAppIds(userId: string, teamId: string): Promi
   if (!member) return [];
   if (member.role === "OWNER" || member.role === "ADMIN") return null;
   if (member.appAccess.length === 0) return null;
+
   return member.appAccess.map((a) => a.appId);
 }
 
@@ -56,22 +58,71 @@ export async function verifyMcpAppAccess(userId: string, bundleId: string) {
   if (!app.teamId || app.teamId !== teamId) return null;
   const allowed = await getMcpAllowedAppIds(userId, teamId);
   if (allowed && !allowed.includes(app.id)) return null;
+
   return app;
 }
 
 export async function getSettingsWithBundleId(userId: string, bundleId?: string) {
   const settings = await getEffectiveSettings(userId);
   const resolvedBundleId = bundleId;
+
   return { settings, resolvedBundleId };
 }
 
 export { hasAscCredentials } from "../../../services/asc-client";
+
+export function textResult(text: string) {
+  return { content: [{ type: "text" as const, text }] };
+}
+
+export function jsonResult(value: unknown) {
+  return textResult(JSON.stringify(value, null, 2));
+}
+
+export function tryParseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export async function bestEffort<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch {
+    return undefined;
+  }
+}
+
+export function quote(value: unknown): string {
+  return value == null || value === "" ? "—" : `"${value}"`;
+}
+
+export function fromTo(label: string, from: unknown, to: unknown): string {
+  const oldText = from == null || from === "" ? null : String(from);
+
+  return oldText == null ? `${label} → ${to}` : `${label}: ${oldText} → ${to}`;
+}
+
+export async function isTeamAdmin(userId: string, teamId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role === "ADMIN") return true;
+
+  const member = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId } },
+    select: { role: true },
+  });
+
+  return member?.role === "OWNER" || member?.role === "ADMIN";
+}
 
 export async function createAscClient(settings: EffectiveSettings) {
   const { ascClientFromSettings } = await import("../../../services/asc-client");
   const asc = ascClientFromSettings(settings);
   
   if (!asc) throw new Error("App Store Connect credentials missing.");
+
   return asc;
 }
 
@@ -88,6 +139,7 @@ export async function resolveAscAppId(
     : null;
 
   let ascAppId = appRecord?.trackId?.toString() || "";
+
   if (!ascAppId && resolvedBundleId) {
     const ascApp = await asc.getApp(resolvedBundleId);
     ascAppId = ascApp?.id ?? "";
@@ -98,9 +150,11 @@ export async function resolveAscAppId(
 
 export function formatAscError(err: any): string {
   const errors = err?.response?.data?.errors;
+
   if (Array.isArray(errors) && errors.length > 0) {
     return errors.map((e: any) => e.detail || e.title || JSON.stringify(e)).join("; ");
   }
+
   return err?.message ?? String(err);
 }
 
@@ -114,13 +168,10 @@ export interface ToolSummary {
 export type ToolSummarize = (args: any, resultText: string) => ToolSummary | void;
 
 export interface MutatingToolOpts {
-  /** Defaults to `mcp.<toolName>`. */
   action?: string;
   summarize?: ToolSummarize;
 }
 
-// Our tools return failures as text (not thrown errors); recognize those so
-// the audit log records the real outcome.
 const FAILURE_PATTERNS = [
   /requires the team admin role/i,
   /^invalid\b/i,
@@ -139,6 +190,7 @@ function truncateText(text: string, max: number): string {
 
 function defaultSummary(action: string, args: any): string {
   const flat = JSON.stringify(args ?? {});
+
   return flat && flat !== "{}" ? `${action} ${truncateText(flat, 200)}` : action;
 }
 
@@ -157,8 +209,8 @@ async function logToolCall(
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
     actor = user?.email ?? undefined;
   } catch {
-    // Actor label is best effort.
   }
+
   if (thrown) {
     const message = String((thrown as any)?.message ?? thrown);
     await logActivity({
@@ -172,8 +224,10 @@ async function logToolCall(
       status: "error",
       error: message,
     });
+
     return;
   }
+
   const text = resultText ?? "";
   const failed = text.trim().length === 0 || FAILURE_PATTERNS.some((re) => re.test(text.trim()));
   await logActivity({
@@ -191,8 +245,6 @@ async function logToolCall(
   });
 }
 
-/** Registers a state-changing tool and audit-logs every invocation (success
- * and failure). Read-only tools keep using `server.registerTool` directly. */
 export function registerMutatingTool(
   server: McpServer,
   userId: string,
@@ -212,6 +264,7 @@ export function registerMutatingTool(
     }
     const text: string = result?.content?.[0]?.text ?? "";
     await logToolCall(userId, action, args, text, null, opts.summarize?.(args, text) ?? undefined);
+
     return result;
   });
 }

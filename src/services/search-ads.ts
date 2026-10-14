@@ -1,8 +1,8 @@
 import axios, { AxiosInstance } from "./utils/http";
-import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { logger, env } from "../config";
+import { generateClientSecret, type AppleAdsOrgCredentials } from "./apple-ads";
 
 interface SearchAdsToken {
   access_token: string;
@@ -39,14 +39,16 @@ export class AppleSearchAdsClient {
     this.client.interceptors.request.use(async (config) => {
       const token = await this.authenticate();
       config.headers.Authorization = `Bearer ${token}`;
+
       if (env.APPLE_ADS_ORG_ID) {
         config.headers["X-AP-Context"] = `orgId=${env.APPLE_ADS_ORG_ID}`;
       }
+
       return config;
     });
   }
 
-  private generateClientSecret(): string {
+  private clientSecret(): string {
     const keyPath = path.resolve(env.APPLE_ADS_KEY_PATH || "./keys/apple_ads_private_key.pem");
 
     if (!fs.existsSync(keyPath)) {
@@ -56,69 +58,22 @@ export class AppleSearchAdsClient {
     }
 
     const privateKey = fs.readFileSync(keyPath, "utf8");
-    const teamId = env.APPLE_ADS_TEAM_ID || env.APPLE_ADS_CLIENT_ID || "";
-    const keyId = env.APPLE_ADS_KEY_ID || "";
     const clientId = env.APPLE_ADS_CLIENT_ID || "";
-
     if (!clientId) throw new Error("APPLE_ADS_CLIENT_ID is required");
 
-    const now = Math.floor(Date.now() / 1000);
-    const expiry = now + 86400 * 180;
-
-    const header = {
-      alg: "ES256",
-      kid: keyId || undefined,
+    const creds: AppleAdsOrgCredentials = {
+      clientId,
+      teamId: env.APPLE_ADS_TEAM_ID || clientId,
+      keyId: env.APPLE_ADS_KEY_ID || "",
+      privateKey,
     };
 
-    const payload = {
-      sub: clientId,
-      aud: "https://appleid.apple.com",
-      iat: now,
-      exp: expiry,
-      iss: teamId,
-    };
-
-    const encodedHeader = this.base64url(JSON.stringify(header));
-    const encodedPayload = this.base64url(JSON.stringify(payload));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const sign = crypto.createSign("SHA256");
-    sign.update(signingInput);
-    const derSignature = sign.sign(privateKey);
-    const rawSignature = this.derToRaw(derSignature);
-    const encodedSignature = this.base64url(rawSignature);
-
-    return `${signingInput}.${encodedSignature}`;
-  }
-
-  private base64url(input: string | Buffer): string {
-    const buf = typeof input === "string" ? Buffer.from(input) : input;
-    return buf.toString("base64url");
-  }
-
-  private derToRaw(derSig: Buffer): Buffer {
-    let offset = 2;
-    if (derSig[1] & 0x80) offset += derSig[1] & 0x7f;
-
-    offset++;
-    const rLen = derSig[offset++];
-    let r = derSig.subarray(offset, offset + rLen);
-    offset += rLen;
-
-    offset++;
-    const sLen = derSig[offset++];
-    let s = derSig.subarray(offset, offset + sLen);
-
-    if (r.length > 32) r = r.subarray(r.length - 32);
-    if (s.length > 32) s = s.subarray(s.length - 32);
-
-    const raw = Buffer.alloc(64);
-    r.copy(raw, 32 - r.length);
-    s.copy(raw, 64 - s.length);
-    return raw;
+    return generateClientSecret(creds);
   }
 
   private async authenticate(): Promise<string> {
     const now = Date.now();
+
     if (this.accessToken && this.tokenExpiry > now + 60000) {
       return this.accessToken;
     }
@@ -127,7 +82,7 @@ export class AppleSearchAdsClient {
       throw new Error("Apple Search Ads credentials missing. Set APPLE_ADS_CLIENT_ID.");
     }
 
-    const clientSecret = this.generateClientSecret();
+    const clientSecret = this.clientSecret();
 
     const { data } = await axios.post<SearchAdsToken>(
       "https://appleid.apple.com/auth/oauth2/token",
@@ -144,6 +99,7 @@ export class AppleSearchAdsClient {
     this.tokenExpiry = now + data.expires_in * 1000;
 
     logger.info("Authenticated with Apple Search Ads API");
+
     return this.accessToken;
   }
 
@@ -167,6 +123,7 @@ export class AppleSearchAdsClient {
       logger.warn("Failed to get targeting keywords", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -187,11 +144,13 @@ export class AppleSearchAdsClient {
       if (results.length > 0) {
         logger.info(`Got ${results.length} recommended keywords from Search Ads`);
       }
+
       return results;
     } catch (error) {
       logger.debug("Recommended keywords not available", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -221,6 +180,7 @@ export class AppleSearchAdsClient {
       logger.warn("Failed to get search term report", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -230,11 +190,13 @@ export class AppleSearchAdsClient {
       const { data } = await this.client.get("/campaigns", {
         params: { limit: 100 },
       });
+
       return data.data ?? [];
     } catch (error) {
       logger.warn("Failed to get campaigns", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -249,11 +211,13 @@ export class AppleSearchAdsClient {
           pagination: { offset: 0, limit: 200 },
         },
       });
+
       return data.data?.reportingDataResponse?.row ?? [];
     } catch (error) {
       logger.warn("Failed to get keyword report", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
