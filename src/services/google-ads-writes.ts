@@ -1,7 +1,7 @@
 import { ResourceNames, enums, toMicros } from "google-ads-api";
 import { asPositiveNumber } from "./utils/ads-validation";
-import { googleAdsGateway } from "./google-ads-gateway";
-import { listGoogleAdsCampaignTargeting, listGoogleAdsKeywords } from "./google-ads-reports";
+import { googleAdsErrorMessage, googleAdsGateway } from "./google-ads-gateway";
+import { getGoogleAdsCampaignBudget, listGoogleAdsCampaignTargeting, listGoogleAdsKeywords } from "./google-ads-reports";
 import type {
   GoogleAdsAddKeywordInput,
   GoogleAdsCreateCampaignInput,
@@ -342,13 +342,25 @@ export async function updateGoogleAdsCampaignStatus(
 export async function deleteGoogleAdsCampaign(
   creds: GoogleAdsCredentials,
   campaignId: string,
-): Promise<{ id: string; deleted: boolean }> {
+): Promise<{ id: string; deleted: boolean; budgetRemoved: boolean; budgetWarning?: string }> {
   const gw = googleAdsGateway(creds);
+  const budget = await getGoogleAdsCampaignBudget(creds, campaignId).catch(() => null);
   await gw.mutate([
     { entity: "campaign", operation: "remove", resource: ResourceNames.campaign(creds.customerId, campaignId) },
   ]);
+  if (!budget) {
+    return { id: campaignId, deleted: true, budgetRemoved: false, budgetWarning: "campaign budget not found; left in place" };
+  }
+  if (budget.explicitlyShared !== false) {
+    return { id: campaignId, deleted: true, budgetRemoved: false, budgetWarning: "shared budget left in place" };
+  }
+  try {
+    await gw.mutate([{ entity: "campaign_budget", operation: "remove", resource: budget.resourceName }]);
 
-  return { id: campaignId, deleted: true };
+    return { id: campaignId, deleted: true, budgetRemoved: true };
+  } catch (err) {
+    return { id: campaignId, deleted: true, budgetRemoved: false, budgetWarning: googleAdsErrorMessage(err, "budget removal") };
+  }
 }
 
 export async function updateGoogleAdsCampaign(

@@ -356,6 +356,28 @@ export async function listGoogleAdsNegativeKeywords(
   });
 }
 
+export interface GoogleAdsCampaignBudget {
+  resourceName: string;
+  explicitlyShared: boolean | null;
+}
+
+export async function getGoogleAdsCampaignBudget(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+): Promise<GoogleAdsCampaignBudget | null> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT campaign.campaign_budget, campaign_budget.explicitly_shared " +
+      `FROM campaign WHERE campaign.id = ${campaignId}`,
+  );
+  const row = rows[0];
+  const name = row?.campaign?.campaign_budget ? String(row.campaign.campaign_budget) : "";
+  if (!name) return null;
+  const shared = row?.campaign_budget?.explicitly_shared;
+
+  return { resourceName: name, explicitlyShared: typeof shared === "boolean" ? shared : null };
+}
+
 export async function listGoogleAdsCampaignTargeting(
   creds: GoogleAdsCredentials,
   campaignId: string,

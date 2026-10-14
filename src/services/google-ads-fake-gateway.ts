@@ -148,7 +148,10 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
             status: c.status,
             campaign_budget: `customers/${this.customerId}/campaignBudgets/${c.budgetId}`,
           },
-          campaign_budget: { amount_micros: c.budgetMicros != null ? String(c.budgetMicros) : null },
+          campaign_budget: {
+            amount_micros: c.budgetMicros != null ? String(c.budgetMicros) : null,
+            explicitly_shared: false,
+          },
           ...(withMetrics ? { metrics: this.metricsRow(c.metrics) } : {}),
         });
       }
@@ -294,6 +297,10 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
         tempIds.set(tempKey(r.resource_name), id);
         out.push(`customers/${this.customerId}/campaignBudgets/${id}`);
         continue;
+      }
+
+      if (op.entity === "campaign_budget" && op.operation === "remove") {
+        throw new Error("FakeGoogleAdsGateway: campaign budget removal is not supported");
       }
 
       if (op.entity === "campaign_budget" && op.operation === "update") {

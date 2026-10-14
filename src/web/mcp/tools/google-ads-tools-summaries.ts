@@ -145,12 +145,14 @@ export const summarizeGoogleCampaignStatus = (args: any, text: string): ToolSumm
 };
 
 export const summarizeGoogleDeleteCampaign = (args: any, text: string): ToolSummary => {
-  const prev = tryParseJson(text)?.previous;
+  const res = tryParseJson(text);
+  const prev = res?.previous;
+  const budget = res?.campaign?.budgetRemoved ? ", budget removed" : " (budget kept)";
 
   return {
     summary: prev?.name
-      ? `Deleted Google Ads campaign "${prev.name}" (${args?.campaignId})`
-      : `Deleted Google Ads campaign ${args?.campaignId}`,
+      ? `Deleted Google Ads campaign "${prev.name}" (${args?.campaignId})${budget}`
+      : `Deleted Google Ads campaign ${args?.campaignId}${budget}`,
     entityType: "google_ads_campaign",
     entityId: args?.campaignId != null ? String(args.campaignId) : undefined,
   };

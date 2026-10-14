@@ -8,6 +8,7 @@ import {
   addGoogleAdsNegativeKeywords,
   createGoogleAdsCampaignFull,
   createGoogleAdsResponsiveSearchAds,
+  deleteGoogleAdsCampaign,
   deleteGoogleAdsKeywords,
   deleteGoogleAdsNegativeKeywords,
   replaceGoogleAdsCampaignTargeting,
@@ -17,6 +18,7 @@ import {
 } from "../src/services/google-ads-writes";
 import { googleAdsErrorMessage, googleAdsGateway, parseMutateResourceNames } from "../src/services/google-ads-gateway";
 import {
+  getGoogleAdsCampaignBudget,
   listGoogleAdsCampaignTargeting,
   listGoogleAdsKeywords,
   listGoogleAdsNegativeKeywords,
@@ -309,6 +311,30 @@ describe("google ads: campaign creation", () => {
         }),
       /cpcBidCeiling only applies to MAXIMIZE_CLICKS/,
     );
+  });
+
+  it("deletes campaigns and reports budget cleanup", async () => {
+    const created = await createGoogleAdsCampaignFull(
+      creds,
+      validateGoogleAdsCreateCampaignInput({
+        name: "Delete me",
+        dailyBudgetAmount: 5,
+        adGroups: [
+          {
+            name: "Group 1",
+            defaultBidAmount: 0.5,
+            keywords: [{ text: "habit tracker", matchType: "EXACT", bidAmount: 0.5 }],
+          },
+        ],
+      }),
+    );
+    const budget = await getGoogleAdsCampaignBudget(creds, created.id);
+    assert.ok(budget?.resourceName.includes("campaignBudgets"));
+    assert.equal(budget?.explicitlyShared, false);
+    const deleted = await deleteGoogleAdsCampaign(creds, created.id);
+    assert.equal(deleted.deleted, true);
+    assert.equal(deleted.budgetRemoved, false);
+    assert.match(deleted.budgetWarning ?? "", /budget/);
   });
 
   it("validates responsive search ads", () => {
