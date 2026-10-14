@@ -280,6 +280,8 @@ export class BossScheduler {
     await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "0 3 * * *", {}, { tz: "Europe/Berlin" });
 
     // ── sync-asc-web-analytics (private timeseries: campaign trials/purchases/proceeds) ──
+    // pg-boss v12 does not auto-create queues on work() — a missing queue crashes boot.
+    await this.boss.createQueue(SYNC_ASC_WEB_ANALYTICS_QUEUE);
     await this.boss.work(SYNC_ASC_WEB_ANALYTICS_QUEUE, syncAscWebAnalyticsHandler);
     if (env.ASC_ANALYTICS_COOKIES) {
       await this.boss.schedule(SYNC_ASC_WEB_ANALYTICS_QUEUE, "0 5,17 * * *", {}, { tz: "Europe/Berlin" });
