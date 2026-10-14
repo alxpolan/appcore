@@ -26,6 +26,12 @@ export function googleAdsErrorMessage(err: any, context: string): string {
   return `Google Ads ${context} failed: ${stringifyDetail(err?.message ?? err?.errors ?? err)}`;
 }
 
+export function parseMutateResourceNames(res: any): string[] {
+  const list = res?.mutate_operation_responses ?? res?.mutateOperationResponses ?? res?.results ?? [];
+
+  return (Array.isArray(list) ? list : []).map((r: any) => String(r?.resource_name ?? r?.resourceName ?? ""));
+}
+
 class RealGoogleAdsGateway implements GoogleAdsGateway {
   private client: InstanceType<typeof GoogleAdsApi>;
   private creds: GoogleAdsCredentials;
@@ -50,9 +56,8 @@ class RealGoogleAdsGateway implements GoogleAdsGateway {
   async mutate(operations: GoogleAdsMutationOperation[]): Promise<string[]> {
     if (operations.length === 0) return [];
     const res: any = await this.customer().mutateResources(operations as any);
-    const list = res.mutate_operation_responses ?? res.mutateOperationResponses ?? res.results ?? [];
 
-    return list.map((r: any) => String(r.resource_name ?? r.resourceName ?? ""));
+    return parseMutateResourceNames(res);
   }
 
   async listAccessibleCustomers(): Promise<string[]> {

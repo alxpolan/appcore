@@ -11,7 +11,7 @@ import {
   deleteGoogleAdsNegativeKeywords,
   validateGoogleAdsCreateCampaignInput,
 } from "../src/services/google-ads-writes";
-import { googleAdsErrorMessage, googleAdsGateway } from "../src/services/google-ads-gateway";
+import { googleAdsErrorMessage, googleAdsGateway, parseMutateResourceNames } from "../src/services/google-ads-gateway";
 import { listGoogleAdsKeywords, listGoogleAdsNegativeKeywords } from "../src/services/google-ads-reports";
 import type { GoogleAdsCredentials } from "../src/services/google-ads-types";
 
@@ -100,6 +100,27 @@ describe("google ads: campaign creation", () => {
     } finally {
       process.env.GOOGLE_ADS_FAKE = "1";
     }
+  });
+});
+
+describe("google ads: mutate responses", () => {
+  it("reads camelCase resource names", () => {
+    assert.deepEqual(
+      parseMutateResourceNames({ mutateOperationResponses: [{ resourceName: "customers/1/campaigns/2" }] }),
+      ["customers/1/campaigns/2"],
+    );
+  });
+
+  it("reads snake_case resource names", () => {
+    assert.deepEqual(
+      parseMutateResourceNames({ mutate_operation_responses: [{ resource_name: "customers/1/campaigns/2" }] }),
+      ["customers/1/campaigns/2"],
+    );
+  });
+
+  it("returns no ids for empty responses", () => {
+    assert.deepEqual(parseMutateResourceNames({}), []);
+    assert.deepEqual(parseMutateResourceNames(null), []);
   });
 });
 
