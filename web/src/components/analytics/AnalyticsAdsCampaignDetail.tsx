@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
   X,
+  Ban,
   CircleDollarSign,
   DollarSign,
   Download,
@@ -23,7 +25,7 @@ import {
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
-import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
+import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
@@ -36,6 +38,7 @@ import {
   type SortDir,
 } from "../../utils/keywordTable";
 import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
+import AppleAdsProfitCalculator from "./AppleAdsProfitCalculator";
 import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
 import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
@@ -246,6 +249,8 @@ function KeywordCountries({
   );
 }
 
+type NegativesModalTarget = { scope: "campaign" } | { scope: "adGroup"; id: string; name: string };
+
 export default function AnalyticsAdsCampaignDetail() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
@@ -282,6 +287,23 @@ export default function AnalyticsAdsCampaignDetail() {
     error: revenueError,
   } = useApi<AppleAdsCampaignRevenue>(`/apple-ads/campaign-revenue${query}`, rangeDeps, true);
   const campaignRevenue = campaignId ? revenueData?.byCampaign[campaignId] : undefined;
+  const trialEconomics = useMemo(() => {
+    const txs = campaignRevenue?.transactions ?? [];
+    const started = txs.filter((t) => t.isTrial).length;
+    const converted = txs.filter((t) => t.isConvertedTrial).length;
+    const priced = txs.filter((t) => t.isTrial && t.potentialProceedsUsd > 0);
+    const avgPotential = priced.length
+      ? priced.reduce((sum, t) => sum + t.potentialProceedsUsd, 0) / priced.length
+      : 0;
+    const proceeds = campaignRevenue?.proceedsUsd ?? 0;
+    const proceedsPerConverted = converted > 0 ? proceeds / converted : avgPotential;
+    return {
+      started,
+      converted,
+      proceedsPerConverted,
+      directBase: Math.max(0, proceeds - converted * proceedsPerConverted),
+    };
+  }, [campaignRevenue]);
 
   const {
     data: dailySpend,
@@ -307,6 +329,7 @@ export default function AnalyticsAdsCampaignDetail() {
     [negativesData],
   );
   const [historyToken, setHistoryToken] = useState(0);
+  const [negativesModal, setNegativesModal] = useState<NegativesModalTarget | null>(null);
   const handleNegativesChanged = useCallback(() => {
     refetchNegatives();
     setHistoryToken((t) => t + 1);
@@ -462,6 +485,18 @@ export default function AnalyticsAdsCampaignDetail() {
             />
           </div>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setNegativesModal({ scope: "campaign" })}
+            className={btnSecSm}
+            title="Campaign-level negative keywords"
+          >
+            <Ban className="w-3.5 h-3.5" /> Negative Keywords
+            {!negativesLoading && negativesData && (
+              <span className={`text-[11px] ${textMuted} tabular-nums`}>({negativesData.campaign.length})</span>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
@@ -558,6 +593,15 @@ export default function AnalyticsAdsCampaignDetail() {
         revenueError={!!revenueError}
       />
 
+      <AppleAdsProfitCalculator
+        campaign={campaign}
+        trialStarts={trialEconomics.started}
+        convertedTrials={trialEconomics.converted}
+        proceedsPerConverted={trialEconomics.proceedsPerConverted}
+        directBase={trialEconomics.directBase}
+        loading={campaignsLoading || revenueLoading}
+      />
+
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
@@ -587,30 +631,6 @@ export default function AnalyticsAdsCampaignDetail() {
             />
           </div>
         )}
-      </div>
-
-      <div
-        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
-      >
-        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
-          <div className={`text-[16px] font-semibold ${textPrimary}`}>Negative Keywords</div>
-          <div className={`text-[12px] ${textMuted} mt-0.5`}>Campaign level — apply to all ad groups</div>
-        </div>
-        <div className="px-5 py-4">
-          {negativesLoading ? (
-            <div className={`text-[13px] ${textMuted}`}>Loading…</div>
-          ) : negativesError || !negativesData || !campaignId ? (
-            <div className={`text-[13px] ${textMuted}`}>Failed to load negative keywords</div>
-          ) : (
-            <NegativeKeywordManager
-              campaignId={campaignId}
-              adGroupId={null}
-              negatives={negativesData.campaign}
-              canEdit={canManageTeam}
-              onChanged={handleNegativesChanged}
-            />
-          )}
-        </div>
       </div>
 
       <div
@@ -666,24 +686,19 @@ export default function AnalyticsAdsCampaignDetail() {
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
                           <td colSpan={11} className="px-5 py-4">
-                            <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
-                              Negative keywords{" "}
-                              <span className={`font-normal ${textMuted}`}>(apply to this ad group only)</span>
-                            </div>
-                            <div className="mb-4">
-                              {negativesLoading ? (
-                                <div className={`text-[12px] ${textMuted}`}>Loading…</div>
-                              ) : negativesError || !campaignId ? (
-                                <div className={`text-[12px] ${textMuted}`}>Failed to load negative keywords</div>
-                              ) : (
-                                <NegativeKeywordManager
-                                  campaignId={campaignId}
-                                  adGroupId={g.id}
-                                  negatives={negativesByGroup.get(g.id) ?? []}
-                                  canEdit={canManageTeam}
-                                  onChanged={handleNegativesChanged}
-                                />
-                              )}
+                            <div className="mb-3">
+                              <button
+                                onClick={() => setNegativesModal({ scope: "adGroup", id: g.id, name: g.name })}
+                                className={btnSecSm}
+                                title="Ad-group-level negative keywords"
+                              >
+                                <Ban className="w-3.5 h-3.5" /> Negative Keywords
+                                {!negativesLoading && !negativesError && (
+                                  <span className={`text-[11px] ${textMuted} tabular-nums`}>
+                                    ({(negativesByGroup.get(g.id) ?? []).length})
+                                  </span>
+                                )}
+                              </button>
                             </div>
                             <div className={`text-[12px] font-semibold ${textPrimary} mb-2 flex items-center justify-between gap-2`}>
                               <span>
@@ -914,6 +929,54 @@ export default function AnalyticsAdsCampaignDetail() {
       </div>
 
       {campaignId && <AppleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
+
+      {negativesModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-start justify-center pt-10 pb-10 px-4">
+            <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={() => setNegativesModal(null)} />
+            <div
+              className={`relative w-full max-w-2xl max-h-[calc(100vh-5rem)] flex flex-col bg-white dark:bg-[#161920] border ${borderDefault} rounded-2xl shadow-2xl overflow-hidden`}
+            >
+              <div className={`flex items-center justify-between px-6 py-4 border-b ${borderDefault} shrink-0`}>
+                <div>
+                  <h2 className={`text-lg font-semibold ${textPrimary}`}>Negative Keywords</h2>
+                  <div className={`text-[12px] ${textMuted} mt-0.5`}>
+                    {negativesModal.scope === "campaign"
+                      ? "Campaign level — apply to all ad groups"
+                      : `Ad group "${negativesModal.name}" — apply to this ad group only`}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setNegativesModal(null)}
+                  aria-label="Close"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 dark:text-[#5c6478] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto">
+                {negativesLoading ? (
+                  <div className={`text-[13px] ${textMuted}`}>Loading…</div>
+                ) : negativesError || !negativesData || !campaignId ? (
+                  <div className={`text-[13px] ${textMuted}`}>Failed to load negative keywords</div>
+                ) : (
+                  <NegativeKeywordManager
+                    campaignId={campaignId}
+                    adGroupId={negativesModal.scope === "campaign" ? null : negativesModal.id}
+                    negatives={
+                      negativesModal.scope === "campaign"
+                        ? negativesData.campaign
+                        : (negativesByGroup.get(negativesModal.id) ?? [])
+                    }
+                    canEdit={canManageTeam}
+                    onChanged={handleNegativesChanged}
+                  />
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
