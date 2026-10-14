@@ -118,6 +118,19 @@ describe("google ads: mutate responses", () => {
     );
   });
 
+  it("reads per-type result wrappers", () => {
+    assert.deepEqual(
+      parseMutateResourceNames({
+        mutate_operation_responses: [
+          { campaign_budget_result: { resource_name: "customers/1/campaignBudgets/2" } },
+          { campaign_result: { resource_name: "customers/1/campaigns/3" } },
+          { ad_group_criterion_result: { resource_name: "customers/1/adGroupCriteria/4~5" } },
+        ],
+      }),
+      ["customers/1/campaignBudgets/2", "customers/1/campaigns/3", "customers/1/adGroupCriteria/4~5"],
+    );
+  });
+
   it("returns no ids for empty responses", () => {
     assert.deepEqual(parseMutateResourceNames({}), []);
     assert.deepEqual(parseMutateResourceNames(null), []);

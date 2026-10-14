@@ -26,10 +26,24 @@ export function googleAdsErrorMessage(err: any, context: string): string {
   return `Google Ads ${context} failed: ${stringifyDetail(err?.message ?? err?.errors ?? err)}`;
 }
 
+function responseResourceName(r: any): string {
+  if (!r || typeof r !== "object") return "";
+  const direct = r.resource_name ?? r.resourceName;
+  if (typeof direct === "string" && direct) return direct;
+  for (const v of Object.values(r)) {
+    if (v && typeof v === "object") {
+      const nested = (v as any).resource_name ?? (v as any).resourceName;
+      if (typeof nested === "string" && nested) return nested;
+    }
+  }
+
+  return "";
+}
+
 export function parseMutateResourceNames(res: any): string[] {
   const list = res?.mutate_operation_responses ?? res?.mutateOperationResponses ?? res?.results ?? [];
 
-  return (Array.isArray(list) ? list : []).map((r: any) => String(r?.resource_name ?? r?.resourceName ?? ""));
+  return (Array.isArray(list) ? list : []).map(responseResourceName);
 }
 
 class RealGoogleAdsGateway implements GoogleAdsGateway {
