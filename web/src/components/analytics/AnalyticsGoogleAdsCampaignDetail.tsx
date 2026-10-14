@@ -244,13 +244,15 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     const raw = dailySpend?.days ?? [];
     const byDate = new Map(raw.map((d) => [d.date, d]));
     const proceedsByDate = new Map<string, number>();
+    const installsByDate = new Map<string, number>();
     for (const t of revenueData?.days ?? []) {
       proceedsByDate.set(t.date, (proceedsByDate.get(t.date) ?? 0) + t.proceedsUsd);
+      installsByDate.set(t.date, (installsByDate.get(t.date) ?? 0) + t.downloads);
     }
     const start = dailySpend?.startDate ?? raw[0]?.date;
     const end = dailySpend?.endDate ?? raw[raw.length - 1]?.date;
     if (!start || !end) return [];
-    const points: { spend: number; impressions: number; clicks: number; conversions: number; proceeds: number }[] = [];
+    const points: { spend: number; impressions: number; clicks: number; installs: number; proceeds: number }[] = [];
     for (
       let cursor = new Date(`${start}T00:00:00Z`);
       cursor <= new Date(`${end}T00:00:00Z`);
@@ -262,7 +264,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         spend: d?.spend ?? 0,
         impressions: d?.impressions ?? 0,
         clicks: d?.clicks ?? 0,
-        conversions: d?.conversions ?? 0,
+        installs: installsByDate.get(key) ?? 0,
         proceeds: proceedsByDate.get(key) ?? 0,
       });
     }
@@ -427,10 +429,12 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           color="#8b5cf6"
         />
         <StatCard
-          label="Conversions"
-          value={campaignsLoading || !campaign ? "—" : fmtNumber(campaign.conversions)}
+          label="Installs"
+          value={revenueLoading ? "—" : revenueError || !revenueTotals ? "—" : fmtNumber(revenueTotals.downloads)}
           sub={rangeLabel(range)}
-          sparkline={statDays.map((d) => d.conversions)}
+          dim={!revenueLoading && !revenueTotals}
+          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token below" : undefined}
+          sparkline={statDays.map((d) => d.installs)}
           icon={<Download className="w-4 h-4" />}
           color="#10b981"
         />
@@ -443,24 +447,28 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           color="#14b8a6"
         />
         <StatCard
-          label="Cost/Conv"
-          value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.costPerConversion, campaign.currency)}
-          sub="Spend / Conversions"
-          sparkline={statDays.map((d) => (d.conversions > 0 ? d.spend / d.conversions : 0))}
+          label="Avg CPA"
+          value={
+            campaignsLoading || revenueLoading || !campaign || revenueError || !revenueTotals || revenueTotals.downloads <= 0
+              ? "—"
+              : fmtMoney(campaign.spend / revenueTotals.downloads, campaign.currency)
+          }
+          sub="Spend / Installs"
+          dim={!revenueLoading && !revenueTotals}
+          sparkline={statDays.map((d) => (d.installs > 0 ? d.spend / d.installs : 0))}
           icon={<Receipt className="w-4 h-4" />}
           color="#f43f5e"
         />
         <StatCard
           label="Conv. Rate"
           value={
-            campaignsLoading || !campaign
+            campaignsLoading || revenueLoading || !campaign || revenueError || !revenueTotals || campaign.clicks <= 0
               ? "—"
-              : campaign.conversionRate != null
-                ? fmtPct(campaign.conversionRate * 100)
-                : "—"
+              : fmtPct((revenueTotals.downloads / campaign.clicks) * 100)
           }
-          sub="Conversions / Clicks"
-          sparkline={statDays.map((d) => (d.clicks > 0 ? (d.conversions / d.clicks) * 100 : 0))}
+          sub="Installs / Clicks"
+          dim={!revenueLoading && !revenueTotals}
+          sparkline={statDays.map((d) => (d.clicks > 0 ? (d.installs / d.clicks) * 100 : 0))}
           icon={<Percent className="w-4 h-4" />}
           color="#D94412"
         />
