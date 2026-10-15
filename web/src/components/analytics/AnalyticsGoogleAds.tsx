@@ -22,6 +22,7 @@ import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, tex
 import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsGoogleAdsCreateCampaign from "./AnalyticsGoogleAdsCreateCampaign";
+import AdsOverviewChart from "./AdsOverviewChart";
 import { StatCard } from "../StatCard";
 
 function fmtMoney(amount: number, currency: string | null): string {
@@ -84,7 +85,7 @@ export default function AnalyticsGoogleAds() {
     [status?.connected, activeAppId, ...rangeDeps],
     false,
   );
-  const { data: dailyData } = useApi<GoogleAdsDailyStatsResponse>(
+  const { data: dailyData, loading: dailyLoading } = useApi<GoogleAdsDailyStatsResponse>(
     `/google-ads/daily${query}`,
     [status?.connected, activeAppId, ...rangeDeps],
     false,
@@ -217,6 +218,16 @@ export default function AnalyticsGoogleAds() {
               color="#D94412"
             />
           </div>
+
+          <AdsOverviewChart
+            days={days.map((d) => ({ ...d, actions: d.clicks }))}
+            startDate={dailyData?.startDate}
+            endDate={dailyData?.endDate}
+            currency={currency}
+            loading={dailyLoading}
+            actionLabel="Clicks"
+            rateLabel="CTR"
+          />
 
           <div
             className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}

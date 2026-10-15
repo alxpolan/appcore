@@ -35,7 +35,7 @@ import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, tex
 import { fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
-import AppleAdsOverviewChart from "./AppleAdsOverviewChart";
+import AdsOverviewChart from "./AdsOverviewChart";
 import { StatCard } from "../StatCard";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 
@@ -221,7 +221,6 @@ export default function AnalyticsAds({ addToast }: Props) {
     refetchGroups();
   }, [refetchGroups]);
 
-  // Fresh server data is the source of truth — drop local assign overrides.
   useEffect(() => {
     setGroupOverride({});
   }, [campaignsData]);
@@ -747,12 +746,14 @@ export default function AnalyticsAds({ addToast }: Props) {
             />
           </div>
 
-          <AppleAdsOverviewChart
-            days={days}
+          <AdsOverviewChart
+            days={days.map((d) => ({ ...d, actions: d.taps }))}
             startDate={dailyData?.startDate}
             endDate={dailyData?.endDate}
             currency={currency}
             loading={dailyLoading}
+            actionLabel="Taps"
+            rateLabel="TTR"
           />
 
           <div

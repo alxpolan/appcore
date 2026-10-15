@@ -1,28 +1,23 @@
 import { useMemo, useState } from "react";
-import {
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtLargeNum, fmtShortDate, fmtShortDateWithWeekday } from "../../utils/formatters";
-import type { AppleAdsDailyStats } from "../../types";
 
-const METRICS = [
-  { key: "spend", label: "Spend", color: "#f59e0b", axis: "right", kind: "money" },
-  { key: "impressions", label: "Impressions", color: "#0ea5e9", axis: "left", kind: "count" },
-  { key: "taps", label: "Taps", color: "#6366f1", axis: "left", kind: "count" },
-  { key: "installs", label: "Installs", color: "#10b981", axis: "left", kind: "count" },
-  { key: "ttr", label: "TTR", color: "#8b5cf6", axis: "right", kind: "pct" },
-  { key: "conversionRate", label: "Conv. Rate", color: "#D94412", axis: "right", kind: "pct" },
-] as const;
+export interface PerformanceDayInput {
+  date: string;
+  spend: number;
+  impressions: number;
+  actions: number;
+  installs: number;
+}
 
-type MetricKey = (typeof METRICS)[number]["key"];
+interface ChartMetric {
+  key: string;
+  label: string;
+  color: string;
+  axis: "left" | "right";
+  kind: "money" | "count" | "pct";
+}
 
 function fmtMoney(value: number, currency: string): string {
   return new Intl.NumberFormat(undefined, {
@@ -32,10 +27,10 @@ function fmtMoney(value: number, currency: string): string {
   }).format(value);
 }
 
-const CustomTooltip = ({ active, payload, label, currency }: any) => {
+const CustomTooltip = ({ active, payload, label, currency, metrics }: any) => {
   if (!active || !payload?.length) return null;
   const rows = payload.filter((p: any) => p.value !== null && p.value !== undefined);
-  const kindOf = (key: string) => METRICS.find((m) => m.key === key)?.kind;
+  const kindOf = (key: string) => (metrics as ChartMetric[]).find((m) => m.key === key)?.kind;
   return (
     <div
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl px-4 py-3`}
@@ -61,25 +56,48 @@ const CustomTooltip = ({ active, payload, label, currency }: any) => {
   );
 };
 
-export default function AppleAdsOverviewChart({
+export default function AdsOverviewChart({
   days,
   startDate,
   endDate,
   currency,
   loading,
+  actionLabel,
+  rateLabel,
 }: {
-  days: AppleAdsDailyStats[];
+  days: PerformanceDayInput[];
   startDate?: string;
   endDate?: string;
   currency: string;
   loading: boolean;
+  actionLabel: string;
+  rateLabel: string;
 }) {
-  const [activeMetrics, setActiveMetrics] = useState<Set<MetricKey>>(new Set(["spend", "taps", "installs"]));
+  const metrics: ChartMetric[] = useMemo(
+    () => [
+      { key: "spend", label: "Spend", color: "#f59e0b", axis: "right", kind: "money" },
+      { key: "impressions", label: "Impressions", color: "#0ea5e9", axis: "left", kind: "count" },
+      { key: "actions", label: actionLabel, color: "#6366f1", axis: "left", kind: "count" },
+      { key: "installs", label: "Installs", color: "#10b981", axis: "left", kind: "count" },
+      { key: "rate", label: rateLabel, color: "#8b5cf6", axis: "right", kind: "pct" },
+      { key: "conversionRate", label: "Conv. Rate", color: "#D94412", axis: "right", kind: "pct" },
+    ],
+    [actionLabel, rateLabel],
+  );
+  const [activeMetrics, setActiveMetrics] = useState<Set<string>>(new Set(["spend", "actions", "installs"]));
 
   const chartData = useMemo(() => {
     if (!startDate || !endDate) return days;
     const byDate = new Map(days.map((d) => [d.date, d]));
-    const points: { date: string; spend: number; impressions: number; taps: number; installs: number; ttr: number; conversionRate: number }[] = [];
+    const points: {
+      date: string;
+      spend: number;
+      impressions: number;
+      actions: number;
+      installs: number;
+      rate: number;
+      conversionRate: number;
+    }[] = [];
     for (
       let cursor = new Date(`${startDate}T00:00:00Z`);
       cursor <= new Date(`${endDate}T00:00:00Z`);
@@ -88,23 +106,25 @@ export default function AppleAdsOverviewChart({
       const key = cursor.toISOString().slice(0, 10);
       const d = byDate.get(key);
       const impressions = d?.impressions ?? 0;
-      const taps = d?.taps ?? 0;
+      const actions = d?.actions ?? 0;
+      const installs = d?.installs ?? 0;
+      
       points.push({
         date: key,
         spend: d?.spend ?? 0,
         impressions,
-        taps,
-        installs: d?.installs ?? 0,
-        ttr: impressions > 0 ? (taps / impressions) * 100 : 0,
-        conversionRate: taps > 0 ? ((d?.installs ?? 0) / taps) * 100 : 0,
+        actions,
+        installs,
+        rate: impressions > 0 ? (actions / impressions) * 100 : 0,
+        conversionRate: actions > 0 ? (installs / actions) * 100 : 0,
       });
     }
     return points;
   }, [days, startDate, endDate]);
 
-  const showRightAxis = METRICS.some((m) => m.axis === "right" && activeMetrics.has(m.key));
+  const showRightAxis = metrics.some((m) => m.axis === "right" && activeMetrics.has(m.key));
 
-  function toggleMetric(key: MetricKey) {
+  function toggleMetric(key: string) {
     setActiveMetrics((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -126,7 +146,7 @@ export default function AppleAdsOverviewChart({
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Performance over time</div>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {METRICS.map((m) => {
+          {metrics.map((m) => {
             const active = activeMetrics.has(m.key);
             return (
               <button
@@ -153,15 +173,10 @@ export default function AppleAdsOverviewChart({
       {loading ? (
         <div className={`flex items-center justify-center h-52 text-[13px] ${textMuted}`}>Loading chart…</div>
       ) : days.length === 0 ? (
-        <div className={`flex items-center justify-center h-52 text-[13px] ${textMuted}`}>
-          No data for this range.
-        </div>
+        <div className={`flex items-center justify-center h-52 text-[13px] ${textMuted}`}>No data for this range.</div>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart
-            data={chartData}
-            margin={{ top: 4, right: showRightAxis ? 48 : 16, left: 0, bottom: 0 }}
-          >
+          <ComposedChart data={chartData} margin={{ top: 4, right: showRightAxis ? 48 : 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="0" stroke="#f0f1f3" vertical={false} strokeWidth={1} />
             <XAxis
               dataKey="date"
@@ -190,22 +205,24 @@ export default function AppleAdsOverviewChart({
                 tickFormatter={fmtLargeNum}
               />
             )}
-            <Tooltip content={<CustomTooltip currency={currency} />} />
+            <Tooltip content={<CustomTooltip currency={currency} metrics={metrics} />} />
             <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10, color: "#6b7280" }} iconType="circle" iconSize={7} />
-            {METRICS.filter((m) => activeMetrics.has(m.key)).map((m) => (
-              <Line
-                key={m.key}
-                yAxisId={m.axis}
-                type="monotoneX"
-                dataKey={m.key}
-                name={m.label}
-                stroke={m.color}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-                activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff", fill: m.color }}
-              />
-            ))}
+            {metrics
+              .filter((m) => activeMetrics.has(m.key))
+              .map((m) => (
+                <Line
+                  key={m.key}
+                  yAxisId={m.axis}
+                  type="monotoneX"
+                  dataKey={m.key}
+                  name={m.label}
+                  stroke={m.color}
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff", fill: m.color }}
+                />
+              ))}
           </ComposedChart>
         </ResponsiveContainer>
       )}
