@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiDelete, apiPatch, useApi } from "../../hooks/useApi";
 import type { AppItem, GoogleAdsAppleRevenueResponse } from "../../types";
-import { borderDefault, btnSecSm, inputCls, textMuted, textPrimary } from "../../styles";
+import { btnSecSm, inputCls, textMuted, textPrimary } from "../../styles";
 
 export default function GoogleAdsAppleMapping({
   campaignId,
@@ -57,74 +57,64 @@ export default function GoogleAdsAppleMapping({
     }
   };
 
-  return (
-    <div
-      className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
-    >
-      <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
-        <div>
-          <div className={`text-[16px] font-semibold ${textPrimary}`}>Apple Campaign Link</div>
-          <div className={`text-[12px] ${textMuted} mt-0.5`}>
-            Links this Google campaign to its App Store campaign token for installs, trials and proceeds
-          </div>
-        </div>
-        {data?.mapped && canManageTeam && !editing && (
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={startEditing} className={btnSecSm}>
-              Change
-            </button>
-            <button onClick={unlink} disabled={saving} className={btnSecSm}>
-              Unlink
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="px-5 py-4">
-        {editing || !data?.mapped ? (
-          <div>
-            <p className={`text-[13px] ${textMuted} mb-3 max-w-2xl`}>
-              Create a campaign link in App Store Connect (Analytics → Campaigns), use it as this Google
-              campaign's final URL, then link its token here. Apple attributes downloads and purchases to the
-              token.
-            </p>
-            {canManageTeam ? (
-              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center max-w-2xl">
-                <select className={inputCls} value={appId} onChange={(e) => setAppId(e.target.value)}>
-                  <option value="">Select app…</option>
-                  {(apps ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.displayName ?? a.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={inputCls}
-                  value={ctToken}
-                  onChange={(e) => setCtToken(e.target.value)}
-                  placeholder="Campaign token (ct)…"
-                />
-                <div className="flex items-center gap-2">
-                  <button onClick={save} disabled={saving || !appId || !ctToken.trim()} className={btnSecSm}>
-                    Save
-                  </button>
-                  {data?.mapped && (
-                    <button onClick={() => setEditing(false)} disabled={saving} className={btnSecSm}>
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className={`text-[13px] ${textMuted}`}>No campaign token linked yet.</div>
-            )}
-            {saveError && <div className="mt-2 text-[12px] font-medium text-red-500">{saveError}</div>}
+  if (editing || !data?.mapped) {
+    return (
+      <div>
+        <p className={`text-[13px] ${textMuted} mb-3 max-w-2xl`}>
+          Create a campaign link in App Store Connect (Analytics → Campaigns), use it as this Google campaign's final
+          URL, then link its token here. Apple attributes downloads and purchases to the token.
+        </p>
+        {canManageTeam ? (
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center max-w-2xl">
+            <select className={inputCls} value={appId} onChange={(e) => setAppId(e.target.value)}>
+              <option value="">Select app…</option>
+              {(apps ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.displayName ?? a.name}
+                </option>
+              ))}
+            </select>
+            <input
+              className={inputCls}
+              value={ctToken}
+              onChange={(e) => setCtToken(e.target.value)}
+              placeholder="Campaign token (ct)…"
+            />
+            <div className="flex items-center gap-2">
+              <button onClick={save} disabled={saving || !appId || !ctToken.trim()} className={btnSecSm}>
+                Save
+              </button>
+              {data?.mapped && (
+                <button onClick={() => setEditing(false)} disabled={saving} className={btnSecSm}>
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <div className={`text-[13px] ${textPrimary}`}>
-            {data.app?.displayName ?? data.app?.name} · token <span className="font-mono">{data.ctToken}</span>
-          </div>
+          <div className={`text-[13px] ${textMuted}`}>No campaign token linked yet.</div>
         )}
+        {saveError && <div className="mt-2 text-[12px] font-medium text-red-500">{saveError}</div>}
       </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className={`text-[13px] ${textPrimary}`}>
+        {data.app?.displayName ?? data.app?.name} · token <span className="font-mono">{data.ctToken}</span>
+      </div>
+      {canManageTeam && (
+        <div className="flex items-center gap-2 mt-3">
+          <button onClick={startEditing} className={btnSecSm}>
+            Change
+          </button>
+          <button onClick={unlink} disabled={saving} className={btnSecSm}>
+            Unlink
+          </button>
+        </div>
+      )}
+      {saveError && <div className="mt-2 text-[12px] font-medium text-red-500">{saveError}</div>}
     </div>
   );
 }

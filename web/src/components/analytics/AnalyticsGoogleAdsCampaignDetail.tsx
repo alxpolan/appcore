@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Ban, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
+import { ArrowLeft, Ban, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
@@ -273,6 +273,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
   );
   const [historyToken, setHistoryToken] = useState(0);
   const [negativesModal, setNegativesModal] = useState<NegativesModalTarget | null>(null);
+  const [mappingModal, setMappingModal] = useState(false);
   const handleNegativesChanged = useCallback(() => {
     refetchNegatives();
     setHistoryToken((t) => t + 1);
@@ -423,6 +424,12 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setMappingModal(true)} className={btnSecSm} title="Apple campaign token link">
+            <Link2 className="w-3.5 h-3.5" /> Apple Link
+            {!revenueLoading && revenueData?.mapped && revenueData.ctToken && (
+              <span className={`text-[11px] ${textMuted} font-mono`}>{revenueData.ctToken}</span>
+            )}
+          </button>
           <button
             onClick={() => setNegativesModal({ scope: "campaign" })}
             className={btnSecSm}
@@ -474,7 +481,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           value={revenueLoading ? "—" : revenueError || !revenueTotals ? "—" : fmtNumber(revenueTotals.downloads)}
           sub={rangeLabel(range)}
           dim={!revenueLoading && !revenueTotals}
-          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token below" : undefined}
+          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token above" : undefined}
           sparkline={statDays.map((d) => d.installs)}
           icon={<Download className="w-4 h-4" />}
           color="#10b981"
@@ -520,7 +527,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           }
           sub={rangeLabel(range)}
           dim={!revenueLoading && !revenueTotals}
-          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token below" : undefined}
+          note={!revenueLoading && !revenueError && !revenueTotals ? "Link a campaign token above" : undefined}
           sparkline={statDays.map((d) => d.proceeds)}
           icon={<CircleDollarSign className="w-4 h-4" />}
           color="#16a34a"
@@ -547,15 +554,6 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         proceedsPerConverted={trialEconomics.proceedsPerConverted}
         loading={campaignsLoading || revenueLoading}
       />
-
-      {campaignId && (
-        <GoogleAdsAppleMapping
-          campaignId={campaignId}
-          canManageTeam={canManageTeam}
-          data={revenueData}
-          refetch={refetchRevenue}
-        />
-      )}
 
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
@@ -757,6 +755,42 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
       </div>
 
       {campaignId && <GoogleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
+
+      {mappingModal &&
+        campaignId &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-start justify-center pt-10 pb-10 px-4">
+            <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={() => setMappingModal(false)} />
+            <div
+              className={`relative w-full max-w-2xl max-h-[calc(100vh-5rem)] flex flex-col bg-white dark:bg-[#161920] border ${borderDefault} rounded-2xl shadow-2xl overflow-hidden`}
+            >
+              <div className={`flex items-center justify-between px-6 py-4 border-b ${borderDefault} shrink-0`}>
+                <div>
+                  <h2 className={`text-lg font-semibold ${textPrimary}`}>Apple Campaign Link</h2>
+                  <div className={`text-[12px] ${textMuted} mt-0.5`}>
+                    Links this Google campaign to its App Store campaign token for installs, trials and proceeds
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMappingModal(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 dark:text-[#5c6478] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto">
+                <GoogleAdsAppleMapping
+                  campaignId={campaignId}
+                  canManageTeam={canManageTeam}
+                  data={revenueData}
+                  refetch={refetchRevenue}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {negativesModal &&
         createPortal(
