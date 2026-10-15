@@ -176,7 +176,7 @@ export default function AdsOverviewChart({
         <div className={`flex items-center justify-center h-52 text-[13px] ${textMuted}`}>No data for this range.</div>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={chartData} margin={{ top: 4, right: showRightAxis ? 48 : 16, left: 0, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: showRightAxis ? 4 : 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="0" stroke="#f0f1f3" vertical={false} strokeWidth={1} />
             <XAxis
               dataKey="date"
@@ -201,7 +201,7 @@ export default function AdsOverviewChart({
                 tick={{ fontSize: 11, fill: "#9ca3af" }}
                 tickLine={false}
                 axisLine={false}
-                width={52}
+                width={40}
                 tickFormatter={fmtLargeNum}
               />
             )}
