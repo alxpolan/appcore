@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtLargeNum, fmtShortDate, fmtShortDateWithWeekday } from "../../utils/formatters";
 
@@ -206,7 +206,6 @@ export default function AdsOverviewChart({
               />
             )}
             <Tooltip content={<CustomTooltip currency={currency} metrics={metrics} />} />
-            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10, color: "#6b7280" }} iconType="circle" iconSize={7} />
             {metrics
               .filter((m) => activeMetrics.has(m.key))
               .map((m) => (
