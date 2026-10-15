@@ -560,7 +560,6 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Countries</div>
-          <div className={`text-[12px] ${textMuted} mt-0.5`}>Spend and performance by country for the selected period</div>
         </div>
         {countriesLoading ? (
           <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
