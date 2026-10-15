@@ -6,7 +6,7 @@ import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
-import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
+import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_GOOGLE_KEYWORD_FILTERS,
@@ -79,13 +79,25 @@ function fmtMoneyUsd(amount: number): string {
   );
 }
 
-function StatCells({ stats, currency }: { stats: GoogleAdsStats; currency: string | null }) {
+function StatCells({
+  stats,
+  currency,
+  ctrTrafficLight,
+}: {
+  stats: GoogleAdsStats;
+  currency: string | null;
+  ctrTrafficLight?: boolean;
+}) {
+  const ctrColor = ctrTrafficLight ? rateTrafficColor(stats.ctr) : undefined;
   return (
     <>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(stats.spend, currency)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.impressions)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.clicks)}</td>
-      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+      <td
+        className={`${TD} text-right tabular-nums ${ctrColor ? "font-semibold" : textMuted}`}
+        style={ctrColor ? { color: ctrColor } : undefined}
+      >
         {stats.ctr != null ? fmtPct(stats.ctr * 100) : "—"}
       </td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(stats.conversions)}</td>
@@ -104,12 +116,16 @@ const COUNTRY_HEADERS = ["Spend", "Impressions", "Clicks", "CTR", "Installs", "A
 
 function CountryStatCells({ country, currency }: { country: GoogleAdsCountryStats; currency: string | null }) {
   const installs = country.installs ?? null;
+  const ctrColor = rateTrafficColor(country.ctr);
   return (
     <>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(country.spend, currency)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(country.impressions)}</td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(country.clicks)}</td>
-      <td className={`${TD} text-right tabular-nums ${textMuted}`}>
+      <td
+        className={`${TD} text-right tabular-nums ${ctrColor ? "font-semibold" : textMuted}`}
+        style={ctrColor ? { color: ctrColor } : undefined}
+      >
         {country.ctr != null ? fmtPct(country.ctr * 100) : "—"}
       </td>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
@@ -624,7 +640,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                           {fmtMoney(g.defaultCpcBid, g.currency ?? currency)}
                         </td>
-                        <StatCells stats={g} currency={g.currency ?? currency} />
+                        <StatCells stats={g} currency={g.currency ?? currency} ctrTrafficLight />
                       </tr>
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">

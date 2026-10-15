@@ -26,7 +26,7 @@ import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
-import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
+import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_KEYWORD_FILTERS,
@@ -93,12 +93,6 @@ function statusDot(status: string) {
   );
 }
 
-function ttrTrafficColor(ttr: number | null): string | undefined {
-  if (ttr == null) return undefined;
-  const pct = ttr * 100;
-  return pct < 8 ? "#ef4444" : pct < 15 ? "#f59e0b" : "#10b981";
-}
-
 function StatCells({
   stats,
   currency,
@@ -108,7 +102,7 @@ function StatCells({
   currency: string | null;
   ttrTrafficLight?: boolean;
 }) {
-  const ttrColor = ttrTrafficLight ? ttrTrafficColor(stats.ttr) : undefined;
+  const ttrColor = ttrTrafficLight ? rateTrafficColor(stats.ttr) : undefined;
   return (
     <>
       <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtMoney(stats.spend, currency)}</td>
@@ -207,7 +201,7 @@ function CountryStatsTable({
                 </>
               )}
             </td>
-            <StatCells stats={c} currency={currency} />
+            <StatCells stats={c} currency={currency} ttrTrafficLight />
             {revenueAvailable && (
               <>
                 <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.trials)}</td>
@@ -678,7 +672,7 @@ export default function AnalyticsAdsCampaignDetail() {
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                           {fmtMoney(g.defaultBidAmount, g.currency ?? currency)}
                         </td>
-                        <StatCells stats={g} currency={g.currency ?? currency} />
+                        <StatCells stats={g} currency={g.currency ?? currency} ttrTrafficLight />
                       </tr>
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">

@@ -68,6 +68,12 @@ export function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
+export function rateTrafficColor(rate: number | null | undefined): string | undefined {
+  if (rate == null) return undefined;
+  const pct = rate * 100;
+  return pct < 8 ? "#ef4444" : pct < 15 ? "#f59e0b" : "#10b981";
+}
+
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 export function countryName(code: string): string {
   if (code === "WW") return "Worldwide";
