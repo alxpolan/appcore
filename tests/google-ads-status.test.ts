@@ -50,6 +50,7 @@ describe("google ads: search term status normalization", () => {
     assert.equal(normalizeGoogleAdsSearchTermStatus(2), "ADDED");
     assert.equal(normalizeGoogleAdsSearchTermStatus(3), "EXCLUDED");
     assert.equal(normalizeGoogleAdsSearchTermStatus(4), "ADDED_EXCLUDED");
+    assert.equal(normalizeGoogleAdsSearchTermStatus(5), "NONE");
     assert.equal(normalizeGoogleAdsSearchTermStatus("3"), "EXCLUDED");
   });
 

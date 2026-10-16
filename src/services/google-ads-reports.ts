@@ -51,9 +51,9 @@ export function normalizeGoogleAdsMatchType(value: unknown): string {
   return String(value);
 }
 
-const GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ADDED", "EXCLUDED", "ADDED_EXCLUDED"];
+const GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ADDED", "EXCLUDED", "ADDED_EXCLUDED", "NONE"];
 
-/** Search term view status: 2 = added as keyword, 3 = excluded, 4 = both. */
+/** Search term view status: 2 = added, 3 = excluded, 4 = both, 5 = neither yet. */
 export function normalizeGoogleAdsSearchTermStatus(value: unknown): string {
   if (typeof value === "number" && Number.isInteger(value)) {
     return GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES[value] ?? String(value);
