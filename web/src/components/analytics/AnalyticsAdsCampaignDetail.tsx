@@ -969,6 +969,9 @@ export default function AnalyticsAdsCampaignDetail() {
                   >
                     <td className={TD}>
                       <span className={`font-medium ${textPrimary}`}>{t.searchTerm}</span>
+                      {t.keywordTotal && (
+                        <span className={`text-[11px] ${textMuted}`}> · keyword total</span>
+                      )}
                     </td>
                     <td className={`${TD} ${textMuted}`}>{t.adGroupName ?? "—"}</td>
                     <td className={TD}>{t.keyword ?? "—"}</td>

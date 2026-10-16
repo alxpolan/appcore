@@ -531,6 +531,8 @@ export interface AppleAdsSearchTerm extends AppleAdsStats {
   keywordId: string | null;
   keyword: string | null;
   matchType: string | null;
+  /** True when Apple gave no term breakdown: row shows the keyword total instead. */
+  keywordTotal: boolean;
 }
 
 export interface AppleAdsSearchTermsResponse {

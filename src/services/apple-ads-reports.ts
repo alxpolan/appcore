@@ -502,30 +502,46 @@ export async function listAppleAdsSearchTerms(
   };
 
   const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const all = chunks.flat();
   const rows = mergeReportRows(
-    chunks.flat(),
+    all,
     (row) =>
       row?.other === false && row.metadata?.searchTermText
         ? `${row.metadata.adGroupId}::${row.metadata.keywordId}::${row.metadata.searchTermText}`
         : undefined,
   );
+  // Keywords whose queries all fell below Apple's privacy threshold get no
+  // term rows — show their rollup (keyword total) instead so no spend hides.
+  const withTerms = new Set(
+    rows.map((row) => `${row.metadata?.adGroupId}::${row.metadata?.keywordId}`),
+  );
+  const rollups = mergeReportRows(
+    all,
+    (row) =>
+      row?.other === true && row.metadata?.keywordId != null
+        ? `${row.metadata.adGroupId}::${row.metadata.keywordId}`
+        : undefined,
+  ).filter((row) => !withTerms.has(`${row.metadata?.adGroupId}::${row.metadata?.keywordId}`));
 
-  return rows
-    .map((row) => {
-      const meta = row.metadata ?? {};
+  const mapRow = (row: any, keywordTotal: boolean) => {
+    const meta = row.metadata ?? {};
 
-      return {
-        searchTerm: String(meta.searchTermText),
-        searchTermSource: meta.searchTermSource != null ? String(meta.searchTermSource) : null,
-        adGroupId: String(meta.adGroupId ?? ""),
-        adGroupName: meta.adGroupName != null ? String(meta.adGroupName) : null,
-        keywordId: meta.keywordId != null ? String(meta.keywordId) : null,
-        keyword: meta.keyword != null ? String(meta.keyword) : null,
-        matchType: meta.matchType != null ? String(meta.matchType) : null,
-        ...statsFromTotal(totalsFromRow(row)),
-      };
-    })
-    .sort((a, b) => b.spend - a.spend);
+    return {
+      searchTerm: String(meta.searchTermText ?? meta.keyword ?? ""),
+      searchTermSource: meta.searchTermSource != null ? String(meta.searchTermSource) : null,
+      adGroupId: String(meta.adGroupId ?? ""),
+      adGroupName: meta.adGroupName != null ? String(meta.adGroupName) : null,
+      keywordId: meta.keywordId != null ? String(meta.keywordId) : null,
+      keyword: meta.keyword != null ? String(meta.keyword) : null,
+      matchType: meta.matchType != null ? String(meta.matchType) : null,
+      keywordTotal,
+      ...statsFromTotal(totalsFromRow(row)),
+    };
+  };
+
+  return [...rows.map((row) => mapRow(row, false)), ...rollups.map((row) => mapRow(row, true))].sort(
+    (a, b) => b.spend - a.spend,
+  );
 }
 
 export async function listAppleAdsApps(creds: AppleAdsCredentials): Promise<AppleAdsStoreApp[]> {
