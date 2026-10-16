@@ -9,6 +9,7 @@ import type {
   AppleAdsCredentials,
   AppleAdsKeyword,
   AppleAdsReportRange,
+  AppleAdsSearchTerm,
   AppleAdsStats,
   AppleAdsStoreApp,
 } from "./apple-ads-types";
@@ -468,6 +469,63 @@ export async function listAppleAdsKeywords(
         ...statsFromTotal(totalsFromRow(row)),
       };
     });
+}
+
+export async function listAppleAdsSearchTerms(
+  creds: AppleAdsCredentials,
+  campaignId: string,
+  range: AppleAdsReportRange = resolveAppleAdsRange({}),
+): Promise<AppleAdsSearchTerm[]> {
+  const accessToken = await fetchAppleAdsAccessToken(creds);
+  const headers = authedHeaders(accessToken, creds.orgId);
+
+  // NOTE: no timeZone / returnRecordsWithNoMetrics — the searchterms report
+  // rejects both. Rollup rows (other: true, no searchTermText) are skipped.
+  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
+    const reportRes = await axios.post<any>(
+      `${API_BASE}/reports/campaigns/${campaignId}/searchterms`,
+      {
+        startTime,
+        endTime,
+        selector: {
+          conditions: [{ field: "impressions", operator: "GREATER_THAN", values: ["0"] }],
+          orderBy: [{ field: "impressions", sortOrder: "DESCENDING" }],
+          pagination: { offset: 0, limit: 1000 },
+        },
+        returnRowTotals: true,
+        returnGrandTotals: false,
+      },
+      { headers },
+    );
+
+    return rowsFromReport(reportRes.data);
+  };
+
+  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
+  const rows = mergeReportRows(
+    chunks.flat(),
+    (row) =>
+      row?.other === false && row.metadata?.searchTermText
+        ? `${row.metadata.adGroupId}::${row.metadata.keywordId}::${row.metadata.searchTermText}`
+        : undefined,
+  );
+
+  return rows
+    .map((row) => {
+      const meta = row.metadata ?? {};
+
+      return {
+        searchTerm: String(meta.searchTermText),
+        searchTermSource: meta.searchTermSource != null ? String(meta.searchTermSource) : null,
+        adGroupId: String(meta.adGroupId ?? ""),
+        adGroupName: meta.adGroupName != null ? String(meta.adGroupName) : null,
+        keywordId: meta.keywordId != null ? String(meta.keywordId) : null,
+        keyword: meta.keyword != null ? String(meta.keyword) : null,
+        matchType: meta.matchType != null ? String(meta.matchType) : null,
+        ...statsFromTotal(totalsFromRow(row)),
+      };
+    })
+    .sort((a, b) => b.spend - a.spend);
 }
 
 export async function listAppleAdsApps(creds: AppleAdsCredentials): Promise<AppleAdsStoreApp[]> {

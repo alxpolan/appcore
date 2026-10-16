@@ -272,6 +272,8 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
       return rows;
     }
 
+    if (from === "search_term_view") return [];
+
     throw new Error(`FakeGoogleAdsGateway: unsupported query: ${gaql.slice(0, 120)}`);
   }
 

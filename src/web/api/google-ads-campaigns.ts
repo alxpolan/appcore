@@ -19,6 +19,7 @@ import {
   getGoogleAdsDailyStats,
   googleAdsErrorMessage,
   listGoogleAdsCampaigns,
+  listGoogleAdsSearchTerms,
   resolveGoogleAdsRange,
   updateGoogleAdsCampaignStatus,
   validateGoogleAdsCreateCampaignInput,
@@ -250,6 +251,29 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/details", loadTeamSettings,
   } catch (err: any) {
     logger.error("[google-ads] campaign detail fetch error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "campaign detail") });
+  }
+});
+
+googleAdsCampaignsRouter.get("/campaigns/:campaignId/search-terms", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+
+  if (googleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Google Ads is not connected" });
+
+    return;
+  }
+
+  try {
+    const searchTerms = await listGoogleAdsSearchTerms(
+      googleAdsCreds(s),
+      req.params.campaignId as string,
+      resolveGoogleAdsRange(req.query),
+    );
+
+    res.json({ searchTerms });
+  } catch (err: any) {
+    logger.error("[google-ads] search terms fetch error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: "Failed to load search terms from Google Ads" });
   }
 });
 

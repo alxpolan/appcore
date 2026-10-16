@@ -70,6 +70,16 @@ export interface AppleAdsAdGroupWithKeywords extends AppleAdsAdGroup {
   keywords: AppleAdsKeyword[];
 }
 
+export interface AppleAdsSearchTerm extends AppleAdsStats {
+  searchTerm: string;
+  searchTermSource: string | null;
+  adGroupId: string;
+  adGroupName: string | null;
+  keywordId: string | null;
+  keyword: string | null;
+  matchType: string | null;
+}
+
 export interface AppleAdsReportRange {
   startDate: string;
   endDate: string;

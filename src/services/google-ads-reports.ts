@@ -8,6 +8,7 @@ import type {
   GoogleAdsCredentials,
   GoogleAdsKeyword,
   GoogleAdsNegativeKeyword,
+  GoogleAdsSearchTerm,
   GoogleAdsReportRange,
   GoogleAdsStats,
 } from "./google-ads-types";
@@ -31,6 +32,35 @@ export function normalizeGoogleAdsStatus(value: unknown): string {
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const n = Number(value.trim());
     return GOOGLE_ADS_STATUS_NAMES[n] ?? value;
+  }
+  return String(value ?? "");
+}
+
+const GOOGLE_ADS_MATCH_TYPE_NAMES = ["UNSPECIFIED", "UNKNOWN", "EXACT", "PHRASE", "BROAD"];
+
+/** Keyword match types arrive numeric too (2 = EXACT, 3 = PHRASE, 4 = BROAD). */
+export function normalizeGoogleAdsMatchType(value: unknown): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return GOOGLE_ADS_MATCH_TYPE_NAMES[value] ?? String(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return GOOGLE_ADS_MATCH_TYPE_NAMES[n] ?? value;
+  }
+  return String(value);
+}
+
+const GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ADDED", "EXCLUDED", "ADDED_EXCLUDED"];
+
+/** Search term view status: 2 = added as keyword, 3 = excluded, 4 = both. */
+export function normalizeGoogleAdsSearchTermStatus(value: unknown): string {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES[value] ?? String(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES[n] ?? value;
   }
   return String(value ?? "");
 }
@@ -226,11 +256,41 @@ export async function listGoogleAdsKeywords(
       id,
       adGroupId: String(adGroupId),
       text: String(k.keyword?.text ?? ""),
-      matchType: String(k.keyword?.match_type ?? ""),
+      matchType: normalizeGoogleAdsMatchType(k.keyword?.match_type),
       status: normalizeGoogleAdsStatus(k.status),
       cpcBid: k.cpc_bid_micros != null ? Number(k.cpc_bid_micros) / 1_000_000 : null,
       currency: ccy,
       ...statsFromMetrics(metricsById.get(id) ?? {}),
+    };
+  });
+}
+
+export async function listGoogleAdsSearchTerms(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+  range: GoogleAdsReportRange = resolveGoogleAdsRange({}),
+): Promise<GoogleAdsSearchTerm[]> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT campaign.id, ad_group.id, ad_group.name, search_term_view.search_term, search_term_view.status, " +
+      "segments.keyword.info.text, segments.keyword.info.match_type, " +
+      "metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions " +
+      `FROM search_term_view WHERE campaign.id = ${campaignId} ` +
+      `AND segments.date BETWEEN '${toGaqlDate(range.startDate)}' AND '${toGaqlDate(range.endDate)}' ` +
+      "ORDER BY metrics.cost_micros DESC LIMIT 500",
+  );
+
+  return rows.map((row) => {
+    const info = row.segments?.keyword?.info ?? {};
+
+    return {
+      searchTerm: String(row.search_term_view?.search_term ?? ""),
+      status: normalizeGoogleAdsSearchTermStatus(row.search_term_view?.status),
+      adGroupId: String(row.ad_group?.id ?? ""),
+      adGroupName: row.ad_group?.name != null ? String(row.ad_group.name) : null,
+      keywordText: info.text != null ? String(info.text) : null,
+      matchType: info.match_type != null ? normalizeGoogleAdsMatchType(info.match_type) : null,
+      ...statsFromMetrics(row.metrics ?? {}),
     };
   });
 }
@@ -348,7 +408,7 @@ export async function listGoogleAdsNegativeKeywords(
       return {
         id: String(k.criterion_id),
         text: String(k.keyword?.text ?? ""),
-        matchType: String(k.keyword?.match_type ?? ""),
+        matchType: normalizeGoogleAdsMatchType(k.keyword?.match_type),
         status: normalizeGoogleAdsStatus(k.status),
       };
     });
@@ -367,7 +427,7 @@ export async function listGoogleAdsNegativeKeywords(
     return {
       id: String(k.criterion_id),
       text: String(k.keyword?.text ?? ""),
-      matchType: String(k.keyword?.match_type ?? ""),
+      matchType: normalizeGoogleAdsMatchType(k.keyword?.match_type),
       status: normalizeGoogleAdsStatus(k.status),
     };
   });

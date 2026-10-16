@@ -5,6 +5,7 @@ import { logActivity } from "../../services/activity-log";
 import {
   listAppleAdsCampaigns,
   listAppleAdsApps,
+  listAppleAdsSearchTerms,
   getAppleAdsCampaignDetail,
   getAppleAdsDailyStats,
   mergeDailyStatsLists,
@@ -367,6 +368,39 @@ appleAdsCampaignsRouter.get("/campaigns/:campaignId/details", loadTeamSettings, 
       body: err?.response?.data,
     });
     res.status(500).json({ error: "Failed to load campaign detail from Apple Search Ads" });
+  }
+});
+
+appleAdsCampaignsRouter.get("/campaigns/:campaignId/search-terms", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+
+  if (appleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+
+    return;
+  }
+
+  try {
+    const searchTerms = await listAppleAdsSearchTerms(
+      await orgCredsForCampaign(req.user!.teamId, appleAdsKeyCreds(s), req.params.campaignId as string),
+      req.params.campaignId as string,
+      resolveAppleAdsRange(req.query),
+    );
+
+    res.json({ searchTerms });
+  } catch (err: any) {
+    if (err instanceof AppleAdsCampaignNotFoundError) {
+      res.status(404).json({ error: err.message });
+
+      return;
+    }
+
+    logger.error("[apple-ads] search terms fetch error", {
+      err: String(err?.message ?? err),
+      status: err?.response?.status,
+      body: err?.response?.data,
+    });
+    res.status(500).json({ error: "Failed to load search terms from Apple Search Ads" });
   }
 });
 

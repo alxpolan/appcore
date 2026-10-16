@@ -48,6 +48,15 @@ export interface GoogleAdsAdGroupWithKeywords extends GoogleAdsAdGroup {
   keywords: GoogleAdsKeyword[];
 }
 
+export interface GoogleAdsSearchTerm extends GoogleAdsStats {
+  searchTerm: string;
+  status: string;
+  adGroupId: string;
+  adGroupName: string | null;
+  keywordText: string | null;
+  matchType: string | null;
+}
+
 export interface GoogleAdsNegativeKeyword {
   id: string;
   text: string;
