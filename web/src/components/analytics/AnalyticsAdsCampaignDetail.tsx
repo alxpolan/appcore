@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsStats } from "../../types";
+import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
@@ -274,6 +274,16 @@ export default function AnalyticsAdsCampaignDetail() {
     loading,
     error,
   } = useApi<AppleAdsCampaignDetail>(`/apple-ads/campaigns/${campaignId}/details${query}`, [campaignId, ...rangeDeps], true);
+
+  const {
+    data: searchTermsData,
+    loading: searchTermsLoading,
+    error: searchTermsError,
+  } = useApi<AppleAdsSearchTermsResponse>(
+    `/apple-ads/campaigns/${campaignId}/search-terms${query}`,
+    [campaignId, ...rangeDeps],
+    true,
+  );
 
   const {
     data: revenueData,
@@ -920,6 +930,57 @@ export default function AnalyticsAdsCampaignDetail() {
       </div>
 
       {campaignId && <AppleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Search Terms</div>
+        </div>
+        {searchTermsLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : searchTermsError || !searchTermsData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {searchTermsError ?? "Failed to load search terms"}
+          </div>
+        ) : searchTermsData.searchTerms.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No search terms for this period</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1200px] text-[12px]">
+              <thead>
+                <tr>
+                  <th className={TH}>Search Term</th>
+                  <th className={TH}>Ad Group</th>
+                  <th className={TH}>Keyword</th>
+                  <th className={TH}>Match</th>
+                  {STAT_HEADERS.map((h) => (
+                    <th key={h} className={`${TH} text-right ${h === "Conv. Rate" ? "pr-5" : ""}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {searchTermsData.searchTerms.map((t) => (
+                  <tr
+                    key={`${t.adGroupId}::${t.keywordId}::${t.searchTerm}`}
+                    className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors"
+                  >
+                    <td className={TD}>
+                      <span className={`font-medium ${textPrimary}`}>{t.searchTerm}</span>
+                    </td>
+                    <td className={`${TD} ${textMuted}`}>{t.adGroupName ?? "—"}</td>
+                    <td className={TD}>{t.keyword ?? "—"}</td>
+                    <td className={`${TD} ${textMuted}`}>{t.matchType ?? "—"}</td>
+                    <StatCells stats={t} currency={currency} ttrTrafficLight />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {negativesModal &&
         createPortal(

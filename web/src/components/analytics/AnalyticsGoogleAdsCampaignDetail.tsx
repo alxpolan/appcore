@@ -4,7 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Ban, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsStats } from "../../types";
+import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsSearchTermsResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
@@ -43,6 +43,22 @@ function statusBadge(status: string) {
           : "bg-gray-100 text-gray-600 dark:bg-[#252b38] dark:text-[#8b93a5]"
       }`}
     >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function searchTermStatusBadge(status: string) {
+  const tone =
+    status === "ADDED"
+      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+      : status === "EXCLUDED"
+        ? "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
+        : status === "ADDED_EXCLUDED"
+          ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+          : "bg-gray-100 text-gray-600 dark:bg-[#252b38] dark:text-[#8b93a5]";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${tone}`}>
       {status.replace(/_/g, " ")}
     </span>
   );
@@ -242,6 +258,16 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     loading,
     error,
   } = useApi<GoogleAdsCampaignDetail>(`/google-ads/campaigns/${campaignId}/details${query}`, [campaignId, ...rangeDeps], true);
+
+  const {
+    data: searchTermsData,
+    loading: searchTermsLoading,
+    error: searchTermsError,
+  } = useApi<GoogleAdsSearchTermsResponse>(
+    `/google-ads/campaigns/${campaignId}/search-terms${query}`,
+    [campaignId, ...rangeDeps],
+    true,
+  );
 
   const {
     data: dailySpend,
@@ -770,6 +796,59 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
       </div>
 
       {campaignId && <GoogleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Search Terms</div>
+        </div>
+        {searchTermsLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : searchTermsError || !searchTermsData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {searchTermsError ?? "Failed to load search terms"}
+          </div>
+        ) : searchTermsData.searchTerms.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No search terms for this period</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1200px] text-[12px]">
+              <thead>
+                <tr>
+                  <th className={TH}>Search Term</th>
+                  <th className={TH}>Ad Group</th>
+                  <th className={TH}>Keyword</th>
+                  <th className={TH}>Match</th>
+                  <th className={TH}>Status</th>
+                  {STAT_HEADERS.map((h) => (
+                    <th key={h} className={`${TH} text-right ${h === "Conv. Rate" ? "pr-5" : ""}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {searchTermsData.searchTerms.map((t, i) => (
+                  <tr
+                    key={`${t.adGroupId}::${t.keywordText}::${t.searchTerm}::${i}`}
+                    className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38] transition-colors"
+                  >
+                    <td className={TD}>
+                      <span className={`font-medium ${textPrimary}`}>{t.searchTerm}</span>
+                    </td>
+                    <td className={`${TD} ${textMuted}`}>{t.adGroupName ?? "—"}</td>
+                    <td className={TD}>{t.keywordText ?? "—"}</td>
+                    <td className={`${TD} ${textMuted}`}>{t.matchType ?? "—"}</td>
+                    <td className={TD}>{searchTermStatusBadge(t.status)}</td>
+                    <StatCells stats={t} currency={currency} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {mappingModal &&
         campaignId &&

@@ -523,6 +523,20 @@ export interface AppleAdsKeyword extends AppleAdsStats {
   currency: string | null;
 }
 
+export interface AppleAdsSearchTerm extends AppleAdsStats {
+  searchTerm: string;
+  searchTermSource: string | null;
+  adGroupId: string;
+  adGroupName: string | null;
+  keywordId: string | null;
+  keyword: string | null;
+  matchType: string | null;
+}
+
+export interface AppleAdsSearchTermsResponse {
+  searchTerms: AppleAdsSearchTerm[];
+}
+
 export interface AppleAdsAdGroup extends AppleAdsStats {
   id: string;
   campaignId: string;
@@ -640,6 +654,19 @@ export interface GoogleAdsKeyword extends GoogleAdsStats {
   status: string;
   cpcBid: number | null;
   currency: string | null;
+}
+
+export interface GoogleAdsSearchTerm extends GoogleAdsStats {
+  searchTerm: string;
+  status: string;
+  adGroupId: string;
+  adGroupName: string | null;
+  keywordText: string | null;
+  matchType: string | null;
+}
+
+export interface GoogleAdsSearchTermsResponse {
+  searchTerms: GoogleAdsSearchTerm[];
 }
 
 export interface GoogleAdsAdGroup extends GoogleAdsStats {
