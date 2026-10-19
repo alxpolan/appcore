@@ -169,7 +169,7 @@ export async function apiPatch<T = any>(path: string, body?: any): Promise<T> {
   return res.json();
 }
 
-export async function apiDelete(path: string, body?: any): Promise<void> {
+export async function apiDelete<T = void>(path: string, body?: any): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "DELETE",
     credentials: "include",
@@ -180,4 +180,5 @@ export async function apiDelete(path: string, body?: any): Promise<void> {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
+  return res.json().catch(() => undefined) as Promise<T>;
 }

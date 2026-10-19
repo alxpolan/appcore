@@ -1,3 +1,11 @@
+export interface FramedJobRevision {
+  id: string;
+  rev: number;
+  name: string | null;
+  createdAt: string;
+  isActive: boolean;
+}
+
 export interface FramedJob {
   id: string;
   commitSha: string;
@@ -5,6 +13,7 @@ export interface FramedJob {
   branch: string | null;
   createdAt: string;
   framedByLocale: Record<string, string[]>;
+  revision?: FramedJobRevision | null;
 }
 
 export const DEVICES: [RegExp, string][] = [

@@ -41,6 +41,7 @@ import AnalyticsGoogleAdsCampaignDetail from "./components/analytics/AnalyticsGo
 import Versions from "./components/Versions";
 import ProductPages from "./components/ProductPages";
 import Screenshots from "./components/Screenshots";
+import Studio from "./components/screenshots/Studio";
 import MonetizationSubscriptions from "./components/monetization/Subscriptions";
 import MonetizationProducts from "./components/monetization/Products";
 import GameCenterLeaderboards from "./components/gamecenter/Leaderboards";
@@ -1555,6 +1556,7 @@ export default function App() {
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/product-pages" element={<ProductPages addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />
+              <Route path="/screenshots/studio/:jobId" element={<Studio addToast={addToast} />} />
               <Route path="/builds" element={<Builds addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />
               <Route path="/monetization/products" element={<MonetizationProducts addToast={addToast} />} />

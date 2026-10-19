@@ -11,6 +11,7 @@ import {
   Lock,
   MonitorSmartphone,
   Play,
+  SlidersHorizontal,
   Unlock,
   Upload,
   Wand2,
@@ -23,6 +24,7 @@ import { RepoLinker, ScreenshotJobsTable } from "./Logs";
 import {
   borderDefault,
   btnPrimary,
+  btnSecSm,
   btnSecondary,
   cardCls,
   pageTitle,
@@ -568,6 +570,14 @@ function RunResults({
                 Latest
               </span>
             )}
+            {job.revision && job.revision.rev > 0 && (
+              <span
+                title={job.revision.name ?? `Revision ${job.revision.rev}`}
+                className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+              >
+                Rev {job.revision.rev}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <span className={`text-[11px] ${textSecondary} font-mono`}>
@@ -575,6 +585,10 @@ function RunResults({
               {job.branch ? ` · ${job.branch}` : ""}
               {` · ${new Date(job.createdAt).toLocaleDateString()}`}
             </span>
+            <Link to={`/screenshots/studio/${job.id}`} className={btnSecSm}>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Studio
+            </Link>
             {effectiveLocale && locales.length > 1 && (
               <LocaleDropdown locales={locales} value={effectiveLocale} onChange={setActiveLocale} />
             )}
