@@ -2,15 +2,14 @@ import path from "path";
 import fs from "fs";
 import { logger, prisma, getTeamSettings } from "../config";
 import { decryptNullable } from "../config/encryption";
-import { frameWithFastlane } from "./frame-screenshots";
 import { workerClient, type WorkerSnapshotResult } from "./worker-client";
+import { frameComplexBatch, normalizeStudioStyle } from "./screenshot-studio";
 import { postCommitStatus } from "./github";
 import { generateScreenshotSublines, type ScreenshotSublines } from "./screenshot-subline-generator";
 import { ascClientForTeam } from "./asc-client";
 import { Prisma } from "@prisma/client";
 import { createJobLogEmitter } from "./log-bus";
 import { normalizeLocale } from "./utils/country_lang";
-import { env } from "../config/env";
 
 const GITHUB_STATUS_DESC_MAX_LEN = 140;
 const FRAME_LOCALE_CONCURRENCY = 4;
@@ -560,6 +559,13 @@ async function frameScreenshots(
     // abandon every locale still queued. One bad locale must not cost all the others.
     const failedLocales: string[] = [];
 
+    const style = normalizeStudioStyle({
+      bgColor1: frameConfig.bgColor1,
+      bgColor2: frameConfig.bgColor2,
+      textColor: frameConfig.textColor,
+      textPosition: frameConfig.textPosition,
+    });
+
     await runConcurrent(targetLocales, FRAME_LOCALE_CONCURRENCY, async (locale) => {
       try {
         await frameLocale(locale);
@@ -586,64 +592,38 @@ async function frameScreenshots(
       const versionLocale = versionLocales[locale];
       const localeSublines = sublines[locale] ?? sublines["en-US"] ?? {};
       const defaultSubtitle = versionLocale?.subtitle || versionLocale?.name || job.app.currentSubtitle || job.app.name;
-      let outputPaths: string[];
 
-      const bgOptions = {
-        bgColor1: frameConfig.bgColor1,
-        bgColor2: frameConfig.bgColor2,
-        textColor: frameConfig.textColor,
-      };
+      const entries = await fs.promises.readdir(srcDir);
+      const shots = entries
+        .filter((f) => /\.(png)$/i.test(f))
+        .map((filename) => ({ filename, base: filename.replace(/\.[^.]+$/, "") }))
+        .sort((a, b) => a.base.localeCompare(b.base));
 
-      // Passing the directory is what makes the worker run the second, background-less
-      // frameit pass. Leaving it undefined halves the ImageMagick work per locale.
-      const unframedDir = env.FRAME_INCLUDE_UNFRAMED ? path.join(outputDir, "unframed", locale) : undefined;
+      const titles = new Map<string, string>();
 
-      if (!hasDescriptions) {
-        outputPaths = await frameWithFastlane(
-          srcDir,
-          path.join(outputDir, "framed", locale),
-          {
-            subtitle: defaultSubtitle,
-            ...bgOptions,
-          },
-          unframedDir,
-          log,
-        );
-      } else {
-        const allEntries = await fs.promises.readdir(srcDir);
-        const files = allEntries.filter((f) => /\.(png)$/i.test(f));
-
-        const titles: Record<string, string> = {};
-        for (const filename of files) {
-          const base = filename.replace(/\.[^.]+$/, "");
-          const descKey = Object.keys(descriptions).find((k) => base === k || base.startsWith(k + "_"));
-          titles[base] = descKey ? (localeSublines[descKey] ?? defaultSubtitle) : defaultSubtitle;
-        }
-
-        outputPaths = await frameWithFastlane(
-          srcDir,
-          path.join(outputDir, "framed", locale),
-          {
-            subtitle: defaultSubtitle,
-            ...bgOptions,
-            titles,
-          },
-          unframedDir,
-          log,
-        );
-
-        log(`[framing] ${locale}: ${files.length} image(s) → ${outputPaths.length} path(s)`);
+      for (const shot of shots) {
+        const descKey = hasDescriptions
+          ? Object.keys(descriptions).find((k) => shot.base === k || shot.base.startsWith(k + "_"))
+          : undefined;
+        titles.set(shot.base, descKey ? (localeSublines[descKey] ?? defaultSubtitle) : defaultSubtitle);
       }
 
-      const urls = outputPaths.map(
-        (p) => "/screenshots/" + path.relative(path.join(process.cwd(), "screenshots"), p).replace(/\\/g, "/"),
-      );
+      const framedDir = path.join(outputDir, "framed", locale);
+
+      await frameComplexBatch({ srcDir, outDir: framedDir, shots, titles, style, log });
+
+      const urls = shots.map((shot) => `/screenshots/${jobId}/framed/${locale}/${shot.base}.png`);
       framedByLocale[locale] = (framedByLocale[locale] ?? []).concat(urls);
+
+      log(`[framing] ${locale}: ${shots.length} image(s) → ${urls.length} path(s)`);
     }
 
     await prisma.screenshotJob.update({
       where: { id: jobId },
-      data: { framedByLocale: framedByLocale as Prisma.InputJsonValue },
+      data: {
+        framedByLocale: framedByLocale as Prisma.InputJsonValue,
+        screenshotStyle: style as Prisma.InputJsonValue,
+      },
     });
 
     log(`[framing] Framing complete: ${Object.values(framedByLocale).flat().length} image(s)`);

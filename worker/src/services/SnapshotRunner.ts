@@ -331,11 +331,15 @@ export class SnapshotRunner {
         result.concurrency = Math.floor(cfg.concurrency);
       }
 
-      const { bgColor1, bgColor2, textColor } = cfg;
-      if (bgColor1 || bgColor2 || textColor) {
-        result.frameConfig = Object.fromEntries(
-          Object.entries({ bgColor1, bgColor2, textColor }).filter(([, v]) => v != null),
-        ) as Record<string, string>;
+      const { bgColor1, bgColor2, textColor, textPosition } = cfg;
+      const frameEntries = Object.entries({ bgColor1, bgColor2, textColor }).filter(([, v]) => v != null);
+
+      if (textPosition === "top" || textPosition === "bottom") {
+        frameEntries.push(["textPosition", textPosition]);
+      }
+
+      if (frameEntries.length > 0) {
+        result.frameConfig = Object.fromEntries(frameEntries) as Record<string, string>;
       }
 
       const { _config: _, ...rest } = parsed;

@@ -5,6 +5,8 @@ import os from "os";
 import sharp from "sharp";
 import { findFastlane } from "../fastlane-utils";
 import { execAsync } from "./shared";
+import { copyFrameitFont, pickFrameitFont, STUDIO_FRAMEIT_FONTS } from "./frameit-fonts";
+import { recompositeShiftedFrame } from "./frameit-shift";
 
 export const frameitRouter = Router();
 
@@ -13,15 +15,62 @@ const SIZE_REMAP: Record<string, { w: number; h: number }> = {
 };
 
 type LayoutMode = "center" | "top" | "bottom";
-type FontCandidate = {
-  test: RegExp;
-  paths: string[];
-};
+
+function normalizeOffset(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+
+  return Math.max(-2048, Math.min(2048, Math.round(value)));
+}
+
+function normalizeScale(value: unknown, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
+
+  return Math.max(min, Math.min(max, Math.round(value * 100) / 100));
+}
+
+function normalizeBoxSize(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+
+  return Math.max(0, Math.min(4096, Math.round(value)));
+}
+
+function normalizeTitleLines(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const lines: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+
+    const line = entry.replace(/\s+/g, " ").trim().slice(0, 200);
+
+    if (!line) continue;
+
+    lines.push(line);
+  }
+
+  if (lines.length <= 12) return lines;
+
+  return [...lines.slice(0, 11), lines.slice(11).join(" ")];
+}
 
 interface FrameitRequest {
   // `title` lets one request carry a whole locale: each image keeps its own subline,
   // so framing 12 screenshots costs one fastlane boot instead of twelve.
-  images: Array<{ filename: string; data: string; title?: string }>;
+  images: Array<{
+    filename: string;
+    data: string;
+    title?: string;
+    offsetX?: number;
+    offsetY?: number;
+    titleOffsetX?: number;
+    titleOffsetY?: number;
+    titleScale?: number;
+    deviceScale?: number;
+    titleBoxW?: number;
+    titleBoxH?: number;
+    titleLines?: string[];
+  }>;
   options: {
     subtitle?: string;
     title?: string;
@@ -29,11 +78,7 @@ interface FrameitRequest {
     bgColor2?: string;
     textColor?: string;
     layoutMode?: LayoutMode | "random";
-    /**
-     * Run frameit a second time without a background to also produce unframed images.
-     * Doubles the ImageMagick work, so it stays off unless the caller asks for it.
-     */
-    includeUnframed?: boolean;
+    fontFamily?: "rounded" | "inter" | "baloo";
   };
 }
 
@@ -53,158 +98,6 @@ interface FramefileEntry {
   title: { text: string; color: string; font: string; font_size: number };
   /** Per-image so screenshots of different sizes each get a matching background. */
   background?: string;
-}
-
-const BUNDLED_FRAMEIT_FONT = path.join(__dirname, "ArialRoundedBold.ttf");
-const FRAMEIT_FONT_NAME = "FrameitTextFont";
-
-const WIDE_LATIN_FONTS = [
-  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-  "/System/Library/Fonts/Supplemental/Arial.ttf",
-  "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-  "/Library/Fonts/Arial Bold.ttf",
-  "/Library/Fonts/Arial.ttf",
-  "/Library/Fonts/Arial Unicode.ttf",
-  "/System/Library/Fonts/Supplemental/Tahoma Bold.ttf",
-  "/System/Library/Fonts/Supplemental/Tahoma.ttf",
-  "/System/Library/Fonts/Supplemental/Verdana Bold.ttf",
-  "/System/Library/Fonts/Supplemental/Verdana.ttf",
-  "/System/Library/Fonts/Helvetica.ttc",
-];
-
-const FONT_CANDIDATES: FontCandidate[] = [
-  {
-    // Devanagari (Hindi, Marathi, Nepali, Sanskrit)
-    test: /[\u0900-\u097F]/u,
-    paths: [
-      "/System/Library/Fonts/Supplemental/ITFDevanagari.ttc",
-      "/System/Library/Fonts/Supplemental/DevanagariMT.ttc",
-      "/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttc",
-      "/System/Library/Fonts/Kohinoor.ttc",
-      "/System/Library/Fonts/SFIndia.ttc",
-    ],
-  },
-  {
-    // Bengali
-    test: /[\u0980-\u09FF]/u,
-    paths: ["/System/Library/Fonts/KohinoorBangla.ttc", "/System/Library/Fonts/Supplemental/Bangla Sangam MN.ttc"],
-  },
-  {
-    // Gurmukhi (Punjabi)
-    test: /[\u0A00-\u0A7F]/u,
-    paths: [
-      "/System/Library/Fonts/Supplemental/Gurmukhi MN.ttc",
-      "/System/Library/Fonts/Supplemental/Gurmukhi Sangam MN.ttc",
-    ],
-  },
-  {
-    // Gujarati
-    test: /[\u0A80-\u0AFF]/u,
-    paths: ["/System/Library/Fonts/KohinoorGujarati.ttc"],
-  },
-  {
-    // Oriya (Odia)
-    test: /[\u0B00-\u0B7F]/u,
-    paths: ["/System/Library/Fonts/NotoSansOriya.ttc"],
-  },
-  {
-    // Tamil
-    test: /[\u0B80-\u0BFF]/u,
-    paths: ["/System/Library/Fonts/Supplemental/Tamil Sangam MN.ttc"],
-  },
-  {
-    // Telugu
-    test: /[\u0C00-\u0C7F]/u,
-    paths: ["/System/Library/Fonts/KohinoorTelugu.ttc"],
-  },
-  {
-    // Kannada
-    test: /[\u0C80-\u0CFF]/u,
-    paths: ["/System/Library/Fonts/NotoSansKannada.ttc"],
-  },
-  {
-    // Malayalam
-    test: /[\u0D00-\u0D7F]/u,
-    paths: ["/System/Library/Fonts/Supplemental/Malayalam Sangam MN.ttc"],
-  },
-  {
-    // Sinhala
-    test: /[\u0D80-\u0DFF]/u,
-    paths: [
-      "/System/Library/Fonts/Supplemental/Sinhala Sangam MN.ttc",
-      "/System/Library/Fonts/Supplemental/Sinhala MN.ttc",
-    ],
-  },
-  {
-    test: /[\u4E00-\u9FFF\u3400-\u4DBF\u3040-\u30FF]/u,
-    paths: [
-      "/System/Library/Fonts/STHeiti Medium.ttc",
-      "/System/Library/Fonts/Hiragino Sans GB.ttc",
-      "/System/Library/Fonts/CJKSymbolsFallback.ttc",
-    ],
-  },
-  {
-    test: /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/u,
-    paths: ["/System/Library/Fonts/AppleSDGothicNeo.ttc"],
-  },
-  {
-    test: /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/u,
-    paths: [
-      "/System/Library/Fonts/SFArabicRounded.ttf",
-      "/System/Library/Fonts/SFArabic.ttf",
-      "/System/Library/Fonts/GeezaPro.ttc",
-    ],
-  },
-  {
-    test: /[\u0E00-\u0E7F]/u,
-    paths: ["/System/Library/Fonts/Supplemental/Krungthep.ttf"],
-  },
-  {
-    test: /[\u0590-\u05FF]/u,
-    paths: ["/System/Library/Fonts/Supplemental/Raanana.ttc", "/System/Library/Fonts/ArialHB.ttc"],
-  },
-  {
-    // Cyrillic (Russian, Ukrainian, Bulgarian, Serbian, etc.)
-    test: /[\u0400-\u04FF\u0500-\u052F]/u,
-    paths: [
-      "/System/Library/Fonts/Supplemental/PTSans.ttc",
-      "/System/Library/Fonts/Supplemental/PTSerif.ttc",
-      "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ],
-  },
-  {
-    test: /[\u0370-\u03FF\u1F00-\u1FFF]/u,
-    paths: WIDE_LATIN_FONTS,
-  },
-  {
-    test: /[\u0100-\u024F\u1E00-\u1EFF]/u,
-    paths: WIDE_LATIN_FONTS,
-  },
-];
-
-function pickFrameitFont(text: string): string {
-  for (const candidate of FONT_CANDIDATES) {
-    if (!candidate.test.test(text)) continue;
-    const found = candidate.paths.find((fontPath) => fs.existsSync(fontPath));
-    if (found) return found;
-  }
-
-  // The bundled Arial Rounded only covers Latin-1: with it, ľ/ť/Greek silently
-  // drop out of the rendered title. Any text beyond Latin-1 that reached this
-  // point still needs a wide font.
-  if (/[Ā-￿]/u.test(text)) {
-    const wide = WIDE_LATIN_FONTS.find((fontPath) => fs.existsSync(fontPath));
-    if (wide) return wide;
-  }
-
-  return BUNDLED_FRAMEIT_FONT;
-}
-
-function copyFrameitFont(sourcePath: string, targetDir: string): string {
-  const ext = path.extname(sourcePath) || ".ttf";
-  const localName = `${FRAMEIT_FONT_NAME}${ext}`;
-  fs.copyFileSync(sourcePath, path.join(targetDir, localName));
-  return `./${localName}`;
 }
 
 function buildTitleSection(
@@ -245,20 +138,23 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     bgColor2 = "#764ba2",
     textColor = "#ffffff",
     layoutMode: layoutModeInput,
-    includeUnframed = false,
+    fontFamily,
   } = options || {};
 
+  const requestedFamily = fontFamily && STUDIO_FRAMEIT_FONTS[fontFamily] ? fontFamily : "rounded";
+  const familyFontPath = path.join(__dirname, "fonts", STUDIO_FRAMEIT_FONTS[requestedFamily]);
+
   const LAYOUT_MODES: LayoutMode[] = ["center", "top", "bottom"];
-  // Resolved per screenshot rather than per request, so batching a whole locale keeps
-  // the previous behaviour of every image getting its own random layout.
-  const resolveLayout = (): LayoutMode =>
-    !layoutModeInput || layoutModeInput === "random"
-      ? LAYOUT_MODES[Math.floor(Math.random() * LAYOUT_MODES.length)]
-      : layoutModeInput;
+  const resolveLayout = (): LayoutMode => {
+    if (layoutModeInput === "random") return LAYOUT_MODES[Math.floor(Math.random() * LAYOUT_MODES.length)];
+    if (layoutModeInput) return layoutModeInput;
+
+    return "center";
+  };
 
   const tmpDir = path.join(os.tmpdir(), `worker-frameit-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
-  let tmpDirNoBg = "";
+  let tmpDirDevice = "";
 
   try {
     let maxW = 0;
@@ -266,6 +162,12 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     const outputDims = new Map<string, { w: number; h: number }>();
     const layoutByBase = new Map<string, LayoutMode>();
     const titleByBase = new Map<string, string>();
+    const offsetByBase = new Map<string, { x: number; y: number }>();
+    const titleOffsetByBase = new Map<string, { x: number; y: number }>();
+    const titleScaleByBase = new Map<string, number>();
+    const deviceScaleByBase = new Map<string, number>();
+    const titleBoxByBase = new Map<string, { w: number; h: number }>();
+    const titleLinesByBase = new Map<string, string[]>();
     // Dimensions of the file actually handed to frameit, which is what the background
     // has to match exactly.
     const workDimsByBase = new Map<string, { w: number; h: number }>();
@@ -284,6 +186,15 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       });
       layoutByBase.set(basename, resolveLayout());
       titleByBase.set(basename, img.title ?? title ?? subtitle ?? " ");
+      offsetByBase.set(basename, { x: normalizeOffset(img.offsetX), y: normalizeOffset(img.offsetY) });
+      titleOffsetByBase.set(basename, {
+        x: normalizeOffset(img.titleOffsetX),
+        y: normalizeOffset(img.titleOffsetY),
+      });
+      titleScaleByBase.set(basename, normalizeScale(img.titleScale, 0.2, 3));
+      deviceScaleByBase.set(basename, normalizeScale(img.deviceScale, 0.2, 2));
+      titleBoxByBase.set(basename, { w: normalizeBoxSize(img.titleBoxW), h: normalizeBoxSize(img.titleBoxH) });
+      titleLinesByBase.set(basename, normalizeTitleLines(img.titleLines));
 
       let pipeline = sharp(buf);
       let workW = meta.width ?? 1290;
@@ -322,8 +233,8 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     // 2048x2732 would give 2048x2796), and frameit hard-fails on a missing background.
     const fallbackBackgroundKey = [...distinctSizes.entries()].sort((a, b) => b[1].w * b[1].h - a[1].w * a[1].h)[0][0];
 
-    for (const [key, { w, h }] of distinctSizes) {
-      const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    const backgroundSvg = (w: number, h: number) =>
+      `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
           <stop offset="0%" stop-color="${bgColor1}"/>
@@ -333,17 +244,35 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       <rect width="${w}" height="${h}" fill="url(#bg)"/>
     </svg>`;
 
+    for (const [key, { w, h }] of distinctSizes) {
       // Lossless PNG rather than JPEG: a smooth two-stop gradient is exactly the content
       // where JPEG shows banding, and it is the full-bleed backdrop of every screenshot.
-      await sharp(Buffer.from(svg))
+      await sharp(Buffer.from(backgroundSvg(w, h)))
         .png()
         .toFile(path.join(tmpDir, `background-${key}.png`));
     }
     // Font selection has to see every subline in the batch, not just the fallback, or a
     // locale whose script only appears in a per-image title would render in the wrong face.
-    const fontSourcePath = pickFrameitFont([title ?? "", subtitle ?? "", ...titleByBase.values()].join(" "));
+    const fontSourcePath = pickFrameitFont(
+      [title ?? "", subtitle ?? "", ...titleByBase.values()].join(" "),
+      familyFontPath,
+    );
     const frameitFont = copyFrameitFont(fontSourcePath, tmpDir);
     const fallbackLayout = layoutByBase.values().next().value ?? "center";
+    const deviceChanged = new Set([
+      ...[...offsetByBase.entries()].filter(([, o]) => o.x !== 0 || o.y !== 0).map(([base]) => base),
+      ...[...deviceScaleByBase.entries()].filter(([, k]) => k !== 1).map(([base]) => base),
+    ]);
+
+    const titleChanged = new Set([
+      ...[...titleOffsetByBase.entries()].filter(([, o]) => o.x !== 0 || o.y !== 0).map(([base]) => base),
+      ...[...titleScaleByBase.entries()].filter(([, k]) => k !== 1).map(([base]) => base),
+    ]);
+
+    const boxChanged = new Set([...titleBoxByBase.entries()].filter(([, b]) => b.w > 0).map(([base]) => base));
+
+    const shiftedBases = new Set([...deviceChanged, ...titleChanged, ...boxChanged]);
+    const devicePassBases = new Set([...deviceChanged, ...boxChanged]);
 
     // frameit substring-matches `filter` against the full screenshot path and deep-merges
     // every hit in array order (config_parser.rb:29). The trailing dot anchors the match to
@@ -356,7 +285,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
           return {
             filter: `${base}.`,
             title_below_image: layoutByBase.get(base) === "bottom",
-            title: { text: titleByBase.get(base) ?? " ", color: textColor, font, font_size: 150 },
+            title: { text: boxChanged.has(base) ? " " : (titleByBase.get(base) ?? " "), color: textColor, font, font_size: 150 },
             ...(withBackground ? { background: backgroundFor(base) } : {}),
           };
         })
@@ -381,25 +310,35 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       ),
     );
 
-    if (includeUnframed) {
-      tmpDirNoBg = path.join(os.tmpdir(), `worker-frameit-nobg-${Date.now()}`);
-      fs.mkdirSync(tmpDirNoBg, { recursive: true });
+    if (devicePassBases.size > 0) {
+      tmpDirDevice = path.join(os.tmpdir(), `worker-frameit-device-${Date.now()}`);
+      fs.mkdirSync(tmpDirDevice, { recursive: true });
 
-      for (const img of images) {
-        const basename = img.filename.replace(/\.[^.]+$/, "");
-        const src = path.join(tmpDir, basename + ".png");
+      for (const base of devicePassBases) {
+        const src = path.join(tmpDir, base + ".png");
+
         if (fs.existsSync(src)) {
-          fs.copyFileSync(src, path.join(tmpDirNoBg, basename + ".png"));
+          fs.copyFileSync(src, path.join(tmpDirDevice, base + ".png"));
         }
       }
 
-      const frameitFontNoBg = copyFrameitFont(fontSourcePath, tmpDirNoBg);
-      const defaultSectionNoBg = buildTitleSection(title, subtitle, textColor, fallbackLayout, frameitFontNoBg);
+      const frameitFontDevice = copyFrameitFont(fontSourcePath, tmpDirDevice);
+      const defaultSectionDevice = buildTitleSection(
+        title,
+        subtitle,
+        textColor,
+        fallbackLayout,
+        frameitFontDevice,
+      );
 
       fs.writeFileSync(
-        path.join(tmpDirNoBg, "Framefile.json"),
+        path.join(tmpDirDevice, "Framefile.json"),
         JSON.stringify(
-          { device_frame_version: "latest", default: defaultSectionNoBg, data: buildEntries(frameitFontNoBg, false) },
+          {
+            device_frame_version: "latest",
+            default: defaultSectionDevice,
+            data: buildEntries(frameitFontDevice, false),
+          },
           null,
           2,
         ),
@@ -432,7 +371,10 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return output;
     };
 
-    const [combinedOutput] = await Promise.all([runFrameit(tmpDir), ...(tmpDirNoBg ? [runFrameit(tmpDirNoBg)] : [])]);
+    const [combinedOutput] = await Promise.all([
+      runFrameit(tmpDir),
+      ...(tmpDirDevice ? [runFrameit(tmpDirDevice)] : []),
+    ]);
 
     // frameit also frames our generated background-*.png assets sitting in the same
     // dir - exclude them or every locale ships two content-less "screenshots".
@@ -451,9 +393,49 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       );
     }
 
+    const deviceLayerByBase = new Map<string, Buffer>();
+
+    if (tmpDirDevice) {
+      for (const base of devicePassBases) {
+        const devicePath = path.join(tmpDirDevice, `${base}_framed.png`);
+
+        if (!fs.existsSync(devicePath)) {
+          throw new Error(`frameit device pass produced no image for ${base}\n${combinedOutput}`);
+        }
+
+        deviceLayerByBase.set(base, await fs.promises.readFile(devicePath));
+      }
+    }
+
     const gravityFor = (base: string) => {
       const layout = layoutByBase.get(base) ?? "center";
       return layout === "top" ? "north" : layout === "bottom" ? "south" : "centre";
+    };
+
+    const shiftDevice = async (base: string, framed: Buffer): Promise<Buffer> => {
+      const work = workDimsByBase.get(base) ?? { w: maxW, h: maxH };
+      const gradient = await sharp(Buffer.from(backgroundSvg(work.w, work.h)))
+        .png()
+        .toBuffer();
+
+      return recompositeShiftedFrame({
+        framed,
+        work,
+        layout: layoutByBase.get(base) ?? "center",
+        offset: offsetByBase.get(base) ?? { x: 0, y: 0 },
+        titleOffset: titleOffsetByBase.get(base) ?? { x: 0, y: 0 },
+        titleScale: titleScaleByBase.get(base) ?? 1,
+        deviceScale: deviceScaleByBase.get(base) ?? 1,
+        titleBoxW: titleBoxByBase.get(base)?.w ?? 0,
+        titleBoxH: titleBoxByBase.get(base)?.h ?? 0,
+        titleLines: titleLinesByBase.get(base) ?? [],
+        title: titleByBase.get(base) ?? " ",
+        fontPath: fontSourcePath,
+        tmpDir,
+        textColor,
+        gradient,
+        deviceLayer: deviceLayerByBase.get(base),
+      });
     };
 
     const processFramedFiles = async (
@@ -462,8 +444,9 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     ): Promise<Array<{ filename: string; data: string }>> => {
       const result: Array<{ filename: string; data: string }> = [];
       for (const f of files) {
-        const raw = await fs.promises.readFile(path.join(dir, f));
         const srcBase = f.replace(/_framed\.png$/, "");
+        const framed = await fs.promises.readFile(path.join(dir, f));
+        const raw = shiftedBases.has(srcBase) ? await shiftDevice(srcBase, framed) : framed;
         const dims = outputDims.get(srcBase) ?? { w: maxW, h: maxH };
         const finalBuf = await sharp(raw)
           .resize(dims.w, dims.h, { fit: "cover", position: gravityFor(srcBase) })
@@ -474,17 +457,13 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return result;
     };
 
-    const noBgFiles = tmpDirNoBg ? fs.readdirSync(tmpDirNoBg).filter(isRealFrame) : [];
-    const [framedImages, unframedImages] = await Promise.all([
-      processFramedFiles(tmpDir, framedFiles),
-      tmpDirNoBg ? processFramedFiles(tmpDirNoBg, noBgFiles) : Promise.resolve([]),
-    ]);
+    const framedImages = await processFramedFiles(tmpDir, framedFiles);
 
-    res.json({ ok: true, framedImages, unframedImages, fontUsed: fontSourcePath });
+    res.json({ ok: true, framedImages, fontUsed: fontSourcePath });
   } catch (err) {
     res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   } finally {
-    for (const dir of [tmpDir, tmpDirNoBg].filter(Boolean)) {
+    for (const dir of [tmpDir, tmpDirDevice].filter(Boolean)) {
       try {
         fs.rmSync(dir, { recursive: true, force: true });
       } catch {

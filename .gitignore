@@ -3,7 +3,7 @@ dist
 .env
 keys
 .DS_Store
-screenshots
+/screenshots/
 builds
 
 #Auto created by posthog setup wizard

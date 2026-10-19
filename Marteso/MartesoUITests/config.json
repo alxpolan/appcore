@@ -10,7 +10,8 @@
     "languages": ["en-US"],
     "bgColor1": "#D94412",
     "bgColor2": "#ff6b00",
-    "textColor": "#ffffff"
+    "textColor": "#ffffff",
+    "textPosition": "top"
   },
   "01_Dashboard": "ASO dashboard with keyword rankings and download trends at a glance",
   "02_Keywords": "Keyword tracker with popularity scores and rank history",
