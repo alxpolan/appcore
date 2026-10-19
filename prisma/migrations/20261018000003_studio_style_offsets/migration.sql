@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "offsetX" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "offsetY" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "titleOffsetX" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "titleOffsetY" INTEGER NOT NULL DEFAULT 0;

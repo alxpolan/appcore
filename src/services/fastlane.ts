@@ -10,6 +10,7 @@ import type { EffectiveSettings } from "../config";
 import { type AppStoreConnectClient, type ASCAppStoreVersion } from "./appstore-connect";
 import { ascClientFromSettings } from "./asc-client";
 import { workerClient } from "./worker-client";
+import { getEffectiveFramed } from "./screenshot-studio";
 
 export const ipaDownloadTokens = new Map<string, string>();
 export const appStoreInfoTokens = new Map<string, string>();
@@ -386,7 +387,7 @@ export class FastlaneService {
               status: "COMPLETED",
               framedByLocale: { not: Prisma.AnyNull },
             },
-            select: { framedByLocale: true },
+            select: { id: true },
           })
         : null;
 
@@ -399,11 +400,12 @@ export class FastlaneService {
             framedByLocale: { not: Prisma.AnyNull },
           },
           orderBy: { completedAt: "desc" },
-          select: { framedByLocale: true },
+          select: { id: true },
         }));
-      if (!job?.framedByLocale) return null;
 
-      const framedByLocale = job.framedByLocale as Record<string, string[]>;
+      if (!job) return null;
+
+      const { framedByLocale } = await getEffectiveFramed(job.id);
       const screenshots: Record<string, Array<{ filename: string; absPath: string }>> = {};
 
       for (const [locale, urls] of Object.entries(framedByLocale)) {

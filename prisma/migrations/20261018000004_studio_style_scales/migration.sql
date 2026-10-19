@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "titleScale" DOUBLE PRECISION NOT NULL DEFAULT 1;
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "deviceScale" DOUBLE PRECISION NOT NULL DEFAULT 1;

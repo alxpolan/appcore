@@ -25,6 +25,7 @@ import {
 } from "../../services/github";
 import { verifyAppOwnership, verifyToken } from "../auth";
 import { runScreenshotGeneration } from "../../services/generate-screenshots";
+import { getEffectiveFramed, writeEffectiveFramed } from "../../services/screenshot-studio";
 import { runBuildJob } from "../../services/build-binary";
 import { getJobLogBuffer } from "../../services/log-bus";
 
@@ -818,13 +819,20 @@ githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request
       return;
     }
 
-    const job = await prisma.screenshotJob.findUnique({ where: { id: jobId } });
-    if (!job || !job.framedByLocale) {
+    const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
+
+    if (!job) {
       res.status(404).json({ error: "Job not found" });
       return;
     }
 
-    const framedByLocale = job.framedByLocale as Record<string, string[]>;
+    const { framedByLocale } = await getEffectiveFramed(jobId);
+
+    if (Object.keys(framedByLocale).length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
     const basename = (u: string) => decodeURIComponent(u.split("/").pop() ?? u);
     const targetBasename = basename(url);
 
@@ -840,10 +848,7 @@ githubRouter.delete("/screenshots/framed/:jobId", writeAuth, async (req: Request
       if (filtered.length > 0) updated[locale] = filtered;
     }
 
-    await prisma.screenshotJob.update({
-      where: { id: jobId },
-      data: { framedByLocale: updated as any },
-    });
+    await writeEffectiveFramed(jobId, updated);
 
     const screenshotsBase = path.join(process.cwd(), "screenshots");
     for (const removedUrl of removedUrls) {
@@ -876,13 +881,14 @@ githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: 
       return;
     }
 
-    const job = await prisma.screenshotJob.findUnique({ where: { id: jobId } });
-    if (!job?.framedByLocale) {
+    const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
+
+    if (!job) {
       res.status(404).json({ error: "Job not found" });
       return;
     }
 
-    const framedByLocale = job.framedByLocale as Record<string, string[]>;
+    const { framedByLocale } = await getEffectiveFramed(jobId);
     const existing = framedByLocale[locale];
 
     if (!existing) {
@@ -911,10 +917,7 @@ githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: 
       }
     }
 
-    await prisma.screenshotJob.update({
-      where: { id: jobId },
-      data: { framedByLocale: updated as any },
-    });
+    await writeEffectiveFramed(jobId, updated);
 
     res.json({ ok: true });
   } catch (err: any) {
@@ -957,6 +960,8 @@ githubRouter.get("/screenshots/latest-framed/:appId", requireAuth, async (req: R
       return;
     }
 
+    const effective = await getEffectiveFramed(job.id);
+
     res.json({
       job: {
         id: job.id,
@@ -964,7 +969,8 @@ githubRouter.get("/screenshots/latest-framed/:appId", requireAuth, async (req: R
         commitMessage: job.commitMessage,
         branch: job.branch,
         createdAt: job.createdAt,
-        framedByLocale: job.framedByLocale,
+        framedByLocale: effective.framedByLocale,
+        revision: effective.revision,
       },
     });
   } catch (err: any) {
@@ -987,19 +993,25 @@ githubRouter.get("/screenshots/framed-history/:appId", requireAuth, async (req: 
       take: 20,
     });
 
-    res.json({
-      jobs: jobs
-        .filter((j) => j.framedByLocale != null)
-        .slice(0, 5)
-        .map((j) => ({
+    const framed = jobs.filter((j) => j.framedByLocale != null).slice(0, 5);
+
+    const withEffective = await Promise.all(
+      framed.map(async (j) => {
+        const effective = await getEffectiveFramed(j.id);
+
+        return {
           id: j.id,
           commitSha: j.commitSha,
           commitMessage: j.commitMessage,
           branch: j.branch,
           createdAt: j.createdAt,
-          framedByLocale: j.framedByLocale,
-        })),
-    });
+          framedByLocale: effective.framedByLocale,
+          revision: effective.revision,
+        };
+      }),
+    );
+
+    res.json({ jobs: withEffective });
   } catch (err: any) {
     logger.error(`framed-history error: ${err.message}`);
     res.status(500).json({ error: err.message });

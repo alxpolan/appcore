@@ -250,6 +250,7 @@ model App {
   keywordSuggestions         KeywordSuggestion[]
   quickScanAi                AppQuickScanAi?
   googleAdsCampaignTokens    GoogleAdsCampaignToken[]
+  screenshotStylePresets     ScreenshotStylePreset[]
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
 
@@ -845,12 +846,57 @@ model ScreenshotJob {
   framedByLocale         Json?
   screenshotDescriptions Json?
   screenshotSublines     Json?
+  screenshotStyle        Json?
+  activeRevisionId       String?
+  revisions              ScreenshotRevision[]
   startedAt              DateTime?
   completedAt            DateTime?
   createdAt              DateTime  @default(now())
 
   @@index([appId, createdAt])
   @@index([commitSha])
+}
+
+model ScreenshotStylePreset {
+  id           String   @id @default(cuid())
+  appId        String
+  app          App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name         String
+  bgColor1     String   @default("#667eea")
+  bgColor2     String   @default("#764ba2")
+  textColor    String   @default("#ffffff")
+  font         String   @default("rounded")
+  textPosition String   @default("top")
+  offsetX      Int      @default(0)
+  offsetY      Int      @default(0)
+  titleOffsetX Int      @default(0)
+  titleOffsetY Int      @default(0)
+  titleScale   Float    @default(1)
+  deviceScale  Float    @default(1)
+  titleBoxW    Int      @default(0)
+  titleBoxH    Int      @default(0)
+  titleLines   String   @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([appId, name])
+  @@index([appId])
+}
+
+model ScreenshotRevision {
+  id             String        @id @default(cuid())
+  jobId          String
+  job            ScreenshotJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rev            Int
+  name           String?
+  framedByLocale Json
+  style          Json?
+  titles         Json?
+  styles         Json?
+  createdAt      DateTime      @default(now())
+
+  @@unique([jobId, rev])
+  @@index([jobId])
 }
 
 model BuildJob {

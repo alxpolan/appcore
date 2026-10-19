@@ -68,21 +68,34 @@ export interface WorkerBuildResult {
 }
 
 export interface WorkerFrameitParams {
-  images: Array<{ filename: string; data: string; title?: string }>;
+  images: Array<{
+    filename: string;
+    data: string;
+    title?: string;
+    offsetX?: number;
+    offsetY?: number;
+    titleOffsetX?: number;
+    titleOffsetY?: number;
+    titleScale?: number;
+    deviceScale?: number;
+    titleBoxW?: number;
+    titleBoxH?: number;
+    titleLines?: string[];
+  }>;
   options: {
     subtitle?: string;
     title?: string;
     bgColor1?: string;
     bgColor2?: string;
     textColor?: string;
-    includeUnframed?: boolean;
+    layoutMode?: "center" | "top" | "bottom" | "random";
+    fontFamily?: "rounded" | "inter" | "baloo";
   };
 }
 
 export interface WorkerFrameitResult {
   ok: boolean;
   framedImages: Array<{ filename: string; data: string }>;
-  unframedImages?: Array<{ filename: string; data: string }>;
   fontUsed?: string;
   error?: string;
 }
