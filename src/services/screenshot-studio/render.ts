@@ -2,12 +2,14 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../../config";
 import {
+  DEFAULT_STUDIO_GEOMETRY,
   matchDescriptionKey,
   normalizeStudioStyle,
   normalizeStudioTitle,
   resolveStudioTitle,
   studioBasename,
   studioDeviceLabel,
+  titleLinesForTitle,
   type StudioStyle,
 } from "./style";
 import { frameComplexBatch } from "./complex";
@@ -57,6 +59,7 @@ export interface StudioData {
 export interface StudioSaveLocale {
   titles: Record<string, string>;
   styles?: Record<string, Partial<StudioStyle>>;
+  titleLines?: Record<string, unknown>;
 }
 
 export interface StudioSaveResult {
@@ -109,6 +112,19 @@ export function pickStudioSourceLocale(targetLocale: string, sourceLocales: stri
 
 function studioJobDir(jobId: string): string {
   return path.join(process.cwd(), "screenshots", jobId);
+}
+
+function storedShotPatch(patch: unknown): Partial<StudioStyle> | null {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return null;
+
+  const rest = { ...(patch as Partial<StudioStyle>) };
+  delete rest.titleLines;
+
+  if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
+    return null;
+  }
+
+  return rest;
 }
 
 async function studioRawLocales(jobId: string): Promise<string[]> {
@@ -294,10 +310,7 @@ export async function renderStudioRevision(args: {
   const planned: PlannedImage[] = [];
   const skipped: string[] = [];
   const titlesOut: Record<string, Record<string, string>> = { ...revisionTitles };
-  const stylesOut: Record<string, Partial<StudioStyle>> = await studioRevisionStyles(
-    args.jobId,
-    effective.revisionId,
-  );
+  const stylesOut: Record<string, Partial<StudioStyle>> = {};
 
   for (const locale of requestedLocales) {
     assertStudioSegment(locale, "locale");
@@ -317,6 +330,7 @@ export async function renderStudioRevision(args: {
         resolveStudioTitle({ basename, locale, sublines, descriptions, fallback: fallbackTitle });
       const title = normalizeStudioTitle(save.titles[basename] ?? currentTitle);
       const style = normalizeStudioStyle({ ...globalStyle, ...save.styles?.[basename] });
+      style.titleLines = titleLinesForTitle(save.titleLines?.[basename] ?? style.titleLines, title);
       const hasRaw = sourceLocale
         ? fs.existsSync(path.join(studioJobDir(args.jobId), "raw", sourceLocale, basename))
         : false;
@@ -333,9 +347,14 @@ export async function renderStudioRevision(args: {
     titlesOut[locale] = localeTitles;
 
     for (const [base, patch] of Object.entries(save.styles ?? {})) {
-      if (!patch || typeof patch !== "object") continue;
+      const clean = storedShotPatch(patch);
 
-      stylesOut[base] = patch;
+      if (!clean) {
+        delete stylesOut[base];
+        continue;
+      }
+
+      stylesOut[base] = clean;
     }
   }
 
@@ -403,12 +422,14 @@ export async function renderStudioRevision(args: {
     });
   }
 
+  const storedGlobalStyle = { ...globalStyle, titleLines: [] };
+
   const revision = await createStudioRevision({
     jobId: args.jobId,
     rev,
     name: args.name,
     framedByLocale,
-    style: globalStyle,
+    style: storedGlobalStyle,
     titles: titlesOut,
     styles: stylesOut,
   });
@@ -432,7 +453,7 @@ export async function renderStudioRevision(args: {
       status: "COMPLETED",
       screenshotUrls: [],
       framedByLocale: framedByLocale as Prisma.InputJsonValue,
-      screenshotStyle: globalStyle as Prisma.InputJsonValue,
+      screenshotStyle: storedGlobalStyle as Prisma.InputJsonValue,
       screenshotSublines: (job.screenshotSublines ?? {}) as Prisma.InputJsonValue,
       screenshotDescriptions: (job.screenshotDescriptions ?? {}) as Prisma.InputJsonValue,
       logs: JSON.stringify(logLines),

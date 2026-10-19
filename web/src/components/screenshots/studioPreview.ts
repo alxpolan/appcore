@@ -273,7 +273,7 @@ export function measureTitleBlock(
 
 const loadedFonts = new Set<string>();
 
-async function ensureStudioFont(font: string): Promise<string> {
+export async function ensureStudioFont(font: string): Promise<string> {
   const family = FONT_FAMILIES[font] ?? FONT_FAMILIES.rounded;
 
   if (loadedFonts.has(family)) return family;

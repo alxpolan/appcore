@@ -42,6 +42,10 @@ export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_
   titleLines: [],
 };
 
+export const STUDIO_APPLY_GEOMETRY_KEYS: Array<keyof StudioStyle> = STUDIO_GEOMETRY_KEYS.filter(
+  (key) => key !== "titleLines",
+);
+
 export type StudioLayer = "caption" | "device" | "background";
 
 export interface StudioItem {
@@ -93,6 +97,7 @@ export interface StudioData {
 export interface StudioSaveLocale {
   titles: Record<string, string>;
   styles?: Record<string, Partial<StudioStyle>>;
+  titleLines?: Record<string, string[]>;
 }
 
 export interface StudioSaveResponse {

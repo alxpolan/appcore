@@ -10,16 +10,18 @@ import StudioLayers from "./StudioLayers";
 import StudioCanvas from "./StudioCanvas";
 import StudioInspector from "./StudioInspector";
 import StudioRevisions from "./StudioRevisions";
-import { computeTitleLines } from "./studioPreview";
+import { computeTitleLines, ensureStudioFont } from "./studioPreview";
 import {
   DEFAULT_STUDIO_GEOMETRY,
+  STUDIO_APPLY_GEOMETRY_KEYS,
+  STUDIO_GEOMETRY_KEYS,
   revisionLabel,
   studioApi,
-  STUDIO_GEOMETRY_KEYS,
   type StudioData,
   type StudioLayer,
   type StudioPresetInfo,
   type StudioProgressEvent,
+  type StudioSaveLocale,
   type StudioStyle,
 } from "./studioApi";
 
@@ -128,16 +130,6 @@ export default function Studio({ addToast }: Props) {
     return false;
   }, [data, style, titles, shotOverrides]);
 
-  useEffect(() => {
-    if (!style || !selectedBasename || !effectiveShot || effectiveShot.titleBoxW <= 0) return;
-
-    const lines = computeTitleLines(selectedTitle, effectiveShot.font, effectiveShot.titleScale, effectiveShot.titleBoxW);
-
-    if (JSON.stringify(lines) !== JSON.stringify(effectiveShot.titleLines)) {
-      handleGeometryChange({ titleLines: lines });
-    }
-  });
-
   const showPrev = () => {
     if (orderedItems.length < 2) return;
 
@@ -166,7 +158,7 @@ export default function Studio({ addToast }: Props) {
     const geoPatch: Partial<StudioStyle> = {};
     const sink = geoPatch as Record<string, unknown>;
 
-    for (const key of STUDIO_GEOMETRY_KEYS) {
+    for (const key of STUDIO_APPLY_GEOMETRY_KEYS) {
       if (patch[key] !== undefined) sink[key] = patch[key];
     }
 
@@ -203,7 +195,7 @@ export default function Studio({ addToast }: Props) {
     const source: Partial<StudioStyle> = {};
     const sink = source as Record<string, unknown>;
 
-    for (const key of STUDIO_GEOMETRY_KEYS) sink[key] = effectiveShot[key];
+    for (const key of STUDIO_APPLY_GEOMETRY_KEYS) sink[key] = effectiveShot[key];
 
     if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...source }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
       setShotOverrides({});
@@ -223,18 +215,46 @@ export default function Studio({ addToast }: Props) {
   const handleSave = async () => {
     if (!jobId || !data || !style || saving) return;
 
-    const targetLocales =
-      scope === "all" ? data.locales : data.locales.filter((l) => l.locale === localeData?.locale);
-    const payload: Record<string, { titles: Record<string, string>; styles: Record<string, Partial<StudioStyle>> }> = {};
-
-    for (const l of targetLocales) {
-      payload[l.locale] = { titles: titles[l.locale] ?? {}, styles: shotOverrides };
-    }
-
     setSaving(true);
     setProgress(null);
 
     try {
+      const targetLocales =
+        scope === "all" ? data.locales : data.locales.filter((l) => l.locale === localeData?.locale);
+
+      const commonStyles: Record<string, Partial<StudioStyle>> = {};
+
+      for (const [base, patch] of Object.entries(shotOverrides)) {
+        const rest = { ...patch };
+        delete rest.titleLines;
+
+        if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) !== JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
+          commonStyles[base] = rest;
+        }
+      }
+
+      await ensureStudioFont(style.font);
+
+      const payload: Record<string, StudioSaveLocale> = {};
+
+      for (const l of targetLocales) {
+        const titlesForLocale = titles[l.locale] ?? {};
+        const linesForLocale: Record<string, string[]> = {};
+
+        for (const item of l.items) {
+          const shot = { ...style, ...(shotOverrides[item.basename] ?? {}) };
+          const caption = titlesForLocale[item.basename] ?? item.title;
+
+          if (shot.titleBoxW > 0 && caption.trim().length > 0) {
+            const lines = computeTitleLines(caption, style.font, shot.titleScale, shot.titleBoxW);
+
+            if (lines.length > 0) linesForLocale[item.basename] = lines;
+          }
+        }
+
+        payload[l.locale] = { titles: titlesForLocale, styles: commonStyles, titleLines: linesForLocale };
+      }
+
       const result = await studioApi.saveRevisionStream(
         jobId,
         {
@@ -244,6 +264,7 @@ export default function Studio({ addToast }: Props) {
         },
         setProgress,
       );
+
       const skipped = result.skipped.length > 0 ? `, ${result.skipped.length} skipped` : "";
       addToast(`Saved ${revisionLabel(result.revision)} (${result.modes.worker} rendered${skipped})`, "success");
       refetch();
@@ -303,7 +324,7 @@ export default function Studio({ addToast }: Props) {
       const geo: Partial<StudioStyle> = {};
       const sink = geo as Record<string, unknown>;
 
-      for (const key of STUDIO_GEOMETRY_KEYS) sink[key] = preset[key];
+      for (const key of STUDIO_APPLY_GEOMETRY_KEYS) sink[key] = preset[key];
 
       const effective = { ...DEFAULT_STUDIO_GEOMETRY, ...geo };
       const next = { ...shotOverrides };
@@ -326,7 +347,7 @@ export default function Studio({ addToast }: Props) {
     setSavingPreset(true);
 
     try {
-      await studioApi.createPreset(data.job.appId, { name, style: effectiveShot });
+      await studioApi.createPreset(data.job.appId, { name, style: { ...effectiveShot, titleLines: [] } });
       addToast(`Preset ${name} saved`, "success");
       refetch();
     } catch (err: any) {

@@ -174,6 +174,22 @@ export function normalizeStudioTitle(value: unknown): string {
   return value.replace(/\s+/g, " ").trim().slice(0, STUDIO_TITLE_MAX_LENGTH);
 }
 
+export function titleLinesForTitle(value: unknown, title: string): string[] {
+  const lines = normalizeTitleLines(value);
+
+  if (lines.length === 0) return [];
+
+  const expected = normalizeStudioTitle(title);
+
+  if (!expected) return [];
+
+  const joined = normalizeStudioTitle(lines.join(" "));
+
+  if (joined !== expected) return [];
+
+  return lines;
+}
+
 export function matchDescriptionKey(basename: string, descriptions: Record<string, string>): string | null {
   const base = basename.replace(/\.[^.]+$/, "");
   const hit = Object.keys(descriptions).find((key) => base === key || base.startsWith(`${key}_`));

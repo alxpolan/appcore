@@ -20,6 +20,7 @@ type StudioStylePatch = Partial<StudioStyle>;
 interface StudioSaveInput {
   titles: Record<string, string>;
   styles?: Record<string, StudioStylePatch>;
+  titleLines?: Record<string, unknown>;
 }
 
 const writeAuth = [requireAuth, loadTeamRole, requireWriteRole];
@@ -34,9 +35,18 @@ function parseRevisionLocales(body: unknown): Record<string, StudioSaveInput> | 
   const normalized: Record<string, StudioSaveInput> = {};
 
   for (const [locale, save] of Object.entries(
-    locales as Record<string, { titles?: Record<string, string>; styles?: Record<string, StudioStylePatch> }>,
+    locales as Record<
+      string,
+      { titles?: Record<string, string>; styles?: Record<string, StudioStylePatch>; titleLines?: Record<string, unknown> }
+    >,
   )) {
-    normalized[locale] = { titles: save?.titles ?? {}, styles: save?.styles };
+    const rawLines = save?.titleLines;
+    const titleLines =
+      rawLines && typeof rawLines === "object" && !Array.isArray(rawLines)
+        ? (rawLines as Record<string, unknown>)
+        : undefined;
+
+    normalized[locale] = { titles: save?.titles ?? {}, styles: save?.styles, titleLines };
   }
 
   return normalized;

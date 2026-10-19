@@ -15,6 +15,7 @@ import {
   resolveStudioTitle,
   studioBasename,
   studioDeviceLabel,
+  titleLinesForTitle,
 } from "../src/services/screenshot-studio/style";
 import { asFramedMap } from "../src/services/screenshot-studio/revisions";
 import {
@@ -267,5 +268,21 @@ describe("studio render: source locale picking", () => {
     assert.equal(pickStudioSourceLocale("de-DE", ["en-GB", "fr-FR"]), "en-GB");
     assert.equal(pickStudioSourceLocale("de-DE", ["fr-FR"]), "fr-FR");
     assert.equal(pickStudioSourceLocale("de-DE", []), null);
+  });
+});
+
+describe("studio style: title lines stay with their title", () => {
+  it("keeps line breaks that segment the same title", () => {
+    assert.deepEqual(titleLinesForTitle(["Tap to", "count rows"], "Tap   to count rows"), ["Tap to", "count rows"]);
+  });
+
+  it("drops lines copied from another caption", () => {
+    assert.deepEqual(titleLinesForTitle(["Tap to", "count rows"], "Projekte auf einen Blick"), []);
+  });
+
+  it("drops empty titles and non-line input", () => {
+    assert.deepEqual(titleLinesForTitle([], "Tap to count rows"), []);
+    assert.deepEqual(titleLinesForTitle(["Tap to count rows"], ""), []);
+    assert.deepEqual(titleLinesForTitle("not-an-array", "Tap to count rows"), []);
   });
 });

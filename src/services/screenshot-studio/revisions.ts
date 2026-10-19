@@ -306,25 +306,27 @@ export async function createStudioPreset(
 
   if (!cleanName) throw new Error("Preset name is required");
 
+  const stored = { ...style, titleLines: [] };
+
   try {
     const created = await prisma.screenshotStylePreset.create({
       data: {
         appId,
         name: cleanName,
-        bgColor1: style.bgColor1,
-        bgColor2: style.bgColor2,
-        textColor: style.textColor,
-        font: style.font,
-        textPosition: style.textPosition,
-        offsetX: style.offsetX,
-        offsetY: style.offsetY,
-        titleOffsetX: style.titleOffsetX,
-        titleOffsetY: style.titleOffsetY,
-        titleScale: style.titleScale,
-        deviceScale: style.deviceScale,
-        titleBoxW: style.titleBoxW,
-        titleBoxH: style.titleBoxH,
-        titleLines: JSON.stringify(style.titleLines),
+        bgColor1: stored.bgColor1,
+        bgColor2: stored.bgColor2,
+        textColor: stored.textColor,
+        font: stored.font,
+        textPosition: stored.textPosition,
+        offsetX: stored.offsetX,
+        offsetY: stored.offsetY,
+        titleOffsetX: stored.titleOffsetX,
+        titleOffsetY: stored.titleOffsetY,
+        titleScale: stored.titleScale,
+        deviceScale: stored.deviceScale,
+        titleBoxW: stored.titleBoxW,
+        titleBoxH: stored.titleBoxH,
+        titleLines: JSON.stringify(stored.titleLines),
       },
     });
 
@@ -387,7 +389,7 @@ export async function updateStudioPreset(
     data.deviceScale = merged.deviceScale;
     data.titleBoxW = merged.titleBoxW;
     data.titleBoxH = merged.titleBoxH;
-    data.titleLines = JSON.stringify(merged.titleLines);
+    data.titleLines = JSON.stringify([]);
   }
 
   try {
