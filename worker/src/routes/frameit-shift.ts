@@ -166,6 +166,40 @@ async function cropToInk(buf: Buffer): Promise<{ buf: Buffer; w: number; h: numb
   return { buf: cropped, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
+export interface LineClip {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function clipLineToBox(
+  inkW: number,
+  inkH: number,
+  x: number,
+  y: number,
+  boxLeft: number,
+  boxTop: number,
+  boxW: number,
+  boxH: number,
+): LineClip | null {
+  const visX0 = Math.max(boxLeft, x);
+  const visY0 = Math.max(boxTop, y);
+  const visX1 = Math.min(boxLeft + boxW, x + inkW);
+  const visY1 = Math.min(boxTop + boxH, y + inkH);
+
+  if (visX1 <= visX0 || visY1 <= visY0) return null;
+
+  const left = Math.max(0, Math.min(inkW, Math.round(visX0 - x)));
+  const top = Math.max(0, Math.min(inkH, Math.round(visY0 - y)));
+  const width = Math.max(0, Math.min(inkW - left, Math.round(visX1 - visX0)));
+  const height = Math.max(0, Math.min(inkH - top, Math.round(visY1 - visY0)));
+
+  if (width < 1 || height < 1) return null;
+
+  return { left, top, width, height };
+}
+
 async function renderBoxTitle(
   ctx: ShiftFrameContext,
   work: { w: number; h: number },
@@ -196,17 +230,12 @@ async function renderBoxTitle(
 
     const x = Math.round(cx - ink.w / 2);
     const y = Math.round(boxTop + i * step + (step - ink.h) / 2);
-    const visX0 = Math.max(boxLeft, x);
-    const visY0 = Math.max(boxTop, y);
-    const visX1 = Math.min(boxLeft + ctx.titleBoxW, x + ink.w);
-    const visY1 = Math.min(boxTop + boxH, y + ink.h);
+    const clip = clipLineToBox(ink.w, ink.h, x, y, boxLeft, boxTop, ctx.titleBoxW, boxH);
 
-    if (visX1 > visX0 && visY1 > visY0) {
-      const visible = await sharp(ink.buf)
-        .extract({ left: Math.round(visX0 - x), top: Math.round(visY0 - y), width: Math.round(visX1 - visX0), height: Math.round(visY1 - visY0) })
-        .toBuffer();
-      placed.push({ input: visible, left: Math.round(visX0), top: Math.round(visY0) });
-    }
+    if (!clip) continue;
+
+    const visible = await sharp(ink.buf).extract(clip).toBuffer();
+    placed.push({ input: visible, left: x + clip.left, top: y + clip.top });
   }
 
   return placed;

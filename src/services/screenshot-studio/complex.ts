@@ -45,7 +45,9 @@ export async function frameComplexBatch(args: {
   });
 
   if (!result.ok) {
-    throw new Error(`Worker frameit failed: ${result.error ?? "unknown error"}`);
+    const where = `${path.basename(args.outDir)} (${args.shots.map((shot) => shot.base).join(", ")})`;
+
+    throw new Error(`Worker frameit failed for ${where}: ${result.error ?? "unknown error"}`);
   }
 
   args.log?.(`[framing] Worker frames: ${result.fontUsed ?? "font not reported"}`);
