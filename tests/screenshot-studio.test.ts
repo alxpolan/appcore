@@ -22,6 +22,7 @@ import {
   assertStudioBasename,
   assertStudioSegment,
   pickStudioSourceLocale,
+  splitIntoChunks,
 } from "../src/services/screenshot-studio/render";
 
 describe("studio style: color normalization", () => {
@@ -268,6 +269,29 @@ describe("studio render: source locale picking", () => {
     assert.equal(pickStudioSourceLocale("de-DE", ["en-GB", "fr-FR"]), "en-GB");
     assert.equal(pickStudioSourceLocale("de-DE", ["fr-FR"]), "fr-FR");
     assert.equal(pickStudioSourceLocale("de-DE", []), null);
+  });
+});
+
+describe("studio render: chunk splitting", () => {
+  it("splits evenly and keeps order", () => {
+    assert.deepEqual(splitIntoChunks([1, 2, 3, 4], 2), [
+      [1, 2],
+      [3, 4],
+    ]);
+  });
+
+  it("keeps the remainder in a final chunk", () => {
+    assert.deepEqual(splitIntoChunks([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  });
+
+  it("returns one chunk for short lists and none for empty lists", () => {
+    assert.deepEqual(splitIntoChunks([1, 2], 8), [[1, 2]]);
+    assert.deepEqual(splitIntoChunks([], 8), []);
+  });
+
+  it("guards non-positive sizes with single-item chunks", () => {
+    assert.deepEqual(splitIntoChunks([1, 2], 0), [[1], [2]]);
+    assert.deepEqual(splitIntoChunks([1, 2], -3), [[1], [2]]);
   });
 });
 

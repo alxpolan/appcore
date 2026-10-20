@@ -6,6 +6,7 @@ import type { StudioStyle } from "./style";
 export interface ComplexShot {
   filename: string;
   base: string;
+  style: StudioStyle;
 }
 
 export async function frameComplexBatch(args: {
@@ -20,15 +21,15 @@ export async function frameComplexBatch(args: {
     filename: shot.filename,
     data: fs.readFileSync(path.join(args.srcDir, shot.filename)).toString("base64"),
     title: args.titles.get(shot.base) ?? "",
-    offsetX: args.style.offsetX,
-    offsetY: args.style.offsetY,
-    titleOffsetX: args.style.titleOffsetX,
-    titleOffsetY: args.style.titleOffsetY,
-    titleScale: args.style.titleScale,
-    deviceScale: args.style.deviceScale,
-    titleBoxW: args.style.titleBoxW,
-    titleBoxH: args.style.titleBoxH,
-    titleLines: args.style.titleLines,
+    offsetX: shot.style.offsetX,
+    offsetY: shot.style.offsetY,
+    titleOffsetX: shot.style.titleOffsetX,
+    titleOffsetY: shot.style.titleOffsetY,
+    titleScale: shot.style.titleScale,
+    deviceScale: shot.style.deviceScale,
+    titleBoxW: shot.style.titleBoxW,
+    titleBoxH: shot.style.titleBoxH,
+    titleLines: shot.style.titleLines,
   }));
 
   const result = await workerClient.frameit({

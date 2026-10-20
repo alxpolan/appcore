@@ -178,6 +178,11 @@ class FastlaneWorkerClient {
     return this.getSlots().filter((s) => !s.busy).length;
   }
 
+  /** Configured workers in total - callers size parallel dispatch off this. */
+  slotCount(): number {
+    return this.getSlots().length;
+  }
+
   async health(): Promise<WorkerHealthResult> {
     let lastError: WorkerHealthResult | null = null;
     for (const slot of this.getSlots()) {

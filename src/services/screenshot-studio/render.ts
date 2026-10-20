@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
+import PQueue from "p-queue";
 import { prisma } from "../../config";
+import { workerClient } from "../worker-client";
 import {
   DEFAULT_STUDIO_GEOMETRY,
   matchDescriptionKey,
@@ -108,6 +110,19 @@ export function pickStudioSourceLocale(targetLocale: string, sourceLocales: stri
   if (sourceLocales.includes("en")) return "en";
 
   return sourceLocales.find((locale) => locale.toLowerCase().startsWith("en-")) ?? sourceLocales[0] ?? null;
+}
+
+export const STUDIO_RENDER_CHUNK_SIZE = 8;
+
+export function splitIntoChunks<T>(items: T[], size: number): T[][] {
+  const chunkSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 1;
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+
+  return chunks;
 }
 
 function studioJobDir(jobId: string): string {
@@ -373,6 +388,9 @@ export async function renderStudioRevision(args: {
   let donePlanned = 0;
   args.onProgress?.({ done: 0, total: totalPlanned, locale: null, basenames: [] });
 
+  const queue = new PQueue({ concurrency: workerClient.slotCount() });
+  const tasks: Array<Promise<void>> = [];
+
   for (const locale of requestedLocales) {
     const localePlanned = planned.filter((item) => item.locale === locale);
 
@@ -382,32 +400,38 @@ export async function renderStudioRevision(args: {
 
     if (!sourceLocale) throw new Error(`No source screenshots stored for ${locale}`);
 
-    const groups = new Map<string, PlannedImage[]>();
+    for (const chunk of splitIntoChunks(localePlanned, STUDIO_RENDER_CHUNK_SIZE)) {
+      const titles = new Map(chunk.map((item) => [item.basename.replace(/\.[^.]+$/, ""), item.title]));
+      const basenames = chunk.map((item) => item.basename);
 
-    for (const item of localePlanned) {
-      const key = JSON.stringify(item.style);
-      const group = groups.get(key) ?? [];
-      group.push(item);
-      groups.set(key, group);
+      tasks.push(
+        queue.add(async () => {
+          args.onProgress?.({ done: donePlanned, total: totalPlanned, locale, basenames });
+
+          await frameComplexBatch({
+            srcDir: path.join(studioJobDir(args.jobId), "raw", sourceLocale),
+            outDir: path.join(revDir, locale),
+            shots: chunk.map((item) => ({
+              filename: item.basename,
+              base: item.basename.replace(/\.[^.]+$/, ""),
+              style: item.style,
+            })),
+            titles,
+            style: globalStyle,
+          });
+
+          donePlanned += chunk.length;
+          args.onProgress?.({ done: donePlanned, total: totalPlanned, locale, basenames: [] });
+        }),
+      );
     }
+  }
 
-    for (const group of groups.values()) {
-      const style = group[0].style;
-      const titles = new Map(group.map((item) => [item.basename.replace(/\.[^.]+$/, ""), item.title]));
-      const basenames = group.map((item) => item.basename);
-      args.onProgress?.({ done: donePlanned, total: totalPlanned, locale, basenames });
-
-      await frameComplexBatch({
-        srcDir: path.join(studioJobDir(args.jobId), "raw", sourceLocale),
-        outDir: path.join(revDir, locale),
-        shots: group.map((item) => ({ filename: item.basename, base: item.basename.replace(/\.[^.]+$/, "") })),
-        titles,
-        style,
-      });
-
-      donePlanned += group.length;
-      args.onProgress?.({ done: donePlanned, total: totalPlanned, locale, basenames: [] });
-    }
+  try {
+    await Promise.all(tasks);
+  } catch (err) {
+    queue.clear();
+    throw err;
   }
 
   const framedByLocale = { ...effective.framedByLocale };

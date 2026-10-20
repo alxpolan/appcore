@@ -596,7 +596,7 @@ async function frameScreenshots(
       const entries = await fs.promises.readdir(srcDir);
       const shots = entries
         .filter((f) => /\.(png)$/i.test(f))
-        .map((filename) => ({ filename, base: filename.replace(/\.[^.]+$/, "") }))
+        .map((filename) => ({ filename, base: filename.replace(/\.[^.]+$/, ""), style }))
         .sort((a, b) => a.base.localeCompare(b.base));
 
       const titles = new Map<string, string>();
