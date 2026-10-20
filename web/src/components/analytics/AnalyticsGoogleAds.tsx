@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Megaphone,
@@ -11,11 +11,12 @@ import {
   MousePointerClick,
   Pause,
   Percent,
+  Play,
   Plus,
   TrendingUp,
   X,
 } from "lucide-react";
-import { getActiveBundleId, useApi } from "../../hooks/useApi";
+import { apiPatch, getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppItem, GoogleAdsCampaign, GoogleAdsDailyStatsResponse, GoogleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
@@ -58,10 +59,16 @@ function statusDot(status: string) {
   );
 }
 
-export default function AnalyticsGoogleAds() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsGoogleAds({ addToast }: Props) {
   const navigate = useNavigate();
   const { canManageTeam } = usePermissions();
   const [showCreate, setShowCreate] = useState(false);
+  const [statusOverride, setStatusOverride] = useState<Record<string, string>>({});
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const { data: status } = useApi<GoogleAdsStatus>("/google-ads/status", [], true);
   const { data: apps } = useApi<AppItem[]>("/apps?ownOnly=true", [], true);
   const activeBundleId = getActiveBundleId();
@@ -92,7 +99,42 @@ export default function AnalyticsGoogleAds() {
   );
   const days = dailyData?.days ?? [];
 
-  const campaigns = campaignsData?.campaigns ?? [];
+  const campaigns = (campaignsData?.campaigns ?? []).map((c) =>
+    c.id in statusOverride ? { ...c, status: statusOverride[c.id] } : c,
+  );
+
+  useEffect(() => {
+    setStatusOverride({});
+  }, [campaignsData]);
+
+  const handleToggleStatus = async (campaign: GoogleAdsCampaign) => {
+    if (!canManageTeam || togglingId) return;
+
+    const nextStatus = campaign.status === "ENABLED" ? "PAUSED" : "ENABLED";
+
+    if (nextStatus === "ENABLED" && !confirm(`Resume campaign "${campaign.name}"? It will start spending again.`)) return;
+
+    setTogglingId(campaign.id);
+    setStatusOverride((o) => ({ ...o, [campaign.id]: nextStatus }));
+
+    try {
+      await apiPatch(`/google-ads/campaigns/${campaign.id}/status`, { status: nextStatus });
+      addToast(nextStatus === "ENABLED" ? `Resumed "${campaign.name}"` : `Paused "${campaign.name}"`, "success");
+      refetchCampaigns();
+    } catch (e: any) {
+      setStatusOverride((o) => {
+        const restored = { ...o };
+
+        delete restored[campaign.id];
+
+        return restored;
+      });
+      addToast(e.message, "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const totals = campaigns.reduce(
     (acc, c) => ({
       spend: acc.spend + c.spend,
@@ -324,15 +366,35 @@ export default function AnalyticsGoogleAds() {
                           {c.apple ? fmtMoney(c.apple.proceedsUsd, "USD") : "—"}
                         </td>
                         <td className={`${TD} text-right pr-5`}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/google-ads/${c.id}`);
-                            }}
-                            className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
-                          >
-                            Details <ExternalLink className="w-3 h-3" />
-                          </button>
+                          <span className="inline-flex items-center gap-1">
+                            {canManageTeam && (c.status === "ENABLED" || c.status === "PAUSED") && (
+                              <button
+                                aria-label={c.status === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+                                title={c.status === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+                                disabled={togglingId === c.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleStatus(c);
+                                }}
+                                className={`inline-flex items-center justify-center w-7 h-7 rounded-md ${textMuted} hover:bg-gray-100 dark:hover:bg-white/10 hover:${textPrimary} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                {c.status === "ENABLED" ? (
+                                  <Pause className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                                ) : (
+                                  <Play className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                                )}
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/google-ads/${c.id}`);
+                              }}
+                              className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#595DD2] hover:underline`}
+                            >
+                              Details <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </span>
                         </td>
                       </tr>
                     ))}

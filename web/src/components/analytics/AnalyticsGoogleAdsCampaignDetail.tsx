@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Ban, Check, Megaphone, Pause, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
-import { apiGet, useApi } from "../../hooks/useApi";
+import { ArrowLeft, Ban, Check, Megaphone, Pause, Play, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
+import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsSearchTermsResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
@@ -230,9 +230,15 @@ function CountryStatsTable({
 
 type NegativesModalTarget = { scope: "campaign" } | { scope: "adGroup"; id: string; name: string };
 
-export default function AnalyticsGoogleAdsCampaignDetail() {
+interface Props {
+  addToast: (msg: string, type: "success" | "error" | "info") => void;
+}
+
+export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
+  const [statusOverride, setStatusOverride] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
   const [expandedAdGroup, setExpandedAdGroup] = useState<string | null>(null);
   const [kwSortCol, setKwSortCol] = useState<GoogleKeywordSortCol>("spend");
   const [kwSortDir, setKwSortDir] = useState<GoogleSortDir>("desc");
@@ -246,12 +252,18 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
   );
   const rangeDeps = [range, customStart, customEnd];
 
-  const { data: campaignsData, loading: campaignsLoading } = useApi<{ campaigns: GoogleAdsCampaign[] }>(
-    `/google-ads/campaigns${query}`,
-    rangeDeps,
-    true,
-  );
+  const {
+    data: campaignsData,
+    loading: campaignsLoading,
+    refetch: refetchCampaigns,
+  } = useApi<{ campaigns: GoogleAdsCampaign[] }>(`/google-ads/campaigns${query}`, rangeDeps, true);
+
   const campaign = campaignsData?.campaigns.find((c) => c.id === campaignId) ?? null;
+  const campaignStatus = statusOverride ?? campaign?.status ?? null;
+
+  useEffect(() => {
+    setStatusOverride(null);
+  }, [campaignId, campaignsData]);
 
   const {
     data: detail,
@@ -320,6 +332,29 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
     refetchNegatives();
     setHistoryToken((t) => t + 1);
   }, [refetchNegatives]);
+
+  const handleToggleStatus = async () => {
+    if (!canManageTeam || toggling || !campaign || !campaignId) return;
+
+    const nextStatus = campaignStatus === "ENABLED" ? "PAUSED" : "ENABLED";
+
+    if (nextStatus === "ENABLED" && !confirm(`Resume campaign "${campaign.name}"? It will start spending again.`)) return;
+
+    setToggling(true);
+    setStatusOverride(nextStatus);
+
+    try {
+      await apiPatch(`/google-ads/campaigns/${campaignId}/status`, { status: nextStatus });
+      addToast(nextStatus === "ENABLED" ? `Resumed "${campaign.name}"` : `Paused "${campaign.name}"`, "success");
+      refetchCampaigns();
+      setHistoryToken((t) => t + 1);
+    } catch (e: any) {
+      setStatusOverride(null);
+      addToast(e.message, "error");
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const adGroups = detail?.adGroups ?? [];
   const currency = campaign?.currency ?? adGroups.find((g) => g.currency)?.currency ?? "USD";
@@ -427,7 +462,7 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className={`${pageTitle} leading-tight truncate`}>{campaign?.name ?? "Campaign"}</h1>
-            {campaign && statusDot(campaign.status)}
+            {campaignStatus && statusDot(campaignStatus)}
           </div>
         </div>
       </div>
@@ -466,6 +501,17 @@ export default function AnalyticsGoogleAdsCampaignDetail() {
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {canManageTeam && (campaignStatus === "ENABLED" || campaignStatus === "PAUSED") && (
+            <button
+              onClick={handleToggleStatus}
+              disabled={toggling}
+              className={btnSecSm}
+              title={campaignStatus === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+            >
+              {campaignStatus === "ENABLED" ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              {campaignStatus === "ENABLED" ? "Pause" : "Resume"}
+            </button>
+          )}
           <button onClick={() => setMappingModal(true)} className={btnSecSm} title="Apple campaign token link">
             <Link2 className="w-3.5 h-3.5" /> Apple Link
             {!revenueLoading && revenueData?.mapped && revenueData.ctToken && (

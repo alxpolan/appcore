@@ -1544,9 +1544,9 @@ export default function App() {
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/apple-ads" element={<AnalyticsAds addToast={addToast} />} />
-              <Route path="/apple-ads/:campaignId" element={<AnalyticsAdsCampaignDetail />} />
-              <Route path="/google-ads" element={<AnalyticsGoogleAds />} />
-              <Route path="/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail />} />
+              <Route path="/apple-ads/:campaignId" element={<AnalyticsAdsCampaignDetail addToast={addToast} />} />
+              <Route path="/google-ads" element={<AnalyticsGoogleAds addToast={addToast} />} />
+              <Route path="/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail addToast={addToast} />} />
               {/* Legacy /analytics/* ads URLs (bookmarks, MCP links) */}
               <Route path="/analytics/ads" element={<AdsLegacyRedirect base="/apple-ads" />} />
               <Route path="/analytics/ads/:campaignId" element={<AdsLegacyRedirect base="/apple-ads" />} />

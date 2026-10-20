@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pause,
   Pencil,
+  Play,
   Plus,
   Trash2,
   X,
@@ -122,6 +123,8 @@ export default function AnalyticsAds({ addToast }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsedGroups(getActiveBundleId()));
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [groupOverride, setGroupOverride] = useState<Record<string, string | null>>({});
+  const [statusOverride, setStatusOverride] = useState<Record<string, string>>({});
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [openRowMenu, setOpenRowMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const [openGroupMenu, setOpenGroupMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
@@ -132,6 +135,8 @@ export default function AnalyticsAds({ addToast }: Props) {
       setBundleId(getActiveBundleId());
       setExpandedCampaign(null);
       setGroupOverride({});
+      setStatusOverride({});
+      setTogglingId(null);
       setOpenRowMenu(null);
       setOpenGroupMenu(null);
       setEditingGroup(null);
@@ -223,6 +228,7 @@ export default function AnalyticsAds({ addToast }: Props) {
 
   useEffect(() => {
     setGroupOverride({});
+    setStatusOverride({});
   }, [campaignsData]);
 
   const closeMenus = () => {
@@ -251,7 +257,12 @@ export default function AnalyticsAds({ addToast }: Props) {
   };
 
   const sortedCampaigns = useMemo(() => {
-    const withOverrides = campaigns.map((c) => (c.id in groupOverride ? { ...c, groupId: groupOverride[c.id] } : c));
+    const withOverrides = campaigns.map((c) => ({
+      ...c,
+      ...(c.id in groupOverride ? { groupId: groupOverride[c.id] } : {}),
+      ...(c.id in statusOverride ? { status: statusOverride[c.id] } : {}),
+    }));
+
     const valueFor = (c: AppleAdsCampaign): number | string => {
       switch (sortBy) {
         case "name":
@@ -278,7 +289,7 @@ export default function AnalyticsAds({ addToast }: Props) {
       const cmp = typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) : va - vb;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [campaigns, groupOverride, sortBy, sortDir, revenueData]);
+  }, [campaigns, groupOverride, statusOverride, sortBy, sortDir, revenueData]);
 
   const ungrouped = sortedCampaigns.filter((c) => !c.groupId || !groups.some((g) => g.id === c.groupId));
   const hasGroups = groups.length > 0;
@@ -343,6 +354,34 @@ export default function AnalyticsAds({ addToast }: Props) {
     }
   };
 
+  const handleToggleStatus = async (campaign: AppleAdsCampaign) => {
+    if (!canManageTeam || togglingId) return;
+
+    const nextStatus = campaign.status === "ENABLED" ? "PAUSED" : "ENABLED";
+
+    if (nextStatus === "ENABLED" && !confirm(`Resume campaign "${campaign.name}"? It will start spending again.`)) return;
+
+    setTogglingId(campaign.id);
+    setStatusOverride((o) => ({ ...o, [campaign.id]: nextStatus }));
+
+    try {
+      await apiPatch(`/apple-ads/campaigns/${campaign.id}/status`, { status: nextStatus });
+      addToast(nextStatus === "ENABLED" ? `Resumed "${campaign.name}"` : `Paused "${campaign.name}"`, "success");
+      refetchCampaigns();
+    } catch (e: any) {
+      setStatusOverride((o) => {
+        const restored = { ...o };
+
+        delete restored[campaign.id];
+
+        return restored;
+      });
+      addToast(e.message, "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const col = (key: CampaignSortKey, label: string, align: "left" | "right" = "right") => (
     <th
       className={`${TH} ${align === "right" ? "text-right" : ""} cursor-pointer select-none hover:text-[#111827] dark:hover:text-[#e8eaf0] transition-colors`}
@@ -393,6 +432,24 @@ export default function AnalyticsAds({ addToast }: Props) {
         </td>
         <td className={`${TD} text-right pr-5`}>
           <span className="inline-flex items-center gap-1">
+            {canManageTeam && (c.status === "ENABLED" || c.status === "PAUSED") && (
+              <button
+                aria-label={c.status === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+                title={c.status === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+                disabled={togglingId === c.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleStatus(c);
+                }}
+                className={`inline-flex items-center justify-center w-7 h-7 rounded-md ${textMuted} hover:bg-gray-100 dark:hover:bg-white/10 hover:${textPrimary} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {c.status === "ENABLED" ? (
+                  <Pause className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                ) : (
+                  <Play className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                )}
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
