@@ -1,8 +1,5 @@
-import fs from "fs";
-import path from "path";
 import sharp from "sharp";
-import { execAsync } from "./shared";
-import { clipped, cropToInk, resolveMagickBin, TITLE_BASE_SIZE, TRIPLE_DENSITY_SIZES } from "./frameit-shift";
+import { clipped, fitTitleToBox, renderLine, TITLE_BASE_SIZE, TITLE_LINE_HEIGHT, TRIPLE_DENSITY_SIZES } from "./frameit-shift";
 import type { FrameitDevice } from "./frameit-devices";
 
 export type NativeLayout = "center" | "top" | "bottom";
@@ -80,30 +77,48 @@ async function renderTitleLayer(
 
   if (!trimmed) return null;
 
-  const bin = await resolveMagickBin();
-  const lineFile = path.join(tmpDir, `basetitle-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
-  const pngFile = path.join(tmpDir, `basetitle-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-  fs.writeFileSync(lineFile, text, "utf8");
-  await execAsync(
-    `"${bin}" -background none -fill "${textColor}" -font "${fontPath}" -pointsize ${TITLE_BASE_SIZE} "label:@${lineFile}" "${pngFile}"`,
-  );
+  const fitted = await fitTitleToBox({
+    text: trimmed,
+    fontPath,
+    textColor,
+    maxWidth,
+    maxHeight,
+    baseFontSize: TITLE_BASE_SIZE,
+    tmpDir,
+  });
 
-  const rendered = await fs.promises.readFile(pngFile);
-  const ink = await cropToInk(rendered);
+  if (!fitted.fits) {
+    console.warn(`[frameit] title still overflows its box at minimum font size: "${trimmed}"`);
+  }
 
-  if (!ink) return null;
+  const step = fitted.fontSize * TITLE_LINE_HEIGHT;
+  const rendered: Array<{ ink: { buf: Buffer; w: number; h: number }; lineIndex: number }> = [];
 
-  const ratioH = ink.w / maxWidth;
-  const ratioV = ink.h / maxHeight;
+  for (let i = 0; i < fitted.lines.length; i++) {
+    const ink = await renderLine(fitted.lines[i], fontPath, textColor, fitted.fontSize, tmpDir);
 
-  if (ratioH <= 1 && ratioV <= 1) return { buf: ink.buf, w: ink.w, h: ink.h };
+    if (ink) rendered.push({ ink, lineIndex: i });
+  }
 
-  const scale = 1 / Math.max(ratioH, ratioV);
-  const w = Math.max(1, Math.round(ink.w * scale));
-  const h = Math.max(1, Math.round(ink.h * scale));
-  const resized = await sharp(ink.buf).resize(w, h).png().toBuffer();
+  if (rendered.length === 0) return null;
 
-  return { buf: resized, w, h };
+  const blockW = Math.ceil(Math.max(...rendered.map((r) => r.ink.w)));
+  const blockH = Math.round(fitted.lines.length * step);
+
+  const composites = rendered.map(({ ink, lineIndex }) => ({
+    input: ink.buf,
+    left: Math.round(blockW / 2 - ink.w / 2),
+    top: Math.round(lineIndex * step + (step - ink.h) / 2),
+  }));
+
+  const buf = await sharp({
+    create: { width: blockW, height: blockH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite(composites)
+    .png()
+    .toBuffer();
+
+  return { buf, w: blockW, h: blockH };
 }
 
 export interface RenderBaseFrameParams {

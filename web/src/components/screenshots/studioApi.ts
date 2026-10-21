@@ -215,4 +215,6 @@ export const studioApi = {
     }),
   deletePreset: (presetId: string) =>
     studioRequest<{ ok: boolean }>(`/github/screenshots/presets/${presetId}`, { method: "DELETE" }),
+  duplicate: (jobId: string) =>
+    studioRequest<{ jobId: string }>(`/github/screenshots/studio/${jobId}/duplicate`, { method: "POST" }),
 };

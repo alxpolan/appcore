@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -10,7 +10,7 @@ import StudioLayers from "./StudioLayers";
 import StudioCanvas from "./StudioCanvas";
 import StudioInspector from "./StudioInspector";
 import StudioRevisions from "./StudioRevisions";
-import { computeTitleLines, ensureStudioFont } from "./studioPreview";
+import { ensureStudioFont } from "./studioPreview";
 import {
   DEFAULT_STUDIO_GEOMETRY,
   STUDIO_APPLY_GEOMETRY_KEYS,
@@ -33,6 +33,8 @@ type TitleDrafts = Record<string, Record<string, string>>;
 
 export default function Studio({ addToast }: Props) {
   const { jobId } = useParams<{ jobId: string }>();
+  const [searchParams] = useSearchParams();
+  const requestedLocale = searchParams.get("locale");
   const { canWrite } = usePermissions();
   const { data, loading, refetch } = useApi<StudioData>(`/github/screenshots/studio/${jobId}`, [jobId], true);
 
@@ -70,7 +72,9 @@ export default function Studio({ addToast }: Props) {
     setRevName("");
 
     if (!activeLocale || !data.locales.some((l) => l.locale === activeLocale)) {
-      setActiveLocale(data.locales[0]?.locale ?? null);
+      const fromUrl = requestedLocale && data.locales.some((l) => l.locale === requestedLocale) ? requestedLocale : null;
+
+      setActiveLocale(fromUrl ?? data.locales[0]?.locale ?? null);
     }
   }, [baselineKey]);
 
@@ -239,20 +243,8 @@ export default function Studio({ addToast }: Props) {
 
       for (const l of targetLocales) {
         const titlesForLocale = titles[l.locale] ?? {};
-        const linesForLocale: Record<string, string[]> = {};
 
-        for (const item of l.items) {
-          const shot = { ...style, ...(shotOverrides[item.basename] ?? {}) };
-          const caption = titlesForLocale[item.basename] ?? item.title;
-
-          if (shot.titleBoxW > 0 && caption.trim().length > 0) {
-            const lines = computeTitleLines(caption, style.font, shot.titleScale, shot.titleBoxW);
-
-            if (lines.length > 0) linesForLocale[item.basename] = lines;
-          }
-        }
-
-        payload[l.locale] = { titles: titlesForLocale, styles: commonStyles, titleLines: linesForLocale };
+        payload[l.locale] = { titles: titlesForLocale, styles: commonStyles, titleLines: {} };
       }
 
       const result = await studioApi.saveRevisionStream(

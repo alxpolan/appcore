@@ -6,6 +6,7 @@ import {
   createStudioPreset,
   deleteStudioPreset,
   deleteStudioRevision,
+  duplicateStudioJob,
   getStudioData,
   listStudioPresets,
   normalizeStudioStyle,
@@ -147,6 +148,16 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
     } else {
       res.end();
     }
+  }
+});
+
+studioRouter.post("/screenshots/studio/:jobId/duplicate", writeAuth, async (req: Request, res: Response) => {
+  try {
+    res.json(await duplicateStudioJob(req.params.jobId as string, req.user?.userId ?? null));
+  } catch (err: any) {
+    const status = err.message.includes("not found") ? 404 : 500;
+    logger.error(`studio duplicate error: ${err.message}`);
+    res.status(status).json({ error: err.message });
   }
 });
 

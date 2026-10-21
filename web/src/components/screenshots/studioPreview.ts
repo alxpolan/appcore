@@ -124,6 +124,7 @@ export function measureTitle(
   family: string,
   workW: number,
   pad: number,
+  space: number,
   titleScale: number,
 ): TitleMetrics {
   ctx.font = `700 150px "${family}", system-ui, sans-serif`;
@@ -132,7 +133,7 @@ export function measureTitle(
   const rawW = metrics.width;
   const rawH = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
   const ratioH = rawW / (workW - pad * 2);
-  const ratioV = rawH / pad;
+  const ratioV = rawH / space;
   const k = (1 / Math.max(1, ratioH, ratioV)) * titleScale;
 
   return {
@@ -232,14 +233,39 @@ function blitCenteredLine(
   main.drawImage(ink.canvas, x0, y0, w, h, Math.round(cx - w / 2), Math.round(slotTop + (step - h) / 2), w, h);
 }
 
-export function computeTitleLines(title: string, font: string, titleScale: number, boxW: number): string[] {
-  if (!measureCtx) {
-    measureCtx = document.createElement("canvas").getContext("2d");
+const MAX_AUTO_LINES = 4;
+const MIN_FONT_RATIO = 0.45;
+const SHRINK_STEP = 0.92;
+
+export interface FittedTitleBlock {
+  lines: string[];
+  size: number;
+}
+
+export function fitTitleBlock(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  family: string,
+  boxW: number,
+  boxH: number,
+  baseSize: number,
+): FittedTitleBlock {
+  const minSize = Math.max(24, Math.round(baseSize * MIN_FONT_RATIO));
+  let size = baseSize;
+  let lines = wrapTitleLines(ctx, text, family, size, boxW);
+
+  while (true) {
+    const blockH = lines.length * size * TITLE_LINE_HEIGHT;
+    const tooTall = boxH > 0 && blockH > boxH;
+    const tooManyLines = lines.length > MAX_AUTO_LINES;
+
+    if (!tooTall && !tooManyLines) return { lines, size };
+
+    if (size <= minSize) return { lines, size: minSize };
+
+    size = Math.max(minSize, Math.round(size * SHRINK_STEP));
+    lines = wrapTitleLines(ctx, text, family, size, boxW);
   }
-
-  if (!measureCtx || boxW <= 0 || title.trim().length === 0) return [];
-
-  return wrapTitleLines(measureCtx, title.trim(), studioFontFamily(font), TITLE_BASE_SIZE * titleScale, boxW);
 }
 
 export function measureTitleBlock(
@@ -247,6 +273,7 @@ export function measureTitleBlock(
   font: string,
   workW: number,
   pad: number,
+  space: number,
   titleScale: number,
   boxW = 0,
   boxH = 0,
@@ -260,15 +287,15 @@ export function measureTitleBlock(
   }
 
   if (boxW > 0) {
-    const size = TITLE_BASE_SIZE * titleScale;
-    const lines = wrapTitleLines(measureCtx, title.trim(), studioFontFamily(font), size, boxW);
-    const step = size * TITLE_LINE_HEIGHT;
-    const h = boxH > 0 ? boxH : lines.length * step;
+    const baseSize = TITLE_BASE_SIZE * titleScale;
+    const fitted = fitTitleBlock(measureCtx, title.trim(), studioFontFamily(font), boxW, boxH, baseSize);
+    const step = fitted.size * TITLE_LINE_HEIGHT;
+    const h = boxH > 0 ? boxH : fitted.lines.length * step;
 
-    return { size, w: boxW, h, ascent: step / 2 };
+    return { size: fitted.size, w: boxW, h, ascent: step / 2 };
   }
 
-  return measureTitle(measureCtx, title.trim(), studioFontFamily(font), workW, pad, titleScale);
+  return measureTitle(measureCtx, title.trim(), studioFontFamily(font), workW, pad, space, titleScale);
 }
 
 const loadedFonts = new Set<string>();
@@ -337,29 +364,32 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
     const bandCenterY = top ? space / 2 : workH - space / 2;
 
     if (style.titleBoxW > 0) {
-      const size = TITLE_BASE_SIZE * style.titleScale;
-      const lines = text === " " ? [] : wrapTitleLines(ctx, text, family, size, style.titleBoxW);
-      const step = size * TITLE_LINE_HEIGHT;
-      const boxH = style.titleBoxH > 0 ? style.titleBoxH : lines.length * step;
+      const baseSize = TITLE_BASE_SIZE * style.titleScale;
+      const fitted =
+        text === " "
+          ? { lines: [], size: baseSize }
+          : fitTitleBlock(ctx, text, family, style.titleBoxW, style.titleBoxH, baseSize);
+      const step = fitted.size * TITLE_LINE_HEIGHT;
+      const boxH = style.titleBoxH > 0 ? style.titleBoxH : fitted.lines.length * step;
       const boxTop = bandCenterY - boxH / 2 + style.titleOffsetY;
       const cx = workW / 2 + style.titleOffsetX;
 
-      if (lines.length > 0) {
+      if (fitted.lines.length > 0) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(cx - style.titleBoxW / 2, boxTop, style.titleBoxW, boxH);
         ctx.clip();
 
-        const fontCss = `700 ${size}px "${family}", system-ui, sans-serif`;
+        const fontCss = `700 ${fitted.size}px "${family}", system-ui, sans-serif`;
 
-        for (let i = 0; i < lines.length; i++) {
-          blitCenteredLine(ctx, lines[i], fontCss, style.textColor, cx, boxTop + i * step, step);
+        for (let i = 0; i < fitted.lines.length; i++) {
+          blitCenteredLine(ctx, fitted.lines[i], fontCss, style.textColor, cx, boxTop + i * step, step);
         }
 
         ctx.restore();
       }
     } else {
-      const tm = measureTitle(ctx, text, family, workW, pad, style.titleScale);
+      const tm = measureTitle(ctx, text, family, workW, pad, space, style.titleScale);
       const titleTop = bandCenterY - tm.h / 2 + style.titleOffsetY;
 
       if (text !== " ") {

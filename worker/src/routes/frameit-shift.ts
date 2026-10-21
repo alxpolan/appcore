@@ -173,6 +173,104 @@ export async function cropToInk(buf: Buffer): Promise<{ buf: Buffer; w: number; 
   return { buf: cropped, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
+export interface RenderedLine {
+  buf: Buffer;
+  w: number;
+  h: number;
+}
+
+export async function renderLine(
+  text: string,
+  fontPath: string,
+  textColor: string,
+  fontSize: number,
+  tmpDir: string,
+): Promise<RenderedLine | null> {
+  const bin = await resolveMagickBin();
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const lineFile = path.join(tmpDir, `line-${id}.txt`);
+  const pngFile = path.join(tmpDir, `line-${id}.png`);
+
+  fs.writeFileSync(lineFile, text, "utf8");
+  await execAsync(
+    `"${bin}" -background none -fill "${textColor}" -font "${fontPath}" -pointsize ${fontSize} "label:@${lineFile}" "${pngFile}"`,
+  );
+
+  const rendered = await fs.promises.readFile(pngFile);
+
+  return cropToInk(rendered);
+}
+
+async function wrapWords(
+  words: string[],
+  fontPath: string,
+  textColor: string,
+  fontSize: number,
+  maxWidth: number,
+  tmpDir: string,
+): Promise<string[]> {
+  const lines: string[] = [];
+  let current: string[] = [];
+
+  for (const word of words) {
+    const candidate = [...current, word].join(" ");
+    const ink = await renderLine(candidate, fontPath, textColor, fontSize, tmpDir);
+    const fitsWidth = !ink || ink.w <= maxWidth;
+
+    if (fitsWidth || current.length === 0) {
+      current.push(word);
+      continue;
+    }
+
+    lines.push(current.join(" "));
+    current = [word];
+  }
+
+  if (current.length > 0) lines.push(current.join(" "));
+
+  return lines;
+}
+
+const MAX_AUTO_LINES = 4;
+const MIN_FONT_RATIO = 0.45;
+
+export interface FittedTitle {
+  lines: string[];
+  fontSize: number;
+  fits: boolean;
+}
+
+export async function fitTitleToBox(args: {
+  text: string;
+  fontPath: string;
+  textColor: string;
+  maxWidth: number;
+  maxHeight: number;
+  baseFontSize: number;
+  tmpDir: string;
+}): Promise<FittedTitle> {
+  const words = args.text.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length === 0) return { lines: [], fontSize: args.baseFontSize, fits: true };
+
+  const minFontSize = Math.max(24, Math.round(args.baseFontSize * MIN_FONT_RATIO));
+  let fontSize = args.baseFontSize;
+  let lines = await wrapWords(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
+
+  while (true) {
+    const blockHeight = lines.length * fontSize * TITLE_LINE_HEIGHT;
+    const tooTall = args.maxHeight > 0 && blockHeight > args.maxHeight;
+    const tooManyLines = lines.length > MAX_AUTO_LINES;
+
+    if (!tooTall && !tooManyLines) return { lines, fontSize, fits: true };
+
+    if (fontSize <= minFontSize) return { lines, fontSize, fits: false };
+
+    fontSize = Math.max(minFontSize, Math.round(fontSize * 0.92));
+    lines = await wrapWords(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
+  }
+}
+
 export interface LineClip {
   left: number;
   top: number;
@@ -212,26 +310,36 @@ async function renderBoxTitle(
   work: { w: number; h: number },
   bandCenterY: number,
 ): Promise<Array<{ input: Buffer; left: number; top: number }>> {
-  const lines = ctx.titleLines.length > 0 ? ctx.titleLines : [ctx.title];
-  const size = TITLE_BASE_SIZE * ctx.titleScale;
+  const hasCustomLines = ctx.titleLines.length > 0;
+  const baseFontSize = TITLE_BASE_SIZE * ctx.titleScale;
+
+  const fitted = hasCustomLines
+    ? { lines: ctx.titleLines, fontSize: baseFontSize, fits: true }
+    : await fitTitleToBox({
+        text: ctx.title,
+        fontPath: ctx.fontPath,
+        textColor: ctx.textColor,
+        maxWidth: ctx.titleBoxW,
+        maxHeight: ctx.titleBoxH,
+        baseFontSize,
+        tmpDir: ctx.tmpDir,
+      });
+
+  if (!fitted.fits) {
+    console.warn(`[frameit] title still overflows its box at minimum font size: "${ctx.title}"`);
+  }
+
+  const lines = fitted.lines;
+  const size = fitted.fontSize;
   const step = size * TITLE_LINE_HEIGHT;
   const boxH = ctx.titleBoxH > 0 ? ctx.titleBoxH : lines.length * step;
   const boxTop = bandCenterY - boxH / 2 + ctx.titleOffset.y;
   const cx = work.w / 2 + ctx.titleOffset.x;
   const boxLeft = cx - ctx.titleBoxW / 2;
-  const bin = await resolveMagickBin();
   const placed: Array<{ input: Buffer; left: number; top: number }> = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const lineFile = path.join(ctx.tmpDir, `boxtitle-${Date.now()}-${i}.txt`);
-    const pngFile = path.join(ctx.tmpDir, `boxtitle-${Date.now()}-${i}.png`);
-    fs.writeFileSync(lineFile, lines[i], "utf8");
-    await execAsync(
-      `"${bin}" -background none -fill "${ctx.textColor}" -font "${ctx.fontPath}" -pointsize ${size} "label:@${lineFile}" "${pngFile}"`,
-    );
-
-    const lineBuf = await fs.promises.readFile(pngFile);
-    const ink = await cropToInk(lineBuf);
+    const ink = await renderLine(lines[i], ctx.fontPath, ctx.textColor, size, ctx.tmpDir);
 
     if (!ink) continue;
 

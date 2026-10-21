@@ -3,6 +3,7 @@ import crypto from "crypto";
 import cookie from "cookie";
 import fs from "fs";
 import path from "path";
+import { Prisma } from "@prisma/client";
 import { logger, prisma } from "../../config";
 import { env } from "../../config/env";
 import { requireAuth, loadTeamRole, loadTeamSettings, requireWriteRole } from "../auth";
@@ -983,20 +984,31 @@ githubRouter.get("/screenshots/framed-history/:appId", requireAuth, async (req: 
   try {
     const internalAppId = await resolveInternalAppId(req.params.appId as string);
     if (!internalAppId) {
-      res.json({ jobs: [] });
+      res.json({ jobs: [], hasMore: false });
       return;
     }
 
+    const kind = req.query.kind === "cpp" || req.query.kind === "real" ? req.query.kind : "all";
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 5));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
     const jobs = await prisma.screenshotJob.findMany({
-      where: { appId: internalAppId, status: "COMPLETED" },
+      where: {
+        appId: internalAppId,
+        status: "COMPLETED",
+        framedByLocale: { not: Prisma.JsonNull },
+        ...(kind === "cpp" ? { branch: "cpp" } : kind === "real" ? { branch: { not: "cpp" } } : {}),
+      },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      skip: offset,
+      take: limit + 1,
     });
 
-    const framed = jobs.filter((j) => j.framedByLocale != null).slice(0, 5);
+    const hasMore = jobs.length > limit;
+    const page = jobs.slice(0, limit);
 
     const withEffective = await Promise.all(
-      framed.map(async (j) => {
+      page.map(async (j) => {
         const effective = await getEffectiveFramed(j.id);
 
         return {
@@ -1011,7 +1023,7 @@ githubRouter.get("/screenshots/framed-history/:appId", requireAuth, async (req: 
       }),
     );
 
-    res.json({ jobs: withEffective });
+    res.json({ jobs: withEffective, hasMore });
   } catch (err: any) {
     logger.error(`framed-history error: ${err.message}`);
     res.status(500).json({ error: err.message });

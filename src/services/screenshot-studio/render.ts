@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import PQueue from "p-queue";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config";
 import { workerClient } from "../worker-client";
 import {
@@ -302,7 +303,6 @@ export async function renderStudioRevision(args: {
 }): Promise<StudioSaveResult> {
   assertStudioSegment(args.jobId, "job");
 
-  const startedAt = new Date();
   const job = await prisma.screenshotJob.findUnique({
     where: { id: args.jobId },
     include: { app: { select: { name: true, currentSubtitle: true } } },
@@ -467,28 +467,56 @@ export async function renderStudioRevision(args: {
     logLines.push(`Skipped ${skipped.length}: ${skipped.join(", ")}`);
   }
 
-  const studioJob = await prisma.screenshotJob.create({
+  await prisma.screenshotJob.update({
+    where: { id: args.jobId },
+    data: { logs: JSON.stringify(logLines) },
+  });
+
+  return { revision, modes: { worker: planned.length }, skipped, jobId: args.jobId };
+}
+
+export async function duplicateStudioJob(jobId: string, pusher?: string | null): Promise<{ jobId: string }> {
+  assertStudioSegment(jobId, "job");
+
+  const job = await prisma.screenshotJob.findUnique({ where: { id: jobId } });
+
+  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
+
+  const effective = await getEffectiveFramed(jobId);
+  const style = (await studioRevisionStyle(jobId, effective.revisionId)) ?? normalizeStudioStyle(job.screenshotStyle);
+  const titles = await studioRevisionTitles(jobId, effective.revisionId);
+  const styles = await studioRevisionStyles(jobId, effective.revisionId);
+
+  const duplicate = await prisma.screenshotJob.create({
     data: {
       appId: job.appId,
-      commitSha: `studio-rev${revision.rev}`,
-      commitMessage: args.name ? `Studio rev${revision.rev} — ${args.name}` : `Studio rev${revision.rev}`,
+      commitSha: `duplicate-of-${jobId}`,
+      commitMessage: `Duplicate of ${job.commitMessage || job.commitSha.slice(0, 7)}`,
       branch: "studio",
-      pusher: args.pusher ?? null,
+      pusher: pusher ?? null,
       status: "COMPLETED",
       screenshotUrls: [],
-      framedByLocale: framedByLocale as Prisma.InputJsonValue,
-      screenshotStyle: storedGlobalStyle as Prisma.InputJsonValue,
+      framedByLocale: effective.framedByLocale as Prisma.InputJsonValue,
+      screenshotStyle: style as Prisma.InputJsonValue,
       screenshotSublines: (job.screenshotSublines ?? {}) as Prisma.InputJsonValue,
       screenshotDescriptions: (job.screenshotDescriptions ?? {}) as Prisma.InputJsonValue,
-      logs: JSON.stringify(logLines),
-      startedAt,
+      startedAt: new Date(),
       completedAt: new Date(),
     },
   });
 
-  fs.cpSync(path.join(studioJobDir(args.jobId), "raw"), path.join(studioJobDir(studioJob.id), "raw"), {
+  await createStudioRevision({
+    jobId: duplicate.id,
+    rev: 0,
+    framedByLocale: effective.framedByLocale,
+    style,
+    titles,
+    styles,
+  });
+
+  fs.cpSync(path.join(studioJobDir(jobId), "raw"), path.join(studioJobDir(duplicate.id), "raw"), {
     recursive: true,
   });
 
-  return { revision, modes: { worker: planned.length }, skipped, jobId: studioJob.id };
+  return { jobId: duplicate.id };
 }

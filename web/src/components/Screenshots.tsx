@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Frame,
   GitBranch,
   Languages,
@@ -17,7 +18,8 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { useApi, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
+import { useApi, apiGet, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
+import { studioApi } from "./screenshots/studioApi";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { RepoLinker, ScreenshotJobsTable } from "./Logs";
@@ -331,6 +333,24 @@ function LocaleDropdown({
   );
 }
 
+const GALLERY_PAGE_SIZE = 5;
+
+type GalleryKind = "all" | "real" | "cpp";
+
+function GalleryKindFilter({ value, onChange }: { value: GalleryKind; onChange: (kind: GalleryKind) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as GalleryKind)}
+      className={`text-[13px] font-medium ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl px-3 py-[6px]`}
+    >
+      <option value="all">All jobs</option>
+      <option value="real">Real jobs</option>
+      <option value="cpp">CPP jobs</option>
+    </select>
+  );
+}
+
 function StudioGallery({
   appId,
   reloadToken,
@@ -340,10 +360,46 @@ function StudioGallery({
   reloadToken: number;
   addToast: Props["addToast"];
 }) {
-  const { data, loading, refetch } = useApi<{ jobs: FramedJob[] }>(`/github/screenshots/framed-history/${appId}`, [
-    appId,
-    reloadToken,
-  ]);
+  const [kind, setKind] = useState<GalleryKind>("all");
+  const [extraJobs, setExtraJobs] = useState<FramedJob[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const { data, loading, refetch } = useApi<{ jobs: FramedJob[]; hasMore: boolean }>(
+    `/github/screenshots/framed-history/${appId}?kind=${kind}&limit=${GALLERY_PAGE_SIZE}&offset=0`,
+    [appId, reloadToken, kind],
+  );
+
+  useEffect(() => {
+    setExtraJobs([]);
+    setHasMore(data?.hasMore ?? false);
+  }, [data]);
+
+  const jobs = [...(data?.jobs ?? []), ...extraJobs];
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+
+    try {
+      const res = await apiGet<{ jobs: FramedJob[]; hasMore: boolean }>(`/github/screenshots/framed-history/${appId}`, {
+        kind,
+        limit: GALLERY_PAGE_SIZE,
+        offset: jobs.length,
+      });
+
+      setExtraJobs((prev) => [...prev, ...res.jobs]);
+      setHasMore(res.hasMore);
+    } catch (err: any) {
+      addToast(`Failed to load more: ${err.message}`, "error");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const refetchAll = () => {
+    setExtraJobs([]);
+    refetch();
+  };
 
   if (loading && !data) {
     return (
@@ -355,25 +411,33 @@ function StudioGallery({
     );
   }
 
-  const jobs = data?.jobs ?? [];
-
-  if (jobs.length === 0) {
-    return (
-      <div className={`${cardCls} mb-5 text-center py-10`}>
-        <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />
-        <div className={`text-sm font-medium ${textPrimary} mb-1`}>No screenshots yet</div>
-        <p className={`text-[13px] ${textSecondary}`}>
-          Hit Generate Screenshots to start your first run. Results show up here once it completes.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <>
+      <div className="flex items-center justify-end mb-3">
+        <GalleryKindFilter value={kind} onChange={setKind} />
+      </div>
+
+      {jobs.length === 0 && (
+        <div className={`${cardCls} mb-5 text-center py-10`}>
+          <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />
+          <div className={`text-sm font-medium ${textPrimary} mb-1`}>No screenshots yet</div>
+          <p className={`text-[13px] ${textSecondary}`}>
+            Hit Generate Screenshots to start your first run. Results show up here once it completes.
+          </p>
+        </div>
+      )}
+
       {jobs.map((job, index) => (
-        <RunResults key={job.id} job={job} isLatest={index === 0} addToast={addToast} onChanged={refetch} />
+        <RunResults key={job.id} job={job} isLatest={index === 0} addToast={addToast} onChanged={refetchAll} />
       ))}
+
+      {hasMore && (
+        <div className="flex justify-center mb-5">
+          <button type="button" onClick={loadMore} disabled={loadingMore} className={btnSecSm}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -390,6 +454,7 @@ function RunResults({
   onChanged: () => void;
 }) {
   const { canWrite } = usePermissions();
+  const navigate = useNavigate();
   const [activeLocale, setActiveLocale] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [orderOverride, setOrderOverride] = useState<Record<string, string[]>>({});
@@ -400,6 +465,23 @@ function RunResults({
   const [savingReorder, setSavingReorder] = useState<"one" | "all" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ jobId: string; url: string } | null>(null);
   const [savingDelete, setSavingDelete] = useState<"one" | "all" | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+
+  const handleDuplicate = async () => {
+    setDuplicating(true);
+
+    try {
+      const result = await studioApi.duplicate(job.id);
+
+      addToast("Screenshot set duplicated", "success");
+      onChanged();
+      navigate(`/screenshots/studio/${result.jobId}`);
+    } catch (err: any) {
+      addToast(`Duplicate failed: ${err.message}`, "error");
+    } finally {
+      setDuplicating(false);
+    }
+  };
 
   useEffect(() => {
     if (!previewUrl) return;
@@ -585,10 +667,23 @@ function RunResults({
               {job.branch ? ` · ${job.branch}` : ""}
               {` · ${new Date(job.createdAt).toLocaleDateString()}`}
             </span>
-            <Link to={`/screenshots/studio/${job.id}`} className={btnSecSm}>
+            <Link
+              to={
+                effectiveLocale
+                  ? `/screenshots/studio/${job.id}?locale=${encodeURIComponent(effectiveLocale)}`
+                  : `/screenshots/studio/${job.id}`
+              }
+              className={btnSecSm}
+            >
               <SlidersHorizontal className="w-3.5 h-3.5" />
               Studio
             </Link>
+            {canWrite && (
+              <button type="button" onClick={handleDuplicate} disabled={duplicating} className={btnSecSm}>
+                <Copy className="w-3.5 h-3.5" />
+                {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            )}
             {effectiveLocale && locales.length > 1 && (
               <LocaleDropdown locales={locales} value={effectiveLocale} onChange={setActiveLocale} />
             )}

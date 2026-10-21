@@ -59,6 +59,7 @@ export function titleWorkRect(
     style.font,
     layout.workW,
     layout.pad,
+    layout.space,
     style.titleScale,
     style.titleBoxW,
     style.titleBoxH,
