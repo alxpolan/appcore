@@ -12,6 +12,7 @@ import {
   normalizeStudioStyle,
   renderStudioRevision,
   setActiveStudioRevision,
+  setAppDefaultFromRevision,
   updateStudioPreset,
   type StudioStyle,
 } from "../../services/screenshot-studio";
@@ -189,6 +190,27 @@ studioRouter.delete("/screenshots/studio/revisions/:revisionId", writeAuth, asyn
     res.status(status).json({ error: err.message });
   }
 });
+
+studioRouter.post(
+  "/screenshots/studio/revisions/:revisionId/set-default",
+  writeAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { appId } = req.body as { appId?: string };
+
+      if (!appId || typeof appId !== "string") {
+        res.status(400).json({ error: "appId is required" });
+        return;
+      }
+
+      res.json(await setAppDefaultFromRevision(appId, req.params.revisionId as string));
+    } catch (err: any) {
+      const status = err.message.includes("not found") ? 404 : 500;
+      logger.error(`studio set default error: ${err.message}`);
+      res.status(status).json({ error: err.message });
+    }
+  },
+);
 
 studioRouter.get("/screenshots/presets/:appId", requireAuth, async (req: Request, res: Response) => {
   try {
