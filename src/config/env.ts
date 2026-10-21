@@ -54,6 +54,7 @@ const envSchema = z.object({
   // job dispatch (each worker runs one job at a time, jobs queue FIFO).
   FASTLANE_WORKER_URLS: z.string().optional(),
   FASTLANE_WORKER_SECRET: z.string().optional(),
+  FASTLANE_WORKER_FRAMEIT_CONCURRENCY: z.string().optional(),
 
   // Transporter Worker (+ Linux proxy server)
   TRANSPORTER_WORKER_URL: z.string().url().optional(),

@@ -1,8 +1,11 @@
 import "dotenv/config";
 import express from "express";
+import sharp from "sharp";
 import { workerAuth } from "./auth";
 import { workerRouter } from "./routes/index";
 import { findFastlane } from "./fastlane-utils";
+
+sharp.concurrency(2);
 
 const app = express();
 const PORT = Number(process.env.FASTLANE_WORKER_PORT ?? 3200);

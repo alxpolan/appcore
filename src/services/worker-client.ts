@@ -110,7 +110,46 @@ export interface WorkerHealthResult {
 const FRAMEIT_TIMEOUT_MS = 15 * 60 * 1000;
 const BUILD_TIMEOUT_MS = 25 * 60 * 1000;
 
+const DEFAULT_FRAMEIT_CONCURRENCY_PER_MACHINE = 8;
+
 const headersTimeoutFor = (timeoutMs: number) => timeoutMs + 60_000;
+
+function frameitConcurrencyPerMachine(): number {
+  const raw = Number(env.FASTLANE_WORKER_FRAMEIT_CONCURRENCY);
+
+  if (!Number.isFinite(raw) || raw < 1) return DEFAULT_FRAMEIT_CONCURRENCY_PER_MACHINE;
+
+  return Math.min(16, Math.round(raw));
+}
+
+class Semaphore {
+  private permits: number;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(permits: number) {
+    this.permits = permits;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits--;
+
+      return;
+    }
+
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  release(): void {
+    const next = this.waiters.shift();
+
+    if (next) {
+      next();
+    } else {
+      this.permits++;
+    }
+  }
+}
 
 interface WorkerSlot {
   baseURL: string;
@@ -118,9 +157,17 @@ interface WorkerSlot {
   busy: boolean;
 }
 
+interface FrameitSlot {
+  baseURL: string;
+  client: AxiosInstance;
+  sem: Semaphore;
+}
+
 class FastlaneWorkerClient {
   private slots: WorkerSlot[] | null = null;
   private waiters: Array<(slot: WorkerSlot) => void> = [];
+  private frameitSlots: FrameitSlot[] | null = null;
+  private frameitRoundRobin = 0;
 
   private getSlots(): WorkerSlot[] {
     if (!this.slots) {
@@ -155,6 +202,30 @@ class FastlaneWorkerClient {
     return this.slots;
   }
 
+  private getFrameitSlots(): FrameitSlot[] {
+    if (!this.frameitSlots) {
+      const concurrency = frameitConcurrencyPerMachine();
+
+      this.frameitSlots = this.getSlots().map((slot) => ({
+        baseURL: slot.baseURL,
+        client: slot.client,
+        sem: new Semaphore(concurrency),
+      }));
+    }
+
+    return this.frameitSlots;
+  }
+
+  private async acquireFrameitSlot(): Promise<FrameitSlot> {
+    const slots = this.getFrameitSlots();
+    const slot = slots[this.frameitRoundRobin % slots.length];
+
+    this.frameitRoundRobin++;
+    await slot.sem.acquire();
+
+    return slot;
+  }
+
   private async acquire(): Promise<WorkerSlot> {
     const free = this.getSlots().find((s) => !s.busy);
     if (free) {
@@ -181,6 +252,10 @@ class FastlaneWorkerClient {
   /** Configured workers in total - callers size parallel dispatch off this. */
   slotCount(): number {
     return this.getSlots().length;
+  }
+
+  frameitSlotCount(): number {
+    return this.getFrameitSlots().length * frameitConcurrencyPerMachine();
   }
 
   async health(): Promise<WorkerHealthResult> {
@@ -306,7 +381,7 @@ class FastlaneWorkerClient {
   }
 
   async frameit(params: WorkerFrameitParams): Promise<WorkerFrameitResult> {
-    const slot = await this.acquire();
+    const slot = await this.acquireFrameitSlot();
     try {
       logger.info(`[WorkerClient] Sending frameit task to worker ${slot.baseURL}...`);
       const res = await slot.client.post("/worker/frameit", params, {
@@ -316,7 +391,7 @@ class FastlaneWorkerClient {
       });
       return res.data;
     } finally {
-      this.release(slot);
+      slot.sem.release();
     }
   }
 

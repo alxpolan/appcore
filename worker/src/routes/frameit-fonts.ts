@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 
 type FontCandidate = {
   test: RegExp;
@@ -11,8 +10,6 @@ export const STUDIO_FRAMEIT_FONTS: Record<string, string> = {
   inter: "Inter-Bold.ttf",
   baloo: "Baloo2-Bold.ttf",
 };
-
-const FRAMEIT_FONT_NAME = "FrameitTextFont";
 
 const WIDE_LATIN_FONTS = [
   "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -154,11 +151,4 @@ export function pickFrameitFont(text: string, familyFont: string): string {
   }
 
   return familyFont;
-}
-
-export function copyFrameitFont(sourcePath: string, targetDir: string): string {
-  const ext = path.extname(sourcePath) || ".ttf";
-  const localName = `${FRAMEIT_FONT_NAME}${ext}`;
-  fs.copyFileSync(sourcePath, path.join(targetDir, localName));
-  return `./${localName}`;
 }

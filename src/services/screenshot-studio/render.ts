@@ -388,7 +388,7 @@ export async function renderStudioRevision(args: {
   let donePlanned = 0;
   args.onProgress?.({ done: 0, total: totalPlanned, locale: null, basenames: [] });
 
-  const queue = new PQueue({ concurrency: workerClient.slotCount() });
+  const queue = new PQueue({ concurrency: workerClient.frameitSlotCount() });
   const tasks: Array<Promise<void>> = [];
 
   for (const locale of requestedLocales) {

@@ -29,7 +29,7 @@ export const TITLE_LINE_HEIGHT = 1.2;
 
 let magickBin: string | null = null;
 
-async function resolveMagickBin(): Promise<string> {
+export async function resolveMagickBin(): Promise<string> {
   if (magickBin) return magickBin;
 
   try {
@@ -42,9 +42,16 @@ async function resolveMagickBin(): Promise<string> {
   return magickBin;
 }
 
-const TRIPLE_DENSITY_SIZES = new Set(["1320x2868", "1290x2796", "1242x2688", "1206x2622", "1242x2208"]);
+export const TRIPLE_DENSITY_SIZES = new Set([
+  "1320x2868",
+  "1290x2796",
+  "1242x2688",
+  "1206x2622",
+  "1242x2208",
+  "1179x2556",
+]);
 
-function parseHexColor(value: string): [number, number, number] {
+export function parseHexColor(value: string): [number, number, number] {
   const match = /^#?([0-9a-f]{6})$/i.exec(value.trim());
 
   if (!match) return [255, 255, 255];
@@ -112,7 +119,7 @@ async function extractTitleLayer(
     .toBuffer();
 }
 
-async function clipped(
+export async function clipped(
   layer: Buffer,
   x: number,
   y: number,
@@ -136,7 +143,7 @@ async function clipped(
   return { input: visible, left: visX0, top: visY0 };
 }
 
-async function cropToInk(buf: Buffer): Promise<{ buf: Buffer; w: number; h: number } | null> {
+export async function cropToInk(buf: Buffer): Promise<{ buf: Buffer; w: number; h: number } | null> {
   const raw = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
   const w = raw.info.width;
   const h = raw.info.height;
