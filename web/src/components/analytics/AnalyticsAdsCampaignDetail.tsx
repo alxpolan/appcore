@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
+import CppProposals from "../cpp/CppProposals";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
@@ -334,7 +335,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
     error: countriesError,
   } = useCountryBreakdown(campaignId ? `/apple-ads/campaigns/${campaignId}/countries${query}` : null);
 
-  const { canManageTeam } = usePermissions();
+  const { canManageTeam, canWrite } = usePermissions();
   const {
     data: negativesData,
     loading: negativesLoading,
@@ -1031,6 +1032,8 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           </div>
         )}
       </div>
+
+      {campaignId && <CppProposals campaignId={campaignId} canWrite={canWrite} addToast={addToast} />}
 
       {negativesModal &&
         createPortal(
