@@ -168,6 +168,19 @@ export function normalizeStudioStyle(value: unknown): StudioStyle {
   };
 }
 
+export function storedShotPatch(patch: unknown): Partial<StudioStyle> | null {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return null;
+
+  const rest = { ...(patch as Partial<StudioStyle>) };
+  delete rest.titleLines;
+
+  if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
+    return null;
+  }
+
+  return rest;
+}
+
 export function normalizeStudioTitle(value: unknown): string {
   if (typeof value !== "string") return "";
 

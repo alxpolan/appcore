@@ -5,11 +5,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../config";
 import { workerClient } from "../worker-client";
 import {
-  DEFAULT_STUDIO_GEOMETRY,
   matchDescriptionKey,
   normalizeStudioStyle,
   normalizeStudioTitle,
   resolveStudioTitle,
+  storedShotPatch,
   studioBasename,
   studioDeviceLabel,
   titleLinesForTitle,
@@ -56,6 +56,7 @@ export interface StudioData {
   locales: StudioLocaleData[];
   revisions: StudioRevisionInfo[];
   activeRevisionId: string | null;
+  defaultRevisionId: string | null;
   presets: StudioPresetInfo[];
 }
 
@@ -128,19 +129,6 @@ export function splitIntoChunks<T>(items: T[], size: number): T[][] {
 
 function studioJobDir(jobId: string): string {
   return path.join(process.cwd(), "screenshots", jobId);
-}
-
-function storedShotPatch(patch: unknown): Partial<StudioStyle> | null {
-  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return null;
-
-  const rest = { ...(patch as Partial<StudioStyle>) };
-  delete rest.titleLines;
-
-  if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
-    return null;
-  }
-
-  return rest;
 }
 
 async function studioRawLocales(jobId: string): Promise<string[]> {
@@ -221,7 +209,7 @@ async function studioRevisionStyle(jobId: string, revisionId: string | null): Pr
 export async function getStudioData(jobId: string): Promise<StudioData> {
   const job = await prisma.screenshotJob.findUnique({
     where: { id: jobId },
-    include: { app: { select: { id: true, name: true, currentSubtitle: true } } },
+    include: { app: { select: { id: true, name: true, currentSubtitle: true, defaultScreenshotRevisionId: true } } },
   });
 
   if (!job) throw new Error(`Screenshot job ${jobId} not found`);
@@ -289,6 +277,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
     locales,
     revisions,
     activeRevisionId,
+    defaultRevisionId: job.app.defaultScreenshotRevisionId ?? null,
     presets,
   };
 }

@@ -3,7 +3,7 @@ import path from "path";
 import { prisma } from "../../config";
 import { Prisma } from "@prisma/client";
 import type { ScreenshotStylePreset } from "@prisma/client";
-import { normalizeStudioStyle, normalizeTitleLines, type StudioStyle } from "./style";
+import { normalizeStudioStyle, normalizeTitleLines, storedShotPatch, type StudioStyle } from "./style";
 
 function parseStoredTitleLines(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -226,6 +226,44 @@ export async function setActiveStudioRevision(jobId: string, revisionId: string 
   });
 }
 
+export async function setAppDefaultFromRevision(
+  appId: string,
+  revisionId: string,
+): Promise<{ appId: string; revisionId: string }> {
+  const revision = await prisma.screenshotRevision.findUnique({
+    where: { id: revisionId },
+    include: { job: { select: { appId: true } } },
+  });
+
+  if (!revision) throw new Error(`Screenshot revision ${revisionId} not found`);
+  if (revision.job.appId !== appId) throw new Error("Revision does not belong to this app");
+
+  const style = normalizeStudioStyle(revision.style);
+  style.titleLines = [];
+
+  const styles: Record<string, Partial<StudioStyle>> = {};
+  const raw = revision.styles;
+
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [base, patch] of Object.entries(raw as Record<string, unknown>)) {
+      const clean = storedShotPatch(patch);
+
+      if (clean) styles[base] = clean;
+    }
+  }
+
+  await prisma.app.update({
+    where: { id: appId },
+    data: {
+      defaultScreenshotStyle: style as Prisma.InputJsonValue,
+      defaultScreenshotShotStyles: styles as Prisma.InputJsonValue,
+      defaultScreenshotRevisionId: revision.id,
+    },
+  });
+
+  return { appId, revisionId: revision.id };
+}
+
 export async function deleteStudioRevision(
   revisionId: string,
 ): Promise<{ jobId: string; activeRevisionId: string | null }> {
@@ -234,6 +272,11 @@ export async function deleteStudioRevision(
   if (!revision) throw new Error(`Screenshot revision ${revisionId} not found`);
 
   await prisma.screenshotRevision.delete({ where: { id: revisionId } });
+
+  await prisma.app.updateMany({
+    where: { defaultScreenshotRevisionId: revisionId },
+    data: { defaultScreenshotRevisionId: null },
+  });
 
   const revDir = path.join(process.cwd(), "screenshots", revision.jobId, "studio", `rev${revision.rev}`);
 

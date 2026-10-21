@@ -215,6 +215,9 @@ model App {
   screenshotsLocked          Boolean                   @default(false)
   selectedBuildJobId         String?
   selectedScreenshotJobId    String?
+  defaultScreenshotStyle       Json?
+  defaultScreenshotShotStyles  Json?
+  defaultScreenshotRevisionId  String?
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?
