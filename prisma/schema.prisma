@@ -251,6 +251,7 @@ model App {
   quickScanAi                AppQuickScanAi?
   googleAdsCampaignTokens    GoogleAdsCampaignToken[]
   screenshotStylePresets     ScreenshotStylePreset[]
+  cppProposals               CppProposal[]
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
 
@@ -897,6 +898,32 @@ model ScreenshotRevision {
 
   @@unique([jobId, rev])
   @@index([jobId])
+}
+
+model CppProposal {
+  id              String   @id @default(cuid())
+  appId           String
+  app             App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  campaignId      String
+  campaignName    String?
+  groupKey        String
+  label           String
+  status          String   @default("draft")
+  keywords        Json
+  totals          Json?
+  captions        Json?
+  locales         String[]
+  sourceJobId     String?
+  screenshotJobId String?
+  cppPageId       String?
+  cppVersionId    String?
+  cppUrl          String?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([appId, campaignId, groupKey])
+  @@index([appId])
 }
 
 model BuildJob {
