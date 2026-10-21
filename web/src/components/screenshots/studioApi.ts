@@ -91,6 +91,7 @@ export interface StudioData {
   locales: StudioLocaleData[];
   revisions: StudioRevisionInfo[];
   activeRevisionId: string | null;
+  defaultRevisionId: string | null;
   presets: StudioPresetInfo[];
 }
 
@@ -207,6 +208,11 @@ export const studioApi = {
     studioRequest<{ jobId: string; activeRevisionId: string | null }>(
       `/github/screenshots/studio/revisions/${revisionId}`,
       { method: "DELETE" },
+    ),
+  setDefaultRevision: (revisionId: string, appId: string) =>
+    studioRequest<{ appId: string; revisionId: string }>(
+      `/github/screenshots/studio/revisions/${revisionId}/set-default`,
+      { method: "POST", body: JSON.stringify({ appId }) },
     ),
   createPreset: (appId: string, payload: { name: string; style: StudioStyle }) =>
     studioRequest<{ preset: StudioPresetInfo }>(`/github/screenshots/presets/${appId}`, {

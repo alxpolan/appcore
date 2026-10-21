@@ -50,6 +50,7 @@ export default function Studio({ addToast }: Props) {
   const [progress, setProgress] = useState<StudioProgressEvent | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
 
   const baselineKey = data
@@ -284,6 +285,22 @@ export default function Studio({ addToast }: Props) {
     }
   };
 
+  const handleSetDefault = async (revisionId: string) => {
+    if (!data) return;
+
+    setSettingDefaultId(revisionId);
+
+    try {
+      await studioApi.setDefaultRevision(revisionId, data.job.appId);
+      addToast("Set as default for future renders", "success");
+      refetch();
+    } catch (err: any) {
+      addToast(`Set default failed: ${err.message}`, "error");
+    } finally {
+      setSettingDefaultId(null);
+    }
+  };
+
   const handleDeleteRevision = async (rev: { id: string; rev: number; name: string | null }) => {
     if (!confirm(`Delete ${revisionLabel(rev)}?`)) return;
 
@@ -458,6 +475,9 @@ export default function Studio({ addToast }: Props) {
             onActivate={handleActivate}
             deletingId={deletingId}
             onDelete={handleDeleteRevision}
+            defaultRevisionId={data.defaultRevisionId}
+            settingDefaultId={settingDefaultId}
+            onSetDefault={handleSetDefault}
             dirty={dirty}
             scope={scope}
             onScopeChange={setScope}

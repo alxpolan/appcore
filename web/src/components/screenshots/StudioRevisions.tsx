@@ -1,4 +1,4 @@
-import { History, Save, Trash2, X } from "lucide-react";
+import { History, Pin, Save, Trash2, X } from "lucide-react";
 import { borderDefault, btnPrimary, cardCls, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
 import { getLocaleName } from "../../utils/localeUtils";
 import { revisionLabel, type StudioProgressEvent, type StudioRevisionInfo } from "./studioApi";
@@ -11,6 +11,9 @@ interface Props {
   onActivate: (revisionId: string) => void;
   deletingId: string | null;
   onDelete: (revision: StudioRevisionInfo) => void;
+  defaultRevisionId: string | null;
+  settingDefaultId: string | null;
+  onSetDefault: (revisionId: string) => void;
   dirty: boolean;
   scope: "one" | "all";
   onScopeChange: (scope: "one" | "all") => void;
@@ -31,6 +34,9 @@ export default function StudioRevisions({
   onActivate,
   deletingId,
   onDelete,
+  defaultRevisionId,
+  settingDefaultId,
+  onSetDefault,
   dirty,
   scope,
   onScopeChange,
@@ -60,6 +66,7 @@ export default function StudioRevisions({
         )}
         {revisions.map((rev) => {
           const active = rev.id === activeRevisionId;
+          const isDefault = rev.id === defaultRevisionId;
 
           return (
             <span
@@ -79,6 +86,25 @@ export default function StudioRevisions({
               >
                 {activatingId === rev.id ? "Switching…" : revisionLabel(rev)}
               </button>
+              {!disabled && (
+                <button
+                  type="button"
+                  disabled={settingDefaultId !== null || deletingId !== null}
+                  onClick={() => onSetDefault(rev.id)}
+                  title={isDefault ? "Default for future renders" : `Set ${revisionLabel(rev)} as default for future renders`}
+                  className={`w-6 h-6 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
+                    isDefault
+                      ? "text-[#595DD2]"
+                      : "hover:bg-[#595DD2]/10 hover:text-[#595DD2]"
+                  }`}
+                >
+                  {settingDefaultId === rev.id ? (
+                    <div className="spinner !w-3 !h-3" />
+                  ) : (
+                    <Pin className="w-3 h-3" fill={isDefault ? "currentColor" : "none"} />
+                  )}
+                </button>
+              )}
               {!disabled && (
                 <button
                   type="button"
