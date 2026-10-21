@@ -3,7 +3,7 @@ import fs from "fs";
 import { logger, prisma, getTeamSettings } from "../config";
 import { decryptNullable } from "../config/encryption";
 import { workerClient, type WorkerSnapshotResult } from "./worker-client";
-import { frameComplexBatch, normalizeStudioStyle } from "./screenshot-studio";
+import { frameComplexBatch, normalizeStudioStyle, storedShotPatch, type StudioStyle } from "./screenshot-studio";
 import { postCommitStatus } from "./github";
 import { generateScreenshotSublines, type ScreenshotSublines } from "./screenshot-subline-generator";
 import { ascClientForTeam } from "./asc-client";
@@ -559,11 +559,32 @@ async function frameScreenshots(
     // abandon every locale still queued. One bad locale must not cost all the others.
     const failedLocales: string[] = [];
 
+    const pinnedDefault =
+      job.app.defaultScreenshotStyle && typeof job.app.defaultScreenshotStyle === "object"
+        ? normalizeStudioStyle(job.app.defaultScreenshotStyle)
+        : null;
+
+    if (pinnedDefault) pinnedDefault.titleLines = [];
+
+    const shotDefaults: Record<string, Partial<StudioStyle>> = {};
+    const rawShotDefaults = job.app.defaultScreenshotShotStyles;
+
+    if (rawShotDefaults && typeof rawShotDefaults === "object" && !Array.isArray(rawShotDefaults)) {
+      for (const [base, patch] of Object.entries(rawShotDefaults as Record<string, unknown>)) {
+        const clean = storedShotPatch(patch);
+
+        if (clean) shotDefaults[base] = clean;
+      }
+    }
+
+    if (pinnedDefault) log("[framing] Using pinned Studio default style");
+
     const style = normalizeStudioStyle({
       bgColor1: frameConfig.bgColor1,
       bgColor2: frameConfig.bgColor2,
       textColor: frameConfig.textColor,
       textPosition: frameConfig.textPosition,
+      ...(pinnedDefault ?? {}),
     });
 
     await runConcurrent(targetLocales, FRAME_LOCALE_CONCURRENCY, async (locale) => {
@@ -596,7 +617,12 @@ async function frameScreenshots(
       const entries = await fs.promises.readdir(srcDir);
       const shots = entries
         .filter((f) => /\.(png)$/i.test(f))
-        .map((filename) => ({ filename, base: filename.replace(/\.[^.]+$/, ""), style }))
+        .map((filename) => {
+          const patch = shotDefaults[filename];
+          const shotStyle = patch ? normalizeStudioStyle({ ...style, ...patch }) : style;
+
+          return { filename, base: filename.replace(/\.[^.]+$/, ""), style: shotStyle };
+        })
         .sort((a, b) => a.base.localeCompare(b.base));
 
       const titles = new Map<string, string>();
