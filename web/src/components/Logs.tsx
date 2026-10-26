@@ -45,6 +45,93 @@ function renderLogLine(line: string, i: number) {
   );
 }
 
+function workerLabelOf(line: string): string | null {
+  const match = line.match(/^\[([^\]]+)\] /);
+
+  if (!match) return null;
+
+  const label = match[1];
+
+  if (LOG_PREFIX_COLORS.some((p) => p.prefix === `[${label}]`)) return null;
+
+  return label;
+}
+
+function groupLogsByWorker(lines: string[]): Map<string, string[]> {
+  const workers = new Map<string, string[]>();
+
+  for (const line of lines) {
+    const label = workerLabelOf(line);
+
+    if (!label) continue;
+
+    const rest = line.slice(label.length + 3);
+    const bucket = workers.get(label) ?? [];
+
+    bucket.push(rest);
+    workers.set(label, bucket);
+  }
+
+  return workers;
+}
+
+const logPaneCls =
+  "text-[11px] bg-[#111827] rounded-lg p-3 overflow-x-auto max-h-[400px] overflow-y-auto font-mono leading-relaxed";
+
+function WorkerLogSections({ lines, autoScroll }: { lines: string[]; autoScroll: boolean }) {
+  const workers = groupLogsByWorker(lines);
+  const workerEntries = [...workers.entries()];
+  const [openWorker, setOpenWorker] = useState<string | null>(null);
+  const singleRef = useRef<HTMLPreElement>(null);
+  const openRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (!autoScroll) return;
+
+    singleRef.current?.scrollTo({ top: singleRef.current.scrollHeight });
+    openRef.current?.scrollTo({ top: openRef.current.scrollHeight });
+  }, [lines.length, autoScroll]);
+
+  if (workerEntries.length < 2) {
+    return (
+      <pre ref={singleRef} className={logPaneCls}>
+        {lines.map(renderLogLine)}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {workerEntries.map(([label, workerLines]) => {
+        const isOpen = openWorker === label;
+
+        return (
+          <div key={label} className={`border ${borderDefault} rounded-lg overflow-hidden`}>
+            <button
+              type="button"
+              className={`w-full flex items-center justify-between px-3 py-2 text-[12px] font-medium ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-white/[0.03]`}
+              onClick={() => setOpenWorker(isOpen ? null : label)}
+            >
+              <span>{label} Worker</span>
+              <ChevronDown
+                className={`w-4 h-4 ${textSecondary} shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {isOpen && (
+              <div className="px-3 pb-3">
+                <pre ref={openRef} className={logPaneCls}>
+                  {workerLines.map(renderLogLine)}
+                </pre>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function useLazyLogs(path: string | null) {
   const [logs, setLogs] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -178,9 +265,7 @@ function LogsBlock({ logs, loading, error }: { logs: string[] | null; loading: b
       <div className={`text-[11px] font-medium ${textSecondary} uppercase tracking-wide mb-1`}>
         Logs ({logs.length} lines)
       </div>
-      <pre className="text-[11px] bg-[#111827] rounded-lg p-3 overflow-x-auto max-h-[400px] overflow-y-auto font-mono leading-relaxed">
-        {logs.map(renderLogLine)}
-      </pre>
+      <WorkerLogSections lines={logs} autoScroll={false} />
     </div>
   );
 }
@@ -774,17 +859,11 @@ function JobRow({
   } = useLazyLogs(!isActive && expanded ? `/github/screenshots/${job.appId}/${job.id}/logs` : null);
   // Streams whenever the job is active (not only when expanded) so the progress
   // bar can track stages while the row is collapsed.
-  const {
-    lines: streamLines,
-    done: streamDone,
-    liveCount,
-  } = useStreamingLogs(isActive ? job.id : null, isActive ? job.appId : null, isActive);
-
-  const logsRef = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight;
-  }, [liveCount]);
+  const { lines: streamLines, done: streamDone } = useStreamingLogs(
+    isActive ? job.id : null,
+    isActive ? job.appId : null,
+    isActive,
+  );
 
   useEffect(() => {
     if (streamDone) onJobDone?.();
@@ -872,12 +951,7 @@ function JobRow({
                   <div className="spinner !w-3 !h-3" /> Waiting for logs…
                 </div>
               ) : (
-                <pre
-                  ref={logsRef}
-                  className="text-[11px] bg-[#111827] rounded-lg p-3 overflow-x-auto max-h-[400px] overflow-y-auto font-mono leading-relaxed"
-                >
-                  {streamLines.map(renderLogLine)}
-                </pre>
+                <WorkerLogSections lines={streamLines} autoScroll />
               )}
             </div>
           ) : (
