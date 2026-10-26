@@ -851,6 +851,7 @@ model ScreenshotJob {
   screenshotDescriptions Json?
   screenshotSublines     Json?
   screenshotStyle        Json?
+  screenshotShotStyles   Json?
   activeRevisionId       String?
   revisions              ScreenshotRevision[]
   startedAt              DateTime?

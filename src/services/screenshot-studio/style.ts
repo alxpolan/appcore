@@ -181,6 +181,68 @@ export function storedShotPatch(patch: unknown): Partial<StudioStyle> | null {
   return rest;
 }
 
+export function storedShotStyles(value: unknown): Record<string, Partial<StudioStyle>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const out: Record<string, Partial<StudioStyle>> = {};
+
+  for (const [base, patch] of Object.entries(value as Record<string, unknown>)) {
+    const clean = storedShotPatch(patch);
+
+    if (clean) out[base] = clean;
+  }
+
+  return out;
+}
+
+function shotCoreAndDevice(basename: string): { core: string; device: string } | null {
+  const match = /^(\d+)_(.+)__(.+?)\.[^.]+$/.exec(basename);
+
+  if (!match) return null;
+
+  return { core: match[2], device: match[3] };
+}
+
+export function matchShotStyle(
+  styles: Record<string, Partial<StudioStyle>>,
+  basename: string,
+): Partial<StudioStyle> | null {
+  if (styles[basename]) return styles[basename];
+
+  const want = shotCoreAndDevice(basename);
+
+  if (!want) return null;
+
+  let found: Partial<StudioStyle> | null = null;
+
+  for (const [key, patch] of Object.entries(styles)) {
+    const have = shotCoreAndDevice(key);
+
+    if (!have || have.core !== want.core || have.device !== want.device) continue;
+
+    if (found) return null;
+
+    found = patch;
+  }
+
+  return found;
+}
+
+export function resolveShotStyles(
+  styles: Record<string, Partial<StudioStyle>>,
+  basenames: string[],
+): Record<string, Partial<StudioStyle>> {
+  const out: Record<string, Partial<StudioStyle>> = {};
+
+  for (const basename of basenames) {
+    const patch = matchShotStyle(styles, basename);
+
+    if (patch) out[basename] = patch;
+  }
+
+  return out;
+}
+
 export function normalizeStudioTitle(value: unknown): string {
   if (typeof value !== "string") return "";
 

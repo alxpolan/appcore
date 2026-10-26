@@ -7,12 +7,15 @@ import {
   STUDIO_TITLE_MAX_LENGTH,
   isStudioFontId,
   matchDescriptionKey,
+  matchShotStyle,
   normalizeHexColor,
   normalizeStudioStyle,
   normalizeStudioTitle,
   normalizeTitleBoxSize,
   normalizeTitleLines,
+  resolveShotStyles,
   resolveStudioTitle,
+  storedShotStyles,
   studioBasename,
   studioDeviceLabel,
   titleLinesForTitle,
@@ -308,5 +311,71 @@ describe("studio style: title lines stay with their title", () => {
     assert.deepEqual(titleLinesForTitle([], "Tap to count rows"), []);
     assert.deepEqual(titleLinesForTitle(["Tap to count rows"], ""), []);
     assert.deepEqual(titleLinesForTitle("not-an-array", "Tap to count rows"), []);
+  });
+});
+
+describe("studio style: stored shot styles", () => {
+  it("cleans a whole map and drops default-equal patches", () => {
+    assert.deepEqual(
+      storedShotStyles({
+        "01_Projects__iphone_6.9.png": { offsetY: 238, titleScale: 0.947, titleLines: ["x"] },
+        "02_Counter__iphone_6.9.png": {},
+        "03_Other__iphone_6.9.png": null,
+      }),
+      { "01_Projects__iphone_6.9.png": { offsetY: 238, titleScale: 0.947 } },
+    );
+  });
+
+  it("returns an empty map for garbage", () => {
+    assert.deepEqual(storedShotStyles(null), {});
+    assert.deepEqual(storedShotStyles([]), {});
+    assert.deepEqual(storedShotStyles("nope"), {});
+  });
+});
+
+describe("studio style: shot style matching", () => {
+  const styles = {
+    "01_Projects__iphone_6.9.png": { offsetY: 238 },
+    "04_NewProject__iphone_6.9.png": { offsetY: 100 },
+    "04_NewProject__ipad_unknown.png": { offsetY: 50 },
+  };
+
+  it("matches exact filenames", () => {
+    assert.deepEqual(matchShotStyle(styles, "01_Projects__iphone_6.9.png"), { offsetY: 238 });
+  });
+
+  it("follows renumbered shots with the same core and device", () => {
+    assert.deepEqual(matchShotStyle(styles, "05_NewProject__iphone_6.9.png"), { offsetY: 100 });
+  });
+
+  it("misses across devices and on ambiguous or unknown cores", () => {
+    assert.equal(matchShotStyle({ "04_NewProject__iphone_6.9.png": { offsetY: 100 } }, "05_NewProject__ipad_unknown.png"), null);
+    assert.equal(
+      matchShotStyle(
+        { "01_Foo__iphone_6.9.png": { offsetY: 1 }, "02_Foo__iphone_6.9.png": { offsetY: 2 } },
+        "03_Foo__iphone_6.9.png",
+      ),
+      null,
+    );
+    assert.equal(matchShotStyle(styles, "03_PatternCrochet__iphone_6.9.png"), null);
+    assert.equal(matchShotStyle(styles, "notes.txt"), null);
+  });
+});
+
+describe("studio style: shot style resolution", () => {
+  it("resolves each basename to the stored map keys", () => {
+    assert.deepEqual(
+      resolveShotStyles(
+        {
+          "01_Projects__iphone_6.9.png": { offsetY: 238 },
+          "04_NewProject__iphone_6.9.png": { offsetY: 100 },
+        },
+        ["01_Projects__iphone_6.9.png", "05_NewProject__iphone_6.9.png", "03_PatternCrochet__iphone_6.9.png"],
+      ),
+      {
+        "01_Projects__iphone_6.9.png": { offsetY: 238 },
+        "05_NewProject__iphone_6.9.png": { offsetY: 100 },
+      },
+    );
   });
 });

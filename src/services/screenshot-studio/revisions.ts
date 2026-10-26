@@ -3,7 +3,7 @@ import path from "path";
 import { prisma } from "../../config";
 import { Prisma } from "@prisma/client";
 import type { ScreenshotStylePreset } from "@prisma/client";
-import { normalizeStudioStyle, normalizeTitleLines, storedShotPatch, type StudioStyle } from "./style";
+import { normalizeStudioStyle, normalizeTitleLines, storedShotStyles, type StudioStyle } from "./style";
 
 function parseStoredTitleLines(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -241,16 +241,7 @@ export async function setAppDefaultFromRevision(
   const style = normalizeStudioStyle(revision.style);
   style.titleLines = [];
 
-  const styles: Record<string, Partial<StudioStyle>> = {};
-  const raw = revision.styles;
-
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    for (const [base, patch] of Object.entries(raw as Record<string, unknown>)) {
-      const clean = storedShotPatch(patch);
-
-      if (clean) styles[base] = clean;
-    }
-  }
+  const styles = storedShotStyles(revision.styles);
 
   await prisma.app.update({
     where: { id: appId },

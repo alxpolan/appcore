@@ -8,8 +8,10 @@ import {
   matchDescriptionKey,
   normalizeStudioStyle,
   normalizeStudioTitle,
+  resolveShotStyles,
   resolveStudioTitle,
   storedShotPatch,
+  storedShotStyles,
   studioBasename,
   studioDeviceLabel,
   titleLinesForTitle,
@@ -206,10 +208,43 @@ async function studioRevisionStyle(jobId: string, revisionId: string | null): Pr
   return normalizeStudioStyle(revision.style);
 }
 
+function framedBasenames(framedByLocale: Record<string, string[]>): string[] {
+  const out = new Set<string>();
+
+  for (const urls of Object.values(framedByLocale)) {
+    for (const url of urls) out.add(studioBasename(url));
+  }
+
+  return [...out];
+}
+
+function fallbackStudioShotStyles(
+  jobShotStyles: unknown,
+  appShotStyles: unknown,
+  basenames: string[],
+): Record<string, Partial<StudioStyle>> {
+  const snapshot = storedShotStyles(jobShotStyles);
+
+  if (Object.keys(snapshot).length > 0) return snapshot;
+
+  return resolveShotStyles(storedShotStyles(appShotStyles), basenames);
+}
+
 export async function getStudioData(jobId: string): Promise<StudioData> {
   const job = await prisma.screenshotJob.findUnique({
     where: { id: jobId },
-    include: { app: { select: { id: true, name: true, currentSubtitle: true, defaultScreenshotRevisionId: true } } },
+    include: {
+      app: {
+        select: {
+          id: true,
+          name: true,
+          currentSubtitle: true,
+          defaultScreenshotRevisionId: true,
+          defaultScreenshotStyle: true,
+          defaultScreenshotShotStyles: true,
+        },
+      },
+    },
   });
 
   if (!job) throw new Error(`Screenshot job ${jobId} not found`);
@@ -224,9 +259,16 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
   const descriptions = (job.screenshotDescriptions ?? {}) as Record<string, string>;
   const fallbackTitle = job.app.currentSubtitle || job.app.name;
   const style =
-    (await studioRevisionStyle(jobId, effective.revisionId)) ?? normalizeStudioStyle(job.screenshotStyle);
+    (await studioRevisionStyle(jobId, effective.revisionId)) ??
+    normalizeStudioStyle(job.screenshotStyle ?? job.app.defaultScreenshotStyle);
 
-  const styles = await studioRevisionStyles(jobId, effective.revisionId);
+  const styles = effective.revisionId
+    ? await studioRevisionStyles(jobId, effective.revisionId)
+    : fallbackStudioShotStyles(
+        job.screenshotShotStyles,
+        job.app.defaultScreenshotShotStyles,
+        framedBasenames(effective.framedByLocale),
+      );
 
   const locales = Object.entries(effective.framedByLocale)
     .sort(([a], [b]) => {
@@ -467,14 +509,25 @@ export async function renderStudioRevision(args: {
 export async function duplicateStudioJob(jobId: string, pusher?: string | null): Promise<{ jobId: string }> {
   assertStudioSegment(jobId, "job");
 
-  const job = await prisma.screenshotJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.screenshotJob.findUnique({
+    where: { id: jobId },
+    include: { app: { select: { defaultScreenshotStyle: true, defaultScreenshotShotStyles: true } } },
+  });
 
   if (!job) throw new Error(`Screenshot job ${jobId} not found`);
 
   const effective = await getEffectiveFramed(jobId);
-  const style = (await studioRevisionStyle(jobId, effective.revisionId)) ?? normalizeStudioStyle(job.screenshotStyle);
+  const style =
+    (await studioRevisionStyle(jobId, effective.revisionId)) ??
+    normalizeStudioStyle(job.screenshotStyle ?? job.app.defaultScreenshotStyle);
   const titles = await studioRevisionTitles(jobId, effective.revisionId);
-  const styles = await studioRevisionStyles(jobId, effective.revisionId);
+  const styles = effective.revisionId
+    ? await studioRevisionStyles(jobId, effective.revisionId)
+    : fallbackStudioShotStyles(
+        job.screenshotShotStyles,
+        job.app.defaultScreenshotShotStyles,
+        framedBasenames(effective.framedByLocale),
+      );
 
   const duplicate = await prisma.screenshotJob.create({
     data: {
