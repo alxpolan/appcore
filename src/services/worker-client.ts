@@ -155,6 +155,18 @@ interface WorkerSlot {
   baseURL: string;
   client: AxiosInstance;
   busy: boolean;
+  label: string;
+}
+
+const WORKER_MACHINE_NAMES: Record<string, string> = {
+  "192.168.88.253": "M4",
+  "192.168.88.254": "M1",
+};
+
+function labelForWorkerUrl(baseURL: string, index: number): string {
+  const host = new URL(baseURL).hostname;
+
+  return WORKER_MACHINE_NAMES[host] ?? `Worker ${index + 1}`;
 }
 
 interface FrameitSlot {
@@ -184,9 +196,10 @@ class FastlaneWorkerClient {
         throw new Error("FASTLANE_WORKER_SECRET not set. Cannot authenticate with Fastlane worker.");
       }
 
-      this.slots = urls.map((baseURL) => ({
+      this.slots = urls.map((baseURL, index) => ({
         baseURL,
         busy: false,
+        label: labelForWorkerUrl(baseURL, index),
         client: axios.create({
           baseURL,
           headers: {
@@ -252,6 +265,10 @@ class FastlaneWorkerClient {
   /** Configured workers in total - callers size parallel dispatch off this. */
   slotCount(): number {
     return this.getSlots().length;
+  }
+
+  slotLabel(index: number): string {
+    return this.getSlots()[index]?.label ?? `Worker ${index + 1}`;
   }
 
   frameitSlotCount(): number {

@@ -3,7 +3,7 @@ import fs from "fs";
 import { logger, prisma, getTeamSettings } from "../config";
 import { decryptNullable } from "../config/encryption";
 import { workerClient, type WorkerSnapshotResult } from "./worker-client";
-import { frameComplexBatch, normalizeStudioStyle, storedShotPatch, type StudioStyle } from "./screenshot-studio";
+import { frameComplexBatch, matchShotStyle, normalizeStudioStyle, storedShotStyles, type StudioStyle } from "./screenshot-studio";
 import { postCommitStatus } from "./github";
 import { generateScreenshotSublines, type ScreenshotSublines } from "./screenshot-subline-generator";
 import { ascClientForTeam } from "./asc-client";
@@ -155,14 +155,16 @@ async function runWorkerScreenshotGeneration(
       const settled = await Promise.allSettled(
         Array.from({ length: parts }, (_, i) =>
           workerClient.snapshot({ ...snapshotParams, splitIndex: i, splitCount: parts }, (line) =>
-            log(`[part ${i + 1}/${parts}] ${line}`),
+            log(`[${workerClient.slotLabel(i)}] ${line}`),
           ),
         ),
       );
       const partials = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
       settled.forEach((s, i) => {
         if (s.status === "rejected") {
-          log(`[capture] Part ${i + 1}/${parts} failed: ${s.reason instanceof Error ? s.reason.message : s.reason}`);
+          log(
+            `[capture] ${workerClient.slotLabel(i)} failed: ${s.reason instanceof Error ? s.reason.message : s.reason}`,
+          );
         }
       });
       if (partials.length === 0) {
@@ -566,16 +568,8 @@ async function frameScreenshots(
 
     if (pinnedDefault) pinnedDefault.titleLines = [];
 
-    const shotDefaults: Record<string, Partial<StudioStyle>> = {};
-    const rawShotDefaults = job.app.defaultScreenshotShotStyles;
-
-    if (rawShotDefaults && typeof rawShotDefaults === "object" && !Array.isArray(rawShotDefaults)) {
-      for (const [base, patch] of Object.entries(rawShotDefaults as Record<string, unknown>)) {
-        const clean = storedShotPatch(patch);
-
-        if (clean) shotDefaults[base] = clean;
-      }
-    }
+    const shotDefaults = storedShotStyles(job.app.defaultScreenshotShotStyles);
+    const usedShotStyles: Record<string, Partial<StudioStyle>> = {};
 
     if (pinnedDefault) log("[framing] Using pinned Studio default style");
 
@@ -618,8 +612,10 @@ async function frameScreenshots(
       const shots = entries
         .filter((f) => /\.(png)$/i.test(f))
         .map((filename) => {
-          const patch = shotDefaults[filename];
+          const patch = matchShotStyle(shotDefaults, filename);
           const shotStyle = patch ? normalizeStudioStyle({ ...style, ...patch }) : style;
+
+          if (patch) usedShotStyles[filename] = patch;
 
           return { filename, base: filename.replace(/\.[^.]+$/, ""), style: shotStyle };
         })
@@ -649,6 +645,7 @@ async function frameScreenshots(
       data: {
         framedByLocale: framedByLocale as Prisma.InputJsonValue,
         screenshotStyle: style as Prisma.InputJsonValue,
+        screenshotShotStyles: usedShotStyles as Prisma.InputJsonValue,
       },
     });
 
