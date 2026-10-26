@@ -9,6 +9,7 @@ import {
   fetchSubscriptionPriceEqualizations,
   type EqualizedPricePoint,
 } from "../../services/asc-subscription-prices";
+import { buildIntroductoryOfferBody, toIntroductoryOffer } from "../../services/asc-introductory-offers";
 import { LOCALE_MAP } from "../../services/utils/country_lang";
 import { priceMultiplierFor } from "../../services/utils/price-multipliers";
 import { bossScheduler } from "../../jobs/boss";
@@ -1788,6 +1789,75 @@ ascRouter.delete(
     const { id } = req.params;
     const asc = await ascClientForUser(req.user!.userId);
     await asc.client.delete(`/subscriptionPrices/${id}`);
+    res.json({ ok: true });
+  }),
+);
+
+ascRouter.get(
+  "/subscriptions/:id/introductory-offers",
+  handle("listIntroductoryOffers", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.get(`/subscriptions/${id}/introductoryOffers`, {
+      params: {
+        "fields[subscriptionIntroductoryOffers]": "offerMode,duration,numberOfPeriods,startDate,endDate",
+        limit: 200,
+      },
+    });
+
+    res.json((resp.data ?? []).map(toIntroductoryOffer));
+  }),
+);
+
+ascRouter.post(
+  "/subscriptions/introductory-offers",
+  handle("createIntroductoryOffer", async (req, res) => {
+    const { subscriptionId, offerMode, duration, numberOfPeriods, territory, pricePointId, startDate, endDate } =
+      req.body as {
+        subscriptionId?: string;
+        offerMode?: string;
+        duration?: string;
+        numberOfPeriods?: number;
+        territory?: string;
+        pricePointId?: string;
+        startDate?: string;
+        endDate?: string;
+      };
+
+    if (!subscriptionId) {
+      res.status(400).json({ error: "subscriptionId is required" });
+      return;
+    }
+
+    let body: ReturnType<typeof buildIntroductoryOfferBody>;
+    try {
+      body = buildIntroductoryOfferBody({
+        subscriptionId,
+        offerMode,
+        duration,
+        numberOfPeriods,
+        territory,
+        pricePointId,
+        startDate,
+        endDate,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid introductory offer" });
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.post("/subscriptionIntroductoryOffers", body);
+    res.status(201).json(toIntroductoryOffer(resp.data));
+  }),
+);
+
+ascRouter.delete(
+  "/subscriptions/introductory-offers/:id",
+  handle("deleteIntroductoryOffer", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    await asc.client.delete(`/subscriptionIntroductoryOffers/${id}`);
     res.json({ ok: true });
   }),
 );
