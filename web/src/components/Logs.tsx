@@ -876,11 +876,11 @@ function JobRow({
       className={`bg-[#fafbfc] dark:bg-[#252b38] border ${borderDefault} ${textPrimary} hover:border-[#d1d5db] dark:hover:border-[#3a4050] rounded-xl overflow-hidden`}
     >
       <button
-        className="w-full flex items-center gap-4 px-4 py-3 hover:bg-[#fafbfc] dark:hover:bg-white/[0.03] transition-colors text-left"
+        className="w-full flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-[#fafbfc] dark:hover:bg-white/[0.03] transition-colors text-left"
         onClick={onToggle}
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[13px] font-mono ${textPrimary}`}>{job.commitSha.slice(0, 7)}</span>
             <span className="text-[12px] font-mono bg-[#f3f4f6] dark:bg-[#252b38] dark:text-[#8b93a5] px-1.5 py-0.5 rounded">
               {job.branch ?? "—"}
@@ -892,8 +892,13 @@ function JobRow({
           )}
         </div>
         <div className="text-right shrink-0">
-          <div className={`text-[12px] ${textSecondary}`}>{job.pusher ? `by ${job.pusher}` : ""}</div>
-          <div className={`text-[11px] ${textSecondary}`}>{new Date(job.createdAt).toLocaleString()}</div>
+          <div className={`text-[12px] ${textSecondary} hidden sm:block`}>{job.pusher ? `by ${job.pusher}` : ""}</div>
+          <div className={`text-[11px] ${textSecondary} sm:hidden`}>
+            {new Date(job.createdAt).toLocaleDateString()}
+          </div>
+          <div className={`text-[11px] ${textSecondary} hidden sm:block`}>
+            {new Date(job.createdAt).toLocaleString()}
+          </div>
         </div>
         <ChevronDown
           className={`w-4 h-4 ${textSecondary} shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -1010,7 +1015,7 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
       className={`bg-[#fafbfc] dark:bg-[#252b38] border ${borderDefault} ${textPrimary} hover:border-[#d1d5db] dark:hover:border-[#3a4050] rounded-xl overflow-hidden`}
     >
       <button
-        className="w-full flex items-center gap-4 px-4 py-3 hover:bg-[#fafbfc] dark:hover:bg-white/[0.03] transition-colors text-left"
+        className="w-full flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-[#fafbfc] dark:hover:bg-white/[0.03] transition-colors text-left"
         onClick={onToggle}
       >
         <div className="flex-1 min-w-0">
@@ -1034,7 +1039,12 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className={`text-[11px] ${textSecondary}`}>{new Date(job.createdAt).toLocaleString()}</div>
+          <div className={`text-[11px] ${textSecondary} sm:hidden`}>
+            {new Date(job.createdAt).toLocaleDateString()}
+          </div>
+          <div className={`text-[11px] ${textSecondary} hidden sm:block`}>
+            {new Date(job.createdAt).toLocaleString()}
+          </div>
         </div>
         <ChevronDown
           className={`w-4 h-4 ${textSecondary} shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}

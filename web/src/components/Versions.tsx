@@ -634,7 +634,7 @@ function EditableField({
               onClick={() => onApplyAll(field.key, value)}
               disabled={propagating}
               title="Copy this value to every other language"
-              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] text-[#9ca3af] font-medium hover:text-[#595DD2] disabled:opacity-100"
+              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] text-[#9ca3af] font-medium hover:text-[#595DD2] disabled:opacity-100"
             >
               {propagating ? <div className="spinner !w-3 !h-3" /> : <Copy className="w-3 h-3" />}
               All languages
@@ -643,7 +643,7 @@ function EditableField({
           {!editing && isEditable && (
             <button
               onClick={() => setEditing(true)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] text-[#595DD2] font-medium hover:underline"
+              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-[11px] text-[#595DD2] font-medium hover:underline"
             >
               Edit
             </button>
@@ -1579,7 +1579,7 @@ function ReviewerInfoPanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className={`text-[12px] font-semibold ${textSecondary} uppercase tracking-wide block mb-1.5`}>
             First Name
@@ -1629,7 +1629,7 @@ function ReviewerInfoPanel({
           />
         </div>
 
-        <div className="col-span-2 flex items-center gap-3">
+        <div className="col-span-1 sm:col-span-2 flex items-center gap-3">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -2172,7 +2172,7 @@ export default function Versions({ addToast }: Props) {
 
   return (
     <div className="max-w-4xl">
-      <div className="flex items-center justify-between gap-4 mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div className="flex items-center gap-2.5 flex-wrap">
           {data.versionString && <h1 className={`${pageTitle}`}>Version {data.versionString}</h1>}
           {data.appStoreState && <StateBadge state={data.appStoreState} />}

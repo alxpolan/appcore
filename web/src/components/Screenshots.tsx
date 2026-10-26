@@ -643,7 +643,7 @@ function RunResults({
     <>
       <div className={`${cardCls} mb-5`}>
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <h2 className={`text-[15px] font-semibold ${textPrimary} truncate`}>
               {job.commitMessage || job.commitSha.slice(0, 7)}
             </h2>
@@ -661,8 +661,8 @@ function RunResults({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <span className={`text-[11px] ${textSecondary} font-mono`}>
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className={`text-[11px] ${textSecondary} font-mono hidden sm:inline`}>
               {job.commitSha.slice(0, 7)}
               {job.branch ? ` · ${job.branch}` : ""}
               {` · ${new Date(job.createdAt).toLocaleDateString()}`}

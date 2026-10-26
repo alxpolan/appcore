@@ -421,7 +421,8 @@ export default function KeywordTable({
       className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden mb-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]`}
     >
       {(openRowMenu || openGroupMenu) && <div className="fixed inset-0 z-40" onClick={closeMenus} />}
-      <table className="w-full border-collapse table-fixed">
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[800px] border-collapse table-fixed">
         <colgroup>
           <col style={{ width: "23%" }} />
           <col style={{ width: "10%" }} />
@@ -490,6 +491,7 @@ export default function KeywordTable({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

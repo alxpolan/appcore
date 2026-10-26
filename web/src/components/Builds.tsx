@@ -238,7 +238,7 @@ function LatestBuildCard({ app, reloadToken }: { app: AppItem; reloadToken: numb
 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0 flex-1">
               <div className={`text-[14px] font-semibold ${textPrimary} leading-tight`}>
                 {appName}
                 {build.version && (
@@ -249,7 +249,7 @@ function LatestBuildCard({ app, reloadToken }: { app: AppItem; reloadToken: numb
                   </span>
                 )}
               </div>
-              <div className={`text-[11px] ${textMuted} font-mono mt-0.5`}>{build.bundleId}</div>
+              <div className={`text-[11px] ${textMuted} font-mono mt-0.5 truncate`}>{build.bundleId}</div>
             </div>
             <span className={`${badgeOutline("sandbox")} shrink-0 uppercase tracking-wide`}>{build.exportMethod}</span>
           </div>

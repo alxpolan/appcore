@@ -279,7 +279,7 @@ function AppSwitcher({
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen(!open)}
-          className="w-full pl-1.5 pr-2 py-1.5 rounded-[10px] flex items-center gap-2 bg-black/[0.06] dark:bg-white/10 hover:bg-black/[0.09] dark:hover:bg-white/[0.15] transition-colors"
+          className="w-full max-w-full min-w-0 pl-1.5 pr-2 py-1.5 rounded-[10px] flex items-center gap-2 bg-black/[0.06] dark:bg-white/10 hover:bg-black/[0.09] dark:hover:bg-white/[0.15] transition-colors"
         >
           {activeApp ? (
             <AppAvatar url={activeApp.iconUrl} name={activeApp.displayName ?? activeApp.name} size={5} accent />
@@ -297,7 +297,7 @@ function AppSwitcher({
         </button>
 
         {open && (
-          <div className="absolute left-0 top-[calc(100%+6px)] w-[280px] bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden">
+          <div className="absolute left-0 top-[calc(100%+6px)] w-[280px] max-w-[calc(100vw-2rem)] bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden">
             <div className="px-3 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-[#5c6478]">
               Your Apps
             </div>
@@ -416,13 +416,14 @@ function HelpMenu() {
   useClickOutside(ref, closeMenu);
 
   return (
-    <div ref={ref} className="relative mr-1">
+    <div ref={ref} className="relative shrink-0 sm:mr-1">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors text-[#374151] dark:text-white/80 text-sm font-medium"
+        aria-label="Help"
+        className="flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors text-[#374151] dark:text-white/80 text-sm font-medium"
       >
         <HelpCircle className="w-4 h-4 shrink-0" />
-        Help
+        <span className="hidden md:inline">Help</span>
       </button>
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] w-48 bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden py-1">
@@ -477,15 +478,15 @@ function HeaderProfileMenu({
     .toUpperCase();
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors text-[#374151] dark:text-white/80 text-sm font-medium"
+        className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors text-[#374151] dark:text-white/80 text-sm font-medium"
       >
         <div className="w-6 h-6 rounded-full bg-[#595DD2] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
           {initials}
         </div>
-        <span className="max-w-[120px] truncate">{displayName}</span>
+        <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
       </button>
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] w-52 bg-white dark:bg-[#1c2028] border border-[#e5e7eb] dark:border-[#2a2f3d] rounded-xl shadow-lg z-50 overflow-hidden">
@@ -1398,28 +1399,35 @@ export default function App() {
         {/*demo@marteso.com*/}
         {/* No left padding from lg up so the logo box can start at x=0 and share the
             rail's 56px column, which puts the logo dead centre over the rail icons. */}
-        <header className="h-[52px] bg-[var(--shell-bg)] flex items-center pl-4 pr-4 lg:pl-0 shrink-0 transition-colors">
+        <header className="h-[52px] bg-[var(--shell-bg)] flex items-center gap-1 pl-3 pr-2 sm:pl-4 sm:pr-4 lg:pl-0 min-w-0 shrink-0 transition-colors">
           <button
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open menu"
-            className="lg:hidden mr-1 -ml-1 p-2 rounded-lg text-[#374151] dark:text-white/80 hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
+            className="lg:hidden mr-0.5 sm:mr-1 -ml-1 p-2 rounded-lg shrink-0 text-[#374151] dark:text-white/80 hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
           >
             <Menu className="w-5 h-5" />
           </button>
           {/* Starts at x=0 from lg up, so 232px lands exactly on the right edge of the
               sidebar nav items (240px sidebar, px-2). */}
-          <div className="flex items-center min-w-0 lg:w-[232px] lg:shrink-0">
+          <div className="flex items-center min-w-0 flex-1 sm:flex-none lg:w-[232px] lg:shrink-0">
             <a href="/" className="flex items-center shrink-0 lg:w-[56px] lg:justify-center">
               <img src="/logo.svg" alt="Marteso" className="h-[24px] w-auto" />
             </a>
-            <div className="ml-2.5 min-w-0 flex-1">
+            <div className="ml-2 sm:ml-2.5 min-w-0 flex-1 max-w-[44vw] sm:max-w-[200px] lg:max-w-none">
               <AppSwitcher current={dash?.app ?? null} addToast={addToast} />
             </div>
           </div>
-          <div className="flex-1" />
+          <div className="flex-1 min-w-0" />
           <button
             onClick={() => setSearchOpen(true)}
-            className="hidden sm:flex items-center gap-2 bg-black/[0.06] dark:bg-white/10 rounded-md px-3 py-1.5 text-sm text-[#6b7280] dark:text-white/50 w-44 mr-3 cursor-pointer select-none hover:bg-black/[0.09] dark:hover:bg-white/[0.15] transition-colors"
+            aria-label="Search"
+            className="md:hidden p-2 rounded-lg shrink-0 text-[#6b7280] dark:text-white/50 hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="hidden md:flex items-center gap-2 bg-black/[0.06] dark:bg-white/10 rounded-md px-3 py-1.5 text-sm text-[#6b7280] dark:text-white/50 w-44 mr-3 cursor-pointer select-none hover:bg-black/[0.09] dark:hover:bg-white/[0.15] transition-colors"
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span>Search…</span>

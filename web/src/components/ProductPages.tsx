@@ -163,7 +163,7 @@ export default function ProductPages({ addToast }: { addToast: ToastFn }) {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-5">
+      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div>
           <h1 className={pageTitle}>Product Pages</h1>
           <p className={`text-[13px] mt-1 ${textSecondary}`}>
@@ -287,7 +287,7 @@ function PageCard({
                 setConfirmDelete(true);
               }}
               title="Delete page"
-              className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-[#9ca3af] hover:text-red-600 transition-all`}
+              className={`p-1.5 rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-[#9ca3af] hover:text-red-600 transition-all`}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
