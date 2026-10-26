@@ -142,14 +142,16 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
     "create_google_ads_campaign",
     {
       description:
-        "Create a Google Ads Search campaign with ad groups, keywords, negative keywords, geo/language targeting " +
+        "Create a Google Ads Search campaign with ad groups, keywords, negative keywords, geo/language targeting, " +
+        "ad schedule, device bid adjustments, ad extensions (sitelinks/callouts/structured snippets/call) " +
         "and responsive search ads via the Google Ads API. " +
         "The campaign starts PAUSED by default so it can be reviewed in Google Ads before it spends money — " +
         "pass status ENABLED only when the user explicitly asks to run it immediately, " +
         "or publish it later with update_google_ads_campaign_status. " +
         "Requires team admin rights. " +
         "Campaign-level negativeKeywords apply to the whole campaign; per-ad-group negativeKeywords apply to that ad group only. " +
-        "Pass locationIds (e.g. ['2276'] Germany) or the campaign serves worldwide. " +
+        "Pass locationIds (e.g. ['2276'] Germany) or the campaign serves worldwide; location targeting only reaches " +
+        "people physically present in those locations, never people merely searching about or interested in them. " +
         "Pass ctToken to append it as ct param to all ad final URLs; with appleBundleId the Apple mapping is linked automatically.",
       inputSchema: {
         name: z.string().describe("Campaign name, e.g. 'MyApp - US - Brand'."),
@@ -161,14 +163,28 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         startDate: z.string().optional().describe("Start date, YYYY-MM-DD. Defaults to today when omitted."),
         endDate: z.string().optional().describe("Optional end date, YYYY-MM-DD."),
         biddingStrategy: z
-          .enum(["MANUAL_CPC", "MAXIMIZE_CLICKS"])
+          .enum(["MANUAL_CPC", "MAXIMIZE_CLICKS", "MAXIMIZE_CONVERSIONS", "TARGET_CPA", "TARGET_ROAS"])
           .optional()
-          .describe("MANUAL_CPC (default, needs bids) or MAXIMIZE_CLICKS (bids are ignored)."),
+          .describe(
+            "MANUAL_CPC (default, needs bids), MAXIMIZE_CLICKS, MAXIMIZE_CONVERSIONS (optionally with targetCpa), " +
+              "TARGET_CPA (requires targetCpa), or TARGET_ROAS (requires targetRoas). " +
+              "The target-based strategies need conversion tracking set up on the account to work well.",
+          ),
         cpcBidCeiling: z
           .number()
           .positive()
           .optional()
-          .describe("Max CPC cap for MAXIMIZE_CLICKS. Only valid with that strategy."),
+          .describe("Max CPC cap. Valid with MAXIMIZE_CLICKS, MAXIMIZE_CONVERSIONS, TARGET_CPA or TARGET_ROAS."),
+        targetCpa: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Target cost per acquisition in the account currency. Required for TARGET_CPA."),
+        targetRoas: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Target return on ad spend as a percent, e.g. 300 for 300%. Required for TARGET_ROAS."),
         locationIds: z
           .array(z.string().regex(/^\d+$/))
           .optional()
@@ -177,6 +193,59 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           .array(z.string().regex(/^\d+$/))
           .optional()
           .describe("Language IDs, e.g. ['1001'] German, ['1000'] English."),
+        adSchedule: z
+          .array(
+            z.object({
+              dayOfWeek: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
+              startHour: z.number().int().min(0).max(24).describe("0-24."),
+              startMinute: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)]).optional(),
+              endHour: z.number().int().min(0).max(24).describe("0-24, after startHour."),
+              endMinute: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)]).optional(),
+            }),
+          )
+          .optional()
+          .describe("Day/time windows the ads may show in. Omit to run all the time."),
+        deviceBidAdjustments: z
+          .object({
+            mobile: z.number().min(-90).max(900).optional(),
+            desktop: z.number().min(-90).max(900).optional(),
+            tablet: z.number().min(-90).max(900).optional(),
+          })
+          .optional()
+          .describe("Per-device bid adjustment as a percent, e.g. -50 or 20. Range -90 to 900."),
+        sitelinks: z
+          .array(
+            z.object({
+              linkText: z.string().max(25).describe("Max 25 characters."),
+              finalUrl: z.string().describe("Destination URL for this sitelink."),
+              description1: z.string().max(35).optional().describe("Max 35 characters."),
+              description2: z.string().max(35).optional().describe("Max 35 characters."),
+            }),
+          )
+          .optional()
+          .describe("Sitelink extensions shown below the ad."),
+        callouts: z
+          .array(z.string().max(25))
+          .optional()
+          .describe("Callout extension texts, max 25 characters each, e.g. 'Free Shipping'."),
+        structuredSnippets: z
+          .array(
+            z.object({
+              header: z.string().describe("A Google-defined header such as 'Brands', 'Styles', or 'Types'."),
+              values: z.array(z.string().max(25)).min(1).describe("Max 25 characters each."),
+            }),
+          )
+          .optional()
+          .describe("Structured snippet extensions."),
+        calls: z
+          .array(
+            z.object({
+              phoneNumber: z.string().describe("Phone number including country dialing code."),
+              countryCode: z.string().length(2).describe("2-letter ISO country code, e.g. 'US'."),
+            }),
+          )
+          .optional()
+          .describe("Call extensions."),
         ctToken: z
           .string()
           .optional()
@@ -362,8 +431,8 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
     "update_google_ads_campaign",
     {
       description:
-        "Update a Google Ads campaign: daily budget, status, name, start/end date. " +
-        "Requires team admin rights. Use list_google_ads_campaigns first to find the campaign ID.",
+        "Update a Google Ads campaign: daily budget, status, name, start/end date, Display Network, " +
+        "and geo targeting type. Requires team admin rights. Use list_google_ads_campaigns first to find the campaign ID.",
       inputSchema: {
         campaignId: z.string().describe("Google Ads campaign ID (numeric string)."),
         name: z.string().optional().describe("New campaign name."),
@@ -371,9 +440,29 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         dailyBudgetAmount: z.number().positive().optional().describe("New daily budget in the account currency."),
         startDate: z.string().optional().describe("New start date, YYYY-MM-DD."),
         endDate: z.string().optional().describe("New end date, YYYY-MM-DD."),
+        displayNetworkEnabled: z
+          .boolean()
+          .optional()
+          .describe("Whether the campaign may also serve on the Display Network. Defaults to off on creation."),
+        presenceOnlyTargeting: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, only targets people physically located in the chosen locations, not people merely " +
+              "searching about or interested in them.",
+          ),
       },
     },
-    async ({ campaignId, name, status, dailyBudgetAmount, startDate, endDate }) => {
+    async ({
+      campaignId,
+      name,
+      status,
+      dailyBudgetAmount,
+      startDate,
+      endDate,
+      displayNetworkEnabled,
+      presenceOnlyTargeting,
+    }) => {
       const ctx = await getGoogleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
 
@@ -389,6 +478,8 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           dailyBudgetAmount,
           startDate,
           endDate,
+          displayNetworkEnabled,
+          presenceOnlyTargeting,
         });
 
         return jsonResult({ campaign, previous: previous ?? null });

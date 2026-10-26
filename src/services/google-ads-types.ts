@@ -75,7 +75,15 @@ export interface GoogleAdsReportRange {
 }
 
 export interface GoogleAdsMutationOperation {
-  entity: "campaign_budget" | "campaign" | "ad_group" | "ad_group_criterion" | "campaign_criterion" | "ad_group_ad";
+  entity:
+    | "campaign_budget"
+    | "campaign"
+    | "ad_group"
+    | "ad_group_criterion"
+    | "campaign_criterion"
+    | "ad_group_ad"
+    | "asset"
+    | "campaign_asset";
   operation: "create" | "update" | "remove";
   /** Remove operations carry the bare resource name string, matching the API's `remove` field. */
   resource: Record<string, any> | string;
@@ -123,6 +131,55 @@ export interface GoogleAdsCreateAdGroupInput {
   ads?: GoogleAdsCreateRsaInput[];
 }
 
+export type GoogleAdsDayOfWeek =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export type GoogleAdsMinuteOfHour = 0 | 15 | 30 | 45;
+
+export interface GoogleAdsAdScheduleInput {
+  dayOfWeek: GoogleAdsDayOfWeek;
+  startHour: number;
+  startMinute?: GoogleAdsMinuteOfHour;
+  endHour: number;
+  endMinute?: GoogleAdsMinuteOfHour;
+}
+
+export interface GoogleAdsDeviceBidAdjustments {
+  mobile?: number;
+  desktop?: number;
+  tablet?: number;
+}
+
+export interface GoogleAdsSitelinkInput {
+  linkText: string;
+  finalUrl: string;
+  description1?: string;
+  description2?: string;
+}
+
+export interface GoogleAdsStructuredSnippetInput {
+  header: string;
+  values: string[];
+}
+
+export interface GoogleAdsCallInput {
+  phoneNumber: string;
+  countryCode: string;
+}
+
+export type GoogleAdsBiddingStrategy =
+  | "MANUAL_CPC"
+  | "MAXIMIZE_CLICKS"
+  | "MAXIMIZE_CONVERSIONS"
+  | "TARGET_CPA"
+  | "TARGET_ROAS";
+
 export interface GoogleAdsCreateCampaignInput {
   name: string;
   dailyBudgetAmount: number;
@@ -134,8 +191,16 @@ export interface GoogleAdsCreateCampaignInput {
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
   locationIds?: (string | number)[];
   languageIds?: (string | number)[];
-  biddingStrategy?: "MANUAL_CPC" | "MAXIMIZE_CLICKS";
+  biddingStrategy?: GoogleAdsBiddingStrategy;
   cpcBidCeiling?: number;
+  targetCpa?: number;
+  targetRoas?: number;
+  adSchedule?: GoogleAdsAdScheduleInput[];
+  deviceBidAdjustments?: GoogleAdsDeviceBidAdjustments;
+  sitelinks?: GoogleAdsSitelinkInput[];
+  callouts?: string[];
+  structuredSnippets?: GoogleAdsStructuredSnippetInput[];
+  calls?: GoogleAdsCallInput[];
 }
 
 export interface GoogleAdsCampaignTargeting {
@@ -153,6 +218,8 @@ export interface GoogleAdsCreatedCampaign {
   locations: string[];
   languages: string[];
   targetingResourceNames: string[];
+  adScheduleCount: number;
+  assetsCreated: number;
 }
 
 export interface GoogleAdsAddKeywordInput {
