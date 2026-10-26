@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import sharp from "sharp";
 import { execAsync, resolveRepoWorkDir, findConfigFile } from "../routes/shared";
 import { prepareNativeDeps } from "../native";
 import { type SnapshotJobResult } from "../log-bus";
@@ -21,6 +22,45 @@ const DEFAULT_DEVICES = [
   "iPad Pro (12.9-inch) (4th generation)",
 ];
 
+const PRO_MAX_RE = /\bPro Max\b/;
+const IPAD_SIZE_RE = /\b(11-inch|12\.9-inch|13-inch)\b/;
+
+interface CaptureSubstitution {
+  captureDevice: string;
+  exportWidth: number;
+  exportHeight: number;
+}
+
+function resolveCaptureSubstitution(
+  requested: string,
+  available: Array<{ name: string }>,
+): CaptureSubstitution | null {
+  if (PRO_MAX_RE.test(requested)) {
+    const sibling = requested.replace(PRO_MAX_RE, "Pro").toLowerCase();
+    const found = available.find((d) => d.name.toLowerCase() === sibling);
+
+    return found ? { captureDevice: found.name, exportWidth: 1320, exportHeight: 2868 } : null;
+  }
+
+  const sizeMatch = requested.match(IPAD_SIZE_RE);
+
+  if (requested.startsWith("iPad Pro") && sizeMatch && sizeMatch[1] !== "11-inch") {
+    const sibling = available.find((d) => /^ipad pro\b/i.test(d.name) && /11-inch/i.test(d.name) && /\(m4\)/i.test(d.name));
+
+    if (!sibling) return null;
+
+    const is13Inch = sizeMatch[1] === "13-inch";
+
+    return {
+      captureDevice: sibling.name,
+      exportWidth: is13Inch ? 2064 : 2048,
+      exportHeight: is13Inch ? 2752 : 2732,
+    };
+  }
+
+  return null;
+}
+
 export interface SnapshotParams {
   repoUrl: string;
   accessToken: string;
@@ -29,8 +69,6 @@ export interface SnapshotParams {
   iosDir?: string;
   framework?: string;
   envVars?: Record<string, string>;
-  // Split a run across workers: this part handles every language whose index
-  // (in the sorted effective list) is ≡ splitIndex mod splitCount.
   splitIndex?: number;
   splitCount?: number;
 }
@@ -49,6 +87,22 @@ export class SnapshotRunner {
   private skipTesting: string[] = [];
   private readonly xcresultLogs: Array<{ filename: string; sizeBytes: number }> = [];
   private readonly deviceNameMap: Map<string, string> = new Map();
+  private readonly exportSizeMap: Map<string, { width: number; height: number }> = new Map();
+  private readonly derivedDataPathsClearedOfStaleTestLogs = new Set<string>();
+
+  private persistentDerivedDataPathFor(device: string): string {
+    const cacheRoot = path.join(os.homedir(), "Library", "Caches", "appcore-worker-derived-data");
+    const key = `${this.sanitizeTag(this.params.appName)}-${device.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+    return path.join(cacheRoot, key);
+  }
+
+  private clearStaleTestLogsOnce(derivedDataPath: string): void {
+    if (this.derivedDataPathsClearedOfStaleTestLogs.has(derivedDataPath)) return;
+
+    this.derivedDataPathsClearedOfStaleTestLogs.add(derivedDataPath);
+    fs.rmSync(path.join(derivedDataPath, "Logs", "Test"), { recursive: true, force: true });
+  }
 
   private sanitizeTag(text: string, allowDots = false): string {
     const pattern = allowDots ? /[^a-zA-Z0-9._-]/g : /[^a-zA-Z0-9]/g;
@@ -248,7 +302,10 @@ export class SnapshotRunner {
         ? `-project "${projFile}"`
         : `-project "${scheme}.xcodeproj"`;
 
-    const effectiveConcurrency = Math.max(1, Math.min(concurrency, snapDevices.length));
+    const runsSubstitutedCaptureDevice = snapDevices.some((d) => this.exportSizeMap.has(d));
+    const effectiveConcurrency = runsSubstitutedCaptureDevice
+      ? 1
+      : Math.max(1, Math.min(concurrency, snapDevices.length));
 
     //this.push(
     //`[capture] Running xcodebuild for ${plural(snapDevices.length, "device")} (concurrency: ${effectiveConcurrency}):\n           - ${snapDevices.join("\n           - ")}`,
@@ -380,18 +437,28 @@ export class SnapshotRunner {
         continue;
       }
 
-      const udid = SnapshotRunner.resolveSimulatorUdid(d, simInfo.devices);
+      const substitution = resolveCaptureSubstitution(d, simInfo.devices);
+      const captureDevice = substitution?.captureDevice ?? d;
+      const udid = SnapshotRunner.resolveSimulatorUdid(captureDevice, simInfo.devices);
+
       if (!udid) {
         snapDevices.push(d);
         continue;
       }
 
-      const matched = simInfo.devices.find((s) => s.udid === udid) ?? { name: d };
-      this.deviceNameMap.set(udid, matched.name);
+      const matched = simInfo.devices.find((s) => s.udid === udid) ?? { name: captureDevice };
+      this.deviceNameMap.set(udid, d);
+
+      if (substitution) {
+        this.exportSizeMap.set(udid, { width: substitution.exportWidth, height: substitution.exportHeight });
+      }
+
       this.push(
-        matched.name !== d
-          ? `[capture] Device "${d}" → "${matched.name}" (${udid})`
-          : `[capture] Device "${d}" → ${udid}`,
+        captureDevice !== d
+          ? `[capture] Device "${d}" → captured on "${matched.name}" (${udid}), exported as "${d}"`
+          : matched.name !== d
+            ? `[capture] Device "${d}" → "${matched.name}" (${udid})`
+            : `[capture] Device "${d}" → ${udid}`,
       );
       snapDevices.push(udid);
     }
@@ -402,12 +469,15 @@ export class SnapshotRunner {
   private async bootSimulators(snapDevices: string[], appearance: "light" | "dark"): Promise<void> {
     for (const udid of snapDevices.filter((d) => UDID_RE.test(d))) {
       try {
+        await execAsync(`xcrun simctl shutdown "${udid}"`, { timeout: 30_000 }).catch(() => undefined);
+        await this.waitForSimulatorShutdown(udid);
+        await execAsync(`xcrun simctl erase "${udid}"`, { timeout: 60_000 });
         await execAsync(`xcrun simctl bootstatus "${udid}" -b`, { timeout: 120_000 });
         await execAsync(`xcrun simctl ui "${udid}" appearance ${appearance}`);
         await execAsync(`xcrun simctl shutdown "${udid}"`);
         await this.waitForSimulatorShutdown(udid);
       } catch {
-        this.push(`[capture] Warning: could not set appearance on ${udid}`);
+        this.push(`[capture] Warning: could not prepare ${udid}`);
       }
     }
   }
@@ -456,7 +526,8 @@ export class SnapshotRunner {
           ? `-destination 'id=${device}'`
           : `-destination 'platform=iOS Simulator,name=${device}'`;
 
-        const derivedDataPath = path.join(this.tmpDir, `DerivedData-${device.replace(/[^a-zA-Z0-9]/g, "_")}`);
+        const derivedDataPath = this.persistentDerivedDataPathFor(device);
+        this.clearStaleTestLogsOnce(derivedDataPath);
         const testLogsDir = path.join(derivedDataPath, "Logs", "Test");
 
         const shutdownDevice = async () => {
@@ -658,9 +729,18 @@ export class SnapshotRunner {
             }
           }
           if (fs.existsSync(outPath)) {
+            const raw = fs.readFileSync(outPath);
+            const exportSize = this.exportSizeMap.get(device);
+            const data = exportSize
+              ? await sharp(raw)
+                  .resize(exportSize.width, exportSize.height, { fit: "cover", position: "top" })
+                  .png()
+                  .toBuffer()
+              : raw;
+
             (screenshots[lang] ??= []).push({
               filename: cleanName,
-              data: fs.readFileSync(outPath).toString("base64"),
+              data: data.toString("base64"),
             });
             collected.push(cleanName);
             fs.unlinkSync(outPath);
@@ -831,8 +911,9 @@ export class SnapshotRunner {
       fs.rmSync(debugDir, { recursive: true, force: true });
       fs.mkdirSync(debugDir, { recursive: true });
 
-      for (const entry of fs.readdirSync(this.tmpDir).filter((e) => e.startsWith("DerivedData-"))) {
-        const testLogsDir = path.join(this.tmpDir, entry, "Logs", "Test");
+      for (const derivedDataPath of this.derivedDataPathsClearedOfStaleTestLogs) {
+        const entry = path.basename(derivedDataPath);
+        const testLogsDir = path.join(derivedDataPath, "Logs", "Test");
         if (fs.existsSync(testLogsDir)) {
           for (const xcEntry of fs.readdirSync(testLogsDir)) {
             if (xcEntry.endsWith(".xcresult")) {
@@ -932,16 +1013,17 @@ export class SnapshotRunner {
       .trim()
       .toLowerCase();
 
+    const requestedWords = lower.split(/\s+/).filter((w) => !w.startsWith("("));
+
     return (
       find((d) => d.name === requested) ??
       find((d) => d.name.toLowerCase() === lower) ??
       (stripped && stripped !== lower ? find((d) => d.name.toLowerCase().startsWith(stripped)) : null) ??
-      find((d) =>
-        lower
-          .split(/\s+/)
-          .filter((w) => !w.startsWith("("))
-          .every((w) => d.name.toLowerCase().includes(w)),
-      )
+      find((d) => {
+        const candidateWords = d.name.toLowerCase().split(/\s+/);
+
+        return candidateWords.length === requestedWords.length && requestedWords.every((w) => candidateWords.includes(w));
+      })
     );
   }
 }
