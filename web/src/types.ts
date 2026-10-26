@@ -1061,6 +1061,16 @@ export interface SubscriptionReviewScreenshot {
   height: number | null;
 }
 
+export interface SubscriptionIntroductoryOffer {
+  id: string;
+  offerMode: string;
+  duration: string;
+  numberOfPeriods: number;
+  territory: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export interface ProductItem {
   id: string;
   name: string;
