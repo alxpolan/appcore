@@ -32,6 +32,16 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D97CBC472F5AE27B0033A6A4"
+               BuildableName = "MartesoTests.xctest"
+               BlueprintName = "MartesoTests"
+               ReferencedContainer = "container:Marteso.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "D97CBC512F5AE27B0033A6A4"
                BuildableName = "MartesoUITests.xctest"
                BlueprintName = "MartesoUITests"

@@ -9,20 +9,28 @@ final class APIService {
     let baseURL = "https://app.marteso.com"
     private(set) var isAuthenticated: Bool = false
 
-    private var token: String? {
-        get { KeychainHelper.load(key: "auth_token") }
+    private var sessionActive: Bool {
+        get { KeychainHelper.load(key: "auth_session") != nil }
         set {
-            if let newValue {
-                KeychainHelper.save(key: "auth_token", value: newValue)
+            if newValue {
+                KeychainHelper.save(key: "auth_session", value: "1")
             } else {
-                KeychainHelper.delete(key: "auth_token")
+                KeychainHelper.delete(key: "auth_session")
+                deleteCookies()
             }
-            isAuthenticated = newValue != nil
+            isAuthenticated = newValue
         }
     }
 
     private init() {
-        isAuthenticated = KeychainHelper.load(key: "auth_token") != nil
+        isAuthenticated = KeychainHelper.load(key: "auth_session") != nil
+    }
+
+    private func deleteCookies() {
+        let storage = HTTPCookieStorage.shared
+        for cookie in storage.cookies ?? [] where cookie.domain.contains("marteso.com") {
+            storage.deleteCookie(cookie)
+        }
     }
 
     // MARK: - Auth
@@ -30,19 +38,25 @@ final class APIService {
     func login(email: String, password: String) async throws -> AuthResponse {
         let body: [String: String] = ["email": email, "password": password]
         let response: AuthResponse = try await post("/api/auth/login", body: body, authenticated: false)
-        self.token = response.token
+        sessionActive = true
         return response
     }
 
     func register(email: String, password: String, name: String) async throws -> AuthResponse {
         let body: [String: String] = ["email": email, "password": password, "name": name]
         let response: AuthResponse = try await post("/api/auth/signup", body: body, authenticated: false)
-        self.token = response.token
+        sessionActive = true
         return response
     }
 
     func logout() {
-        self.token = nil
+        Task {
+            let url = URL(string: baseURL + "/api/auth/logout")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            _ = try? await URLSession.shared.data(for: request)
+        }
+        sessionActive = false
     }
 
     func getCurrentUser() async throws -> AuthUser {
@@ -94,15 +108,16 @@ final class APIService {
     func getKeywords(bundleId: String?) async throws -> [Keyword] {
         var path = "/api/keywords"
         if let bundleId { path += "?bundleId=\(bundleId)" }
-        return try await get(path)
+        let response: KeywordListResponse = try await get(path)
+        return response.items
     }
 
     func getKeywordHistory(id: String) async throws -> KeywordHistoryData {
         try await get("/api/keywords/\(id)/history")
     }
 
-    func addKeyword(term: String, country: String, language: String?) async throws {
-        var body: [String: String] = ["term": term, "country": country]
+    func addKeyword(term: String, country: String, language: String?, bundleId: String) async throws {
+        var body: [String: String] = ["term": term, "country": country, "bundleId": bundleId]
         if let language { body["language"] = language }
         let _: EmptyResponse = try await post("/api/keywords", body: body)
     }
@@ -151,8 +166,8 @@ final class APIService {
 
     // MARK: - Actions
 
-    func triggerAction(_ action: String) async throws {
-        let _: EmptyResponse = try await post("/api/actions/\(action)", body: EmptyBody())
+    func triggerAction(_ action: String, bundleId: String) async throws {
+        let _: EmptyResponse = try await post("/api/actions/\(action)", body: ["bundleId": bundleId])
     }
 
     // MARK: - Push Notifications
@@ -162,13 +177,56 @@ final class APIService {
         let _: EmptyResponse = try await post("/api/push/register", body: body)
     }
 
+    // MARK: - Builds
+
+    func getBuildJobs(appId: String) async throws -> [BuildJob] {
+        try await get("/api/github/builds/\(appId)")
+    }
+
+    func getLatestBuild(bundleId: String) async throws -> LatestBuildInfo? {
+        let response: LatestBuildResponse = try await get("/api/submissions/build-info?bundleId=\(bundleId)")
+        return response.build
+    }
+
+    func triggerBuild(appId: String) async throws {
+        let _: EmptyResponse = try await post("/api/github/builds/trigger/\(appId)", body: EmptyBody())
+    }
+
+    // MARK: - Screenshots
+
+    func getScreenshotJobs(appId: String) async throws -> [ScreenshotJob] {
+        try await get("/api/github/screenshots/\(appId)")
+    }
+
+    // MARK: - Ads
+
+    func getGoogleAdsCampaigns() async throws -> [GoogleAdsCampaign] {
+        let response: GoogleAdsCampaignsResponse = try await get("/api/google-ads/campaigns")
+        return response.campaigns
+    }
+
+    func getAppleAdsCampaigns(bundleId: String?) async throws -> [AppleAdsCampaign] {
+        var path = "/api/apple-ads/campaigns"
+        if let bundleId { path += "?bundleId=\(bundleId)" }
+        let response: AppleAdsCampaignsResponse = try await get(path)
+        return response.campaigns
+    }
+
+    // MARK: - Product Pages
+
+    func getProductPages(bundleId: String?) async throws -> [ProductPage] {
+        var path = "/api/product-pages/"
+        if let bundleId { path += "?bundleId=\(bundleId)" }
+        let response: ProductPagesResponse = try await get(path)
+        return response.pages
+    }
+
     // MARK: - HTTP Helpers
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let url = URL(string: baseURL + path)!
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        addAuthHeader(&request)
         return try await perform(request)
     }
 
@@ -178,7 +236,6 @@ final class APIService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
-        if authenticated { addAuthHeader(&request) }
         return try await perform(request)
     }
 
@@ -186,15 +243,10 @@ final class APIService {
         let url = URL(string: baseURL + path)!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        addAuthHeader(&request)
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw APIError.requestFailed
         }
-    }
-
-    private func addAuthHeader(_ request: inout URLRequest) {
-        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
@@ -202,6 +254,7 @@ final class APIService {
         guard let http = response as? HTTPURLResponse else { throw APIError.requestFailed }
 
         if http.statusCode == 401 {
+            sessionActive = false
             throw APIError.unauthorized
         }
 

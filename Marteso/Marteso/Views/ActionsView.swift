@@ -31,10 +31,10 @@ struct ActionsView: View {
             ForEach(actions, id: \.action) { item in
                 Button {
                     Task {
+                        guard let bundleId else { return }
                         runningAction = item.action
-                        try? await APIService.shared.triggerAction(item.action)
+                        try? await APIService.shared.triggerAction(item.action, bundleId: bundleId)
                         runningAction = nil
-                        await loadData()
                     }
                 } label: {
                     VStack(spacing: 8) {

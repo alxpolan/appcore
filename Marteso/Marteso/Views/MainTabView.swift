@@ -107,6 +107,30 @@ struct MoreView: View {
                     } label: {
                         Label("Reviews", systemImage: "star.bubble.fill")
                     }
+
+                    NavigationLink {
+                        BuildsView(bundleId: bundleId, apps: apps)
+                    } label: {
+                        Label("Builds", systemImage: "hammer.fill")
+                    }
+
+                    NavigationLink {
+                        ScreenshotsView(bundleId: bundleId, apps: apps)
+                    } label: {
+                        Label("Screenshots", systemImage: "photo.stack.fill")
+                    }
+
+                    NavigationLink {
+                        AdsView(bundleId: bundleId)
+                    } label: {
+                        Label("Ads", systemImage: "megaphone.fill")
+                    }
+
+                    NavigationLink {
+                        ProductPagesView(bundleId: bundleId)
+                    } label: {
+                        Label("Product Pages", systemImage: "rectangle.on.rectangle.fill")
+                    }
                 } header: {
                     SectionHeader("Features", icon: "square.stack.3d.up.fill")
                 }

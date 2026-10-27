@@ -87,7 +87,6 @@ struct Stats: Codable {
     let rankings: Int
     let pendingSuggestions: Int
     let appliedSuggestions: Int
-    let jobs: Int
 }
 
 struct DashboardConfig: Codable {
@@ -220,6 +219,119 @@ struct Suggestion: Codable, Identifiable {
     let appliedAt: String?
 }
 
+struct KeywordListResponse: Codable {
+    let items: [Keyword]
+    let total: Int
+}
+
+struct BuildJob: Codable, Identifiable {
+    let id: String
+    let appId: String
+    let branch: String?
+    let commitSha: String?
+    let status: String
+    let logs: [String]?
+    let errors: [String]
+    let errorSummary: String?
+    let ipaPath: String?
+    let version: String?
+    let buildNumber: String?
+    let startedAt: String?
+    let completedAt: String?
+    let createdAt: String
+}
+
+struct LatestBuildInfo: Codable {
+    let builtAt: String
+    let originalFilename: String
+    let bundleId: String
+    let exportMethod: String
+    let sizeBytes: Int
+    let iconUrl: String?
+    let version: String?
+    let buildNumber: String?
+}
+
+struct LatestBuildResponse: Codable {
+    let build: LatestBuildInfo?
+}
+
+struct ScreenshotJob: Codable, Identifiable {
+    let id: String
+    let appId: String
+    let commitSha: String
+    let commitMessage: String?
+    let branch: String?
+    let pusher: String?
+    let status: String
+    let logs: [String]
+    let error: String?
+    let screenshotUrls: [String]
+    let startedAt: String?
+    let completedAt: String?
+    let createdAt: String
+}
+
+struct GoogleAdsCampaign: Codable, Identifiable {
+    let id: String
+    let name: String
+    let status: String
+    let dailyBudget: Double?
+    let currency: String?
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+    let ctr: Double?
+    let avgCpc: Double?
+}
+
+struct GoogleAdsCampaignsResponse: Codable {
+    let campaigns: [GoogleAdsCampaign]
+}
+
+struct AppleAdsCampaign: Codable, Identifiable {
+    let id: String
+    let name: String
+    let status: String
+    let servingStatus: String
+    let dailyBudget: Double?
+    let totalBudget: Double?
+    let currency: String?
+    let countriesOrRegions: [String]?
+    let startTime: String?
+    let endTime: String?
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+    let avgCpa: Double?
+}
+
+struct AppleAdsCampaignsResponse: Codable {
+    let campaigns: [AppleAdsCampaign]
+}
+
+struct ProductPageVersion: Codable, Identifiable {
+    let id: String
+    let version: String?
+    let state: String?
+    let deepLink: String?
+    let isEditable: Bool?
+}
+
+struct ProductPage: Codable, Identifiable {
+    let id: String
+    let name: String
+    let url: String?
+    let visible: Bool?
+    let versions: [ProductPageVersion]?
+}
+
+struct ProductPagesResponse: Codable {
+    let pages: [ProductPage]
+}
+
 struct SuggestionsResponse: Codable {
     let suggestions: [String: [Suggestion]]
     let total: Int
@@ -233,11 +345,13 @@ struct AuthUser: Codable {
     let email: String
     let name: String?
     let role: String
+    let teamId: String?
+    let teamRole: String?
 }
 
 struct AuthResponse: Codable {
-    let token: String
     let user: AuthUser
+    let hasPasskeys: Bool?
 }
 
 struct DeviceTokenRegistration: Codable {

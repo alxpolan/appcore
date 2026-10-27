@@ -79,7 +79,7 @@ struct KeywordsView: View {
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                AddKeywordSheet { await loadKeywords() }
+                AddKeywordSheet(bundleId: bundleId) { await loadKeywords() }
             }
             .refreshable { await loadKeywords() }
         }
@@ -199,6 +199,7 @@ struct AddKeywordSheet: View {
     @State private var language = ""
     @State private var isLoading = false
 
+    let bundleId: String?
     let onAdded: () async -> Void
 
     var body: some View {
@@ -225,18 +226,20 @@ struct AddKeywordSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         Task {
+                            guard let bundleId else { return }
                             isLoading = true
                             try? await APIService.shared.addKeyword(
                                 term: term,
                                 country: country,
-                                language: language.isEmpty ? nil : language
+                                language: language.isEmpty ? nil : language,
+                                bundleId: bundleId
                             )
                             await onAdded()
                             isLoading = false
                             dismiss()
                         }
                     }
-                    .disabled(term.isEmpty || country.isEmpty || isLoading)
+                    .disabled(term.isEmpty || country.isEmpty || bundleId == nil || isLoading)
                 }
             }
         }
