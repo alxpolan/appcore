@@ -115,10 +115,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
         ? `-project "${projFile}"`
         : `-project "${scheme}.xcodeproj"`;
 
-    const runsSubstitutedCaptureDevice = snapDevices.some((d) => this.exportSizeMap.has(d));
-    const effectiveConcurrency = runsSubstitutedCaptureDevice
-      ? 1
-      : Math.max(1, Math.min(concurrency, snapDevices.length));
+    const effectiveConcurrency = Math.max(1, Math.min(concurrency, snapDevices.length));
 
     await this.bootSimulators(snapDevices, appearance);
 
