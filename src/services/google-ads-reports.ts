@@ -3,6 +3,7 @@ import { googleAdsGateway } from "./google-ads-gateway";
 import type {
   GoogleAdsAdGroupWithKeywords,
   GoogleAdsCampaign,
+  GoogleAdsCampaignBidding,
   GoogleAdsCampaignTargeting,
   GoogleAdsCountryStats,
   GoogleAdsCredentials,
@@ -155,6 +156,49 @@ export async function listGoogleAdsCampaigns(
       ...statsFromMetrics(byId.get(String(c.id)) ?? {}),
     };
   });
+}
+
+const BIDDING_SEGMENT_BY_STRATEGY: Record<string, string> = {
+  MAXIMIZE_CLICKS: "target_spend",
+  MAXIMIZE_CONVERSIONS: "maximize_conversions",
+  TARGET_CPA: "target_cpa",
+  TARGET_ROAS: "target_roas",
+};
+
+export async function getGoogleAdsCampaignBidding(
+  creds: GoogleAdsCredentials,
+  campaignId: string,
+): Promise<GoogleAdsCampaignBidding> {
+  const gw = googleAdsGateway(creds);
+  const rows = await gw.query(
+    "SELECT campaign.id, campaign.bidding_strategy_type, " +
+      "campaign.target_spend.cpc_bid_ceiling_micros, " +
+      "campaign.maximize_conversions.cpc_bid_ceiling_micros, campaign.maximize_conversions.target_cpa_micros, " +
+      "campaign.target_cpa.target_cpa_micros, campaign.target_cpa.cpc_bid_ceiling_micros, " +
+      "campaign.target_roas.target_roas, campaign.target_roas.cpc_bid_ceiling_micros " +
+      `FROM campaign WHERE campaign.id = ${campaignId} LIMIT 1`,
+  );
+  const c = rows[0]?.campaign ?? {};
+  const rawStrategy = typeof c.bidding_strategy_type === "string" ? c.bidding_strategy_type : null;
+  const strategy = rawStrategy === "TARGET_SPEND" ? "MAXIMIZE_CLICKS" : rawStrategy;
+  const segment = strategy && BIDDING_SEGMENT_BY_STRATEGY[strategy] ? (c[BIDDING_SEGMENT_BY_STRATEGY[strategy]] ?? {}) : {};
+  const micros = (value: unknown): number | null => {
+    if (value == null || value === "") return null;
+
+    const n = Number(value);
+
+    return Number.isFinite(n) ? n / 1_000_000 : null;
+  };
+
+  return {
+    strategy,
+    cpcBidCeiling: micros(segment.cpc_bid_ceiling_micros),
+    targetCpa: micros(segment.target_cpa_micros),
+    targetRoasPercent:
+      segment.target_roas != null && segment.target_roas !== "" && Number.isFinite(Number(segment.target_roas))
+        ? Math.round(Number(segment.target_roas) * 10000) / 100
+        : null,
+  };
 }
 
 export async function listGoogleAdsAdGroups(

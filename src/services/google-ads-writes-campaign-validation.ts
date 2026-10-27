@@ -35,6 +35,13 @@ function asDate(value: unknown, label: string): string {
   return value;
 }
 
+function asOptionalBoolean(value: unknown, label: string): boolean | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== "boolean") throw new Error(`${label} must be true or false`);
+
+  return value;
+}
+
 export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreateCampaignInput {
   if (!body || typeof body !== "object") throw new Error("Request body must be an object");
   const name = String(body.name ?? "").trim();
@@ -290,6 +297,9 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
     negativeKeywords: negativesOf(body.negativeKeywords, "Campaign"),
     locationIds: idsOf(body.locationIds, "locationIds"),
     languageIds: idsOf(body.languageIds, "languageIds"),
+    displayNetworkEnabled: asOptionalBoolean(body.displayNetworkEnabled, "displayNetworkEnabled"),
+    searchPartnersEnabled: asOptionalBoolean(body.searchPartnersEnabled, "searchPartnersEnabled"),
+    presenceOnlyTargeting: asOptionalBoolean(body.presenceOnlyTargeting, "presenceOnlyTargeting"),
     biddingStrategy: biddingStrategy as GoogleAdsBiddingStrategy,
     cpcBidCeiling,
     targetCpa,

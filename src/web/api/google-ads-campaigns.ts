@@ -11,8 +11,10 @@ import {
 } from "../../services/utils/google-ads-mapping";
 import { logActivity } from "../../services/activity-log";
 import {
+  assertValidBiddingPatch,
   createGoogleAdsCampaignFull,
   deleteGoogleAdsCampaign,
+  getGoogleAdsCampaignBidding,
   getGoogleAdsCampaignCountryBreakdown,
   getGoogleAdsCampaignDailySpend,
   getGoogleAdsCampaignDetail,
@@ -21,6 +23,7 @@ import {
   listGoogleAdsCampaigns,
   listGoogleAdsSearchTerms,
   resolveGoogleAdsRange,
+  updateGoogleAdsCampaign,
   updateGoogleAdsCampaignStatus,
   validateGoogleAdsCreateCampaignInput,
 } from "../../services/google-ads";
@@ -408,6 +411,84 @@ googleAdsCampaignsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings
   } catch (err: any) {
     logger.error("[google-ads] campaign status error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: googleAdsErrorMessage(err, "campaign status update") });
+  }
+});
+
+googleAdsCampaignsRouter.get("/campaigns/:campaignId/bidding", loadTeamSettings, async (req, res) => {
+  try {
+    const s = req.teamSettings;
+
+    if (googleAdsKeyMissing(s)) {
+      res.status(400).json({ error: "Google Ads is not connected" });
+
+      return;
+    }
+
+    const bidding = await getGoogleAdsCampaignBidding(googleAdsCreds(s), req.params.campaignId as string);
+    res.json({ bidding });
+  } catch (err: any) {
+    logger.error("[google-ads] campaign bidding fetch error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: googleAdsErrorMessage(err, "campaign bidding") });
+  }
+});
+
+googleAdsCampaignsRouter.patch("/campaigns/:campaignId/bidding", loadTeamSettings, async (req, res) => {
+  try {
+    if (!(await requireTeamAdmin(req, res))) return;
+    const s = req.teamSettings;
+
+    if (googleAdsKeyMissing(s)) {
+      res.status(400).json({ error: "Google Ads is not connected" });
+
+      return;
+    }
+
+    const body = req.body ?? {};
+    for (const [label, value] of [
+      ["cpcBidCeiling", body.cpcBidCeiling],
+      ["targetCpa", body.targetCpa],
+      ["targetRoas", body.targetRoas],
+    ] as const) {
+      if (value != null && (typeof value !== "number" || !(value > 0))) {
+        res.status(400).json({ error: `${label} must be a number greater than 0` });
+
+        return;
+      }
+    }
+
+    try {
+      assertValidBiddingPatch(body);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+
+      return;
+    }
+
+    const campaignId = req.params.campaignId as string;
+    const before = await bestEffort(() => getGoogleAdsCampaignBidding(googleAdsCreds(s), campaignId));
+    await updateGoogleAdsCampaign(googleAdsCreds(s), campaignId, {
+      biddingStrategy: body.biddingStrategy,
+      cpcBidCeiling: body.cpcBidCeiling,
+      targetCpa: body.targetCpa,
+      targetRoas: body.targetRoas,
+    });
+    const bidding = await getGoogleAdsCampaignBidding(googleAdsCreds(s), campaignId);
+    await logActivity({
+      ...webActor(req),
+      source: "web",
+      action: "google_ads.campaign.bidding",
+      entityType: "google_ads_campaign",
+      entityId: campaignId,
+      summary: `Updated bidding for campaign ${campaignId} to ${body.biddingStrategy}`,
+      details: {
+        campaignId,
+        changes: [{ label: "Bidding", from: before?.strategy ?? null, to: body.biddingStrategy }],
+      },
+    });
+    res.json({ bidding });
+  } catch (err: any) {
+    logger.error("[google-ads] campaign bidding error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: googleAdsErrorMessage(err, "campaign bidding update") });
   }
 });
 

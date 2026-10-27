@@ -73,6 +73,8 @@ export const summarizeGoogleCreateCampaign = (args: any, text: string): ToolSumm
   const adCount = (args?.adGroups ?? []).reduce((n: number, g: any) => n + (g?.ads?.length ?? 0), 0);
   if (adCount) bits.push(`${adCount} ad(s)`);
   if (args?.biddingStrategy) bits.push(String(args.biddingStrategy));
+  if (args?.displayNetworkEnabled) bits.push("Display Network");
+  if (args?.searchPartnersEnabled === false) bits.push("No Search Partners");
   if (res?.appleMapping) bits.push(`Apple mapping ${res.appleMapping.ctToken}`);
 
   return {
@@ -117,6 +119,19 @@ export const summarizeGoogleUpdateCampaign = (args: any, text: string): ToolSumm
   if (args?.endDate != null) {
     parts.push(fromTo("end date", null, args.endDate));
     changes.push({ label: "End date", from: null, to: args.endDate });
+  }
+
+  if (args?.biddingStrategy != null) {
+    const target = [
+      String(args.biddingStrategy),
+      args?.cpcBidCeiling != null ? `max CPC ${args.cpcBidCeiling}` : "",
+      args?.targetCpa != null ? `target CPA ${args.targetCpa}` : "",
+      args?.targetRoas != null ? `target ROAS ${args.targetRoas}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    parts.push(fromTo("bidding", null, target));
+    changes.push({ label: "Bidding", from: null, to: String(args.biddingStrategy) });
   }
 
   return {

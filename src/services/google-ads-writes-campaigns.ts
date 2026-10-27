@@ -3,6 +3,7 @@ import { googleAdsErrorMessage, googleAdsGateway } from "./google-ads-gateway";
 import { getGoogleAdsCampaignBudget } from "./google-ads-reports";
 import { createGoogleAdsResponsiveSearchAds } from "./google-ads-writes-ad-groups";
 import type {
+  GoogleAdsBiddingStrategy,
   GoogleAdsCreateCampaignInput,
   GoogleAdsCreatedCampaign,
   GoogleAdsCredentials,
@@ -78,6 +79,29 @@ async function createGoogleAdsCampaignAssets(
   return pending.length;
 }
 
+export function buildBiddingResource(
+  biddingStrategy: GoogleAdsBiddingStrategy,
+  opts: { cpcBidCeiling?: number; targetCpa?: number; targetRoas?: number },
+): Record<string, unknown> {
+  const cpcBidCeilingMicros =
+    opts.cpcBidCeiling != null ? { cpc_bid_ceiling_micros: toMicros(opts.cpcBidCeiling) } : {};
+
+  return biddingStrategy === "MAXIMIZE_CLICKS"
+    ? { target_spend: { ...cpcBidCeilingMicros } }
+    : biddingStrategy === "MAXIMIZE_CONVERSIONS"
+      ? {
+          maximize_conversions: {
+            ...cpcBidCeilingMicros,
+            ...(opts.targetCpa != null ? { target_cpa_micros: toMicros(opts.targetCpa) } : {}),
+          },
+        }
+      : biddingStrategy === "TARGET_CPA"
+        ? { target_cpa: { ...cpcBidCeilingMicros, target_cpa_micros: toMicros(opts.targetCpa!) } }
+        : biddingStrategy === "TARGET_ROAS"
+          ? { target_roas: { ...cpcBidCeilingMicros, target_roas: opts.targetRoas! / 100 } }
+          : { manual_cpc: { enhanced_cpc_enabled: false } };
+}
+
 export async function createGoogleAdsCampaignFull(
   creds: GoogleAdsCredentials,
   input: GoogleAdsCreateCampaignInput,
@@ -87,22 +111,14 @@ export async function createGoogleAdsCampaignFull(
   const budgetTemp = ResourceNames.campaignBudget(customerId, "-1");
   const campaignTemp = ResourceNames.campaign(customerId, "-2");
   const biddingStrategy = input.biddingStrategy ?? "MANUAL_CPC";
-  const cpcBidCeilingMicros = input.cpcBidCeiling != null ? { cpc_bid_ceiling_micros: toMicros(input.cpcBidCeiling) } : {};
-  const bidding: Record<string, unknown> =
-    biddingStrategy === "MAXIMIZE_CLICKS"
-      ? { maximize_clicks: { ...cpcBidCeilingMicros } }
-      : biddingStrategy === "MAXIMIZE_CONVERSIONS"
-        ? {
-            maximize_conversions: {
-              ...cpcBidCeilingMicros,
-              ...(input.targetCpa != null ? { target_cpa_micros: toMicros(input.targetCpa) } : {}),
-            },
-          }
-        : biddingStrategy === "TARGET_CPA"
-          ? { target_cpa: { ...cpcBidCeilingMicros, target_cpa_micros: toMicros(input.targetCpa!) } }
-          : biddingStrategy === "TARGET_ROAS"
-            ? { target_roas: { ...cpcBidCeilingMicros, target_roas: input.targetRoas! / 100 } }
-            : { manual_cpc: { enhanced_cpc_enabled: false } };
+  const displayNetwork = input.displayNetworkEnabled ?? false;
+  const searchPartners = input.searchPartnersEnabled ?? true;
+  const presenceOnly = input.presenceOnlyTargeting ?? true;
+  const bidding = buildBiddingResource(biddingStrategy, {
+    cpcBidCeiling: input.cpcBidCeiling,
+    targetCpa: input.targetCpa,
+    targetRoas: input.targetRoas,
+  });
 
   const header: GoogleAdsMutationOperation[] = [
     {
@@ -127,13 +143,17 @@ export async function createGoogleAdsCampaignFull(
         campaign_budget: budgetTemp,
         network_settings: {
           target_google_search: true,
-          target_search_network: true,
-          target_content_network: false,
+          target_search_network: searchPartners,
+          target_content_network: displayNetwork,
           target_partner_search_network: false,
         },
         geo_target_type_setting: {
-          positive_geo_target_type: E.PositiveGeoTargetType.PRESENCE,
-          negative_geo_target_type: E.NegativeGeoTargetType.PRESENCE,
+          positive_geo_target_type: presenceOnly
+            ? E.PositiveGeoTargetType.PRESENCE
+            : E.PositiveGeoTargetType.PRESENCE_OR_INTEREST,
+          negative_geo_target_type: presenceOnly
+            ? E.NegativeGeoTargetType.PRESENCE
+            : E.NegativeGeoTargetType.PRESENCE_OR_INTEREST,
         },
         contains_eu_political_advertising:
           E.EuPoliticalAdvertisingStatus.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING,
@@ -332,6 +352,52 @@ export async function deleteGoogleAdsCampaign(
   }
 }
 
+export interface GoogleAdsBiddingPatch {
+  biddingStrategy?: GoogleAdsBiddingStrategy | null;
+  cpcBidCeiling?: number | null;
+  targetCpa?: number | null;
+  targetRoas?: number | null;
+}
+
+export function assertValidBiddingPatch(patch: GoogleAdsBiddingPatch): void {
+  const BIDDING_STRATEGIES = ["MANUAL_CPC", "MAXIMIZE_CLICKS", "MAXIMIZE_CONVERSIONS", "TARGET_CPA", "TARGET_ROAS"];
+
+  if (patch.biddingStrategy != null && !BIDDING_STRATEGIES.includes(patch.biddingStrategy)) {
+    throw new Error(`biddingStrategy must be one of: ${BIDDING_STRATEGIES.join(", ")}`);
+  }
+
+  if (
+    (patch.cpcBidCeiling != null || patch.targetCpa != null || patch.targetRoas != null) &&
+    patch.biddingStrategy == null
+  ) {
+    throw new Error("Pass biddingStrategy together with cpcBidCeiling, targetCpa or targetRoas");
+  }
+
+  if (patch.biddingStrategy === "MANUAL_CPC" && patch.cpcBidCeiling != null) {
+    throw new Error("cpcBidCeiling does not apply to MANUAL_CPC");
+  }
+
+  if (
+    patch.targetCpa != null &&
+    patch.biddingStrategy !== "TARGET_CPA" &&
+    patch.biddingStrategy !== "MAXIMIZE_CONVERSIONS"
+  ) {
+    throw new Error("targetCpa only applies to TARGET_CPA or MAXIMIZE_CONVERSIONS");
+  }
+
+  if (patch.biddingStrategy === "TARGET_CPA" && patch.targetCpa == null) {
+    throw new Error("targetCpa is required for TARGET_CPA");
+  }
+
+  if (patch.targetRoas != null && patch.biddingStrategy !== "TARGET_ROAS") {
+    throw new Error("targetRoas only applies to TARGET_ROAS");
+  }
+
+  if (patch.biddingStrategy === "TARGET_ROAS" && patch.targetRoas == null) {
+    throw new Error("targetRoas is required for TARGET_ROAS (as a percent, e.g. 300 for 300%)");
+  }
+}
+
 export async function updateGoogleAdsCampaign(
   creds: GoogleAdsCredentials,
   campaignId: string,
@@ -342,10 +408,16 @@ export async function updateGoogleAdsCampaign(
     startDate?: string;
     endDate?: string;
     displayNetworkEnabled?: boolean;
+    searchPartnersEnabled?: boolean;
     presenceOnlyTargeting?: boolean;
+    biddingStrategy?: GoogleAdsBiddingStrategy;
+    cpcBidCeiling?: number;
+    targetCpa?: number;
+    targetRoas?: number;
   },
 ): Promise<{ id: string }> {
   if (Object.values(patch).every((v) => v == null)) throw new Error("Nothing to update: pass at least one field");
+  assertValidBiddingPatch(patch);
   const gw = googleAdsGateway(creds);
   const campaignName = ResourceNames.campaign(creds.customerId, campaignId);
 
@@ -371,8 +443,11 @@ export async function updateGoogleAdsCampaign(
   if (patch.startDate != null) resource.start_date = patch.startDate.replace(/-/g, "");
   if (patch.endDate != null) resource.end_date = patch.endDate.replace(/-/g, "");
 
-  if (patch.displayNetworkEnabled != null) {
-    resource.network_settings = { target_content_network: patch.displayNetworkEnabled };
+  if (patch.displayNetworkEnabled != null || patch.searchPartnersEnabled != null) {
+    resource.network_settings = {
+      ...(patch.displayNetworkEnabled != null ? { target_content_network: patch.displayNetworkEnabled } : {}),
+      ...(patch.searchPartnersEnabled != null ? { target_search_network: patch.searchPartnersEnabled } : {}),
+    };
   }
 
   if (patch.presenceOnlyTargeting != null) {
@@ -386,6 +461,17 @@ export async function updateGoogleAdsCampaign(
         ? E.NegativeGeoTargetType.PRESENCE
         : E.NegativeGeoTargetType.PRESENCE_OR_INTEREST,
     };
+  }
+
+  if (patch.biddingStrategy != null) {
+    Object.assign(
+      resource,
+      buildBiddingResource(patch.biddingStrategy, {
+        cpcBidCeiling: patch.cpcBidCeiling,
+        targetCpa: patch.targetCpa,
+        targetRoas: patch.targetRoas,
+      }),
+    );
   }
 
   if (Object.keys(resource).length > 1) {

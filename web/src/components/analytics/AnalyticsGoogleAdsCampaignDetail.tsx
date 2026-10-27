@@ -17,6 +17,7 @@ import {
   type GoogleKeywordSortCol,
   type GoogleSortDir,
 } from "../../utils/googleKeywordTable";
+import GoogleAdsBiddingCard from "./GoogleAdsBiddingCard";
 import GoogleAdsCampaignChart from "./GoogleAdsCampaignChart";
 import GoogleAdsProfitCalculator from "./GoogleAdsProfitCalculator";
 import GoogleAdsAppleMapping from "./GoogleAdsAppleMapping";
@@ -530,6 +531,17 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
           </button>
         </div>
       </div>
+
+      {campaignId && (
+        <div className="mb-5">
+          <GoogleAdsBiddingCard
+            campaignId={campaignId}
+            currency={campaign?.currency ?? null}
+            canEdit={canManageTeam}
+            addToast={addToast}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
         <StatCard

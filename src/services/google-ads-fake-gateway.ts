@@ -21,6 +21,12 @@ interface FakeCampaign {
   metrics: FakeMetrics;
   removed: boolean;
   biddingStrategy: string;
+  biddingCeilingMicros: number | null;
+  biddingTargetCpaMicros: number | null;
+  biddingTargetRoas: number | null;
+  displayNetwork: boolean;
+  searchPartners: boolean;
+  presenceOnly: boolean;
 }
 
 interface FakeAdGroup {
@@ -80,6 +86,30 @@ function fakeStoreFor(customerId: string): FakeStore {
 export function resetFakeGoogleAds(customerId?: string): void {
   if (customerId) fakeStores.delete(customerId);
   else fakeStores.clear();
+}
+
+export function getFakeGoogleAdsCampaign(
+  customerId: string,
+  campaignId: string,
+): {
+  id: string;
+  name: string;
+  displayNetwork: boolean;
+  searchPartners: boolean;
+  presenceOnly: boolean;
+  biddingStrategy: string;
+} | null {
+  const c = fakeStores.get(customerId)?.campaigns.get(campaignId);
+  if (!c || c.removed) return null;
+
+  return {
+    id: c.id,
+    name: c.name,
+    displayNetwork: c.displayNetwork,
+    searchPartners: c.searchPartners,
+    presenceOnly: c.presenceOnly,
+    biddingStrategy: c.biddingStrategy,
+  };
 }
 
 const GAQL_ID = /(\w+)\.id\s*=\s*'?(\d+)'?/g;
@@ -147,6 +177,28 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
             name: c.name,
             status: c.status,
             campaign_budget: `customers/${this.customerId}/campaignBudgets/${c.budgetId}`,
+            bidding_strategy_type: c.biddingStrategy === "MAXIMIZE_CLICKS" ? "TARGET_SPEND" : c.biddingStrategy,
+            target_spend: {
+              cpc_bid_ceiling_micros:
+                c.biddingCeilingMicros != null ? String(c.biddingCeilingMicros) : null,
+            },
+            maximize_conversions: {
+              cpc_bid_ceiling_micros:
+                c.biddingCeilingMicros != null ? String(c.biddingCeilingMicros) : null,
+              target_cpa_micros:
+                c.biddingTargetCpaMicros != null ? String(c.biddingTargetCpaMicros) : null,
+            },
+            target_cpa: {
+              cpc_bid_ceiling_micros:
+                c.biddingCeilingMicros != null ? String(c.biddingCeilingMicros) : null,
+              target_cpa_micros:
+                c.biddingTargetCpaMicros != null ? String(c.biddingTargetCpaMicros) : null,
+            },
+            target_roas: {
+              target_roas: c.biddingTargetRoas != null ? String(c.biddingTargetRoas) : null,
+              cpc_bid_ceiling_micros:
+                c.biddingCeilingMicros != null ? String(c.biddingCeilingMicros) : null,
+            },
           },
           campaign_budget: {
             amount_micros: c.budgetMicros != null ? String(c.budgetMicros) : null,
@@ -336,7 +388,13 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
           endDate: r.end_date ? String(r.end_date) : null,
           metrics: blankMetrics(),
           removed: false,
-          biddingStrategy: r.maximize_clicks != null ? "MAXIMIZE_CLICKS" : "MANUAL_CPC",
+          biddingStrategy: biddingStrategyName(r),
+          ...biddingNumbersOf(r),
+          displayNetwork: r.network_settings?.target_content_network === true,
+          searchPartners: r.network_settings?.target_search_network !== false,
+          presenceOnly:
+            r.geo_target_type_setting?.positive_geo_target_type == null ||
+            r.geo_target_type_setting.positive_geo_target_type === E.PositiveGeoTargetType.PRESENCE,
         });
 
         out.push(`customers/${this.customerId}/campaigns/${id}`);
@@ -351,6 +409,20 @@ export class FakeGoogleAdsGateway implements GoogleAdsGateway {
         if (r.status != null) c.status = campaignStatusName(r.status);
         if (r.start_date != null) c.startDate = String(r.start_date);
         if (r.end_date != null) c.endDate = String(r.end_date);
+        if (r.network_settings?.target_content_network != null) {
+          c.displayNetwork = r.network_settings.target_content_network === true;
+        }
+        if (r.network_settings?.target_search_network != null) {
+          c.searchPartners = r.network_settings.target_search_network !== false;
+        }
+        if (r.geo_target_type_setting?.positive_geo_target_type != null) {
+          c.presenceOnly =
+            r.geo_target_type_setting.positive_geo_target_type === E.PositiveGeoTargetType.PRESENCE;
+        }
+        if (hasBiddingResource(r)) {
+          c.biddingStrategy = biddingStrategyName(r);
+          Object.assign(c, biddingNumbersOf(r));
+        }
 
         out.push(r.resource_name);
         continue;
@@ -551,6 +623,46 @@ function enumName(map: Record<string, unknown>, value: unknown): string {
 }
 
 const campaignStatusName = (v: unknown) => enumName(E.CampaignStatus as Record<string, unknown>, v);
+
+const biddingStrategyName = (r: any): string => {
+  if (r.target_roas != null) return "TARGET_ROAS";
+  if (r.target_cpa != null) return "TARGET_CPA";
+  if (r.maximize_conversions != null) return "MAXIMIZE_CONVERSIONS";
+  if (r.target_spend != null || r.maximize_clicks != null) return "MAXIMIZE_CLICKS";
+
+  return "MANUAL_CPC";
+};
+
+const hasBiddingResource = (r: any): boolean =>
+  r.manual_cpc != null ||
+  r.target_spend != null ||
+  r.maximize_clicks != null ||
+  r.maximize_conversions != null ||
+  r.target_cpa != null ||
+  r.target_roas != null;
+
+const numOrNull = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
+
+  const n = Number(v);
+
+  return Number.isFinite(n) ? n : null;
+};
+
+const biddingNumbersOf = (
+  r: any,
+): Pick<FakeCampaign, "biddingCeilingMicros" | "biddingTargetCpaMicros" | "biddingTargetRoas"> => ({
+  biddingCeilingMicros:
+    numOrNull(r.target_spend?.cpc_bid_ceiling_micros) ??
+    numOrNull(r.maximize_clicks?.cpc_bid_ceiling_micros) ??
+    numOrNull(r.maximize_conversions?.cpc_bid_ceiling_micros) ??
+    numOrNull(r.target_cpa?.cpc_bid_ceiling_micros) ??
+    numOrNull(r.target_roas?.cpc_bid_ceiling_micros),
+  biddingTargetCpaMicros:
+    numOrNull(r.maximize_conversions?.target_cpa_micros) ?? numOrNull(r.target_cpa?.target_cpa_micros),
+  biddingTargetRoas: numOrNull(r.target_roas?.target_roas),
+});
+
 const adGroupStatusName = (v: unknown) => enumName(E.AdGroupStatus as Record<string, unknown>, v);
 const criterionStatusName = (v: unknown) => enumName(E.AdGroupCriterionStatus as Record<string, unknown>, v);
 const matchTypeName = (v: unknown) => enumName(E.KeywordMatchType as Record<string, unknown>, v);

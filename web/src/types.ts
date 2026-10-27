@@ -648,6 +648,13 @@ export interface GoogleAdsCampaign extends GoogleAdsStats {
   apple?: GoogleAdsCampaignAppleTotals | null;
 }
 
+export interface GoogleAdsCampaignBidding {
+  strategy: string | null;
+  cpcBidCeiling: number | null;
+  targetCpa: number | null;
+  targetRoasPercent: number | null;
+}
+
 export interface GoogleAdsKeyword extends GoogleAdsStats {
   id: string;
   adGroupId: string;

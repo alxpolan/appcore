@@ -191,6 +191,9 @@ export interface GoogleAdsCreateCampaignInput {
   negativeKeywords?: GoogleAdsCreateNegativeInput[];
   locationIds?: (string | number)[];
   languageIds?: (string | number)[];
+  displayNetworkEnabled?: boolean;
+  searchPartnersEnabled?: boolean;
+  presenceOnlyTargeting?: boolean;
   biddingStrategy?: GoogleAdsBiddingStrategy;
   cpcBidCeiling?: number;
   targetCpa?: number;
@@ -206,6 +209,13 @@ export interface GoogleAdsCreateCampaignInput {
 export interface GoogleAdsCampaignTargeting {
   locations: { criterionId: string; geoTargetConstant: string }[];
   languages: { criterionId: string; languageConstant: string }[];
+}
+
+export interface GoogleAdsCampaignBidding {
+  strategy: string | null;
+  cpcBidCeiling: number | null;
+  targetCpa: number | null;
+  targetRoasPercent: number | null;
 }
 
 export interface GoogleAdsCreatedCampaign {

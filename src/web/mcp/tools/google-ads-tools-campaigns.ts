@@ -151,7 +151,9 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         "Requires team admin rights. " +
         "Campaign-level negativeKeywords apply to the whole campaign; per-ad-group negativeKeywords apply to that ad group only. " +
         "Pass locationIds (e.g. ['2276'] Germany) or the campaign serves worldwide; location targeting only reaches " +
-        "people physically present in those locations, never people merely searching about or interested in them. " +
+        "people physically present in those locations, never people merely searching about or interested in them, " +
+        "unless presenceOnlyTargeting is false. displayNetworkEnabled also serves on the Display Network (off by default); " +
+        "searchPartnersEnabled toggles Search Partners (on by default). " +
         "Pass ctToken to append it as ct param to all ad final URLs; with appleBundleId the Apple mapping is linked automatically.",
       inputSchema: {
         name: z.string().describe("Campaign name, e.g. 'MyApp - US - Brand'."),
@@ -193,6 +195,21 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           .array(z.string().regex(/^\d+$/))
           .optional()
           .describe("Language IDs, e.g. ['1001'] German, ['1000'] English."),
+        displayNetworkEnabled: z
+          .boolean()
+          .optional()
+          .describe("Also serve on the Display Network. Defaults to off (Search only)."),
+        searchPartnersEnabled: z
+          .boolean()
+          .optional()
+          .describe("Also serve on Search Partners sites. Defaults to on."),
+        presenceOnlyTargeting: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true (default), geo targeting only reaches people physically in the chosen locations; " +
+              "when false, it also reaches people searching about or interested in them.",
+          ),
         adSchedule: z
           .array(
             z.object({
@@ -431,8 +448,9 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
     "update_google_ads_campaign",
     {
       description:
-        "Update a Google Ads campaign: daily budget, status, name, start/end date, Display Network, " +
-        "and geo targeting type. Requires team admin rights. Use list_google_ads_campaigns first to find the campaign ID.",
+        "Update a Google Ads campaign: daily budget, status, name, start/end date, Display Network, Search Partners, " +
+        "geo targeting type, and bidding strategy (e.g. switch to MAXIMIZE_CLICKS with a cpcBidCeiling max-CPC limit). " +
+        "Requires team admin rights. Use list_google_ads_campaigns first to find the campaign ID.",
       inputSchema: {
         campaignId: z.string().describe("Google Ads campaign ID (numeric string)."),
         name: z.string().optional().describe("New campaign name."),
@@ -444,6 +462,32 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           .boolean()
           .optional()
           .describe("Whether the campaign may also serve on the Display Network. Defaults to off on creation."),
+        searchPartnersEnabled: z
+          .boolean()
+          .optional()
+          .describe("Whether the campaign may also serve on Search Partners sites. Defaults to on on creation."),
+        biddingStrategy: z
+          .enum(["MANUAL_CPC", "MAXIMIZE_CLICKS", "MAXIMIZE_CONVERSIONS", "TARGET_CPA", "TARGET_ROAS"])
+          .optional()
+          .describe(
+            "Switch the bidding strategy. TARGET_CPA requires targetCpa, TARGET_ROAS requires targetRoas, " +
+              "and cpcBidCeiling sets a max-CPC limit for the automated strategies.",
+          ),
+        cpcBidCeiling: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Max CPC cap for automated strategies. Requires biddingStrategy (not MANUAL_CPC)."),
+        targetCpa: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Target cost per acquisition. Required for TARGET_CPA."),
+        targetRoas: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Target return on ad spend as a percent, e.g. 300 for 300%. Required for TARGET_ROAS."),
         presenceOnlyTargeting: z
           .boolean()
           .optional()
@@ -461,6 +505,11 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
       startDate,
       endDate,
       displayNetworkEnabled,
+      searchPartnersEnabled,
+      biddingStrategy,
+      cpcBidCeiling,
+      targetCpa,
+      targetRoas,
       presenceOnlyTargeting,
     }) => {
       const ctx = await getGoogleAdsContext(userId);
@@ -479,6 +528,11 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
           startDate,
           endDate,
           displayNetworkEnabled,
+          searchPartnersEnabled,
+          biddingStrategy,
+          cpcBidCeiling,
+          targetCpa,
+          targetRoas,
           presenceOnlyTargeting,
         });
 
