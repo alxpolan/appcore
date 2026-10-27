@@ -25,6 +25,7 @@ import {
   listStudioPresets,
   listStudioRevisions,
   nextStudioRev,
+  parseTitlesMap,
   type StudioPresetInfo,
   type StudioRevisionInfo,
 } from "./revisions";
@@ -152,23 +153,7 @@ async function studioRevisionTitles(
     select: { titles: true },
   });
 
-  if (!revision?.titles || typeof revision.titles !== "object" || Array.isArray(revision.titles)) return {};
-
-  const out: Record<string, Record<string, string>> = {};
-
-  for (const [locale, titles] of Object.entries(revision.titles as Record<string, unknown>)) {
-    if (!titles || typeof titles !== "object" || Array.isArray(titles)) continue;
-
-    const localeTitles: Record<string, string> = {};
-
-    for (const [base, title] of Object.entries(titles as Record<string, unknown>)) {
-      if (typeof title === "string") localeTitles[base] = title;
-    }
-
-    out[locale] = localeTitles;
-  }
-
-  return out;
+  return parseTitlesMap(revision?.titles);
 }
 
 async function studioRevisionStyles(
@@ -242,6 +227,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
           defaultScreenshotRevisionId: true,
           defaultScreenshotStyle: true,
           defaultScreenshotShotStyles: true,
+          defaultScreenshotTitles: true,
         },
       },
     },
@@ -253,6 +239,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
   const { revisions, activeRevisionId } = await listStudioRevisions(jobId);
   const presets = await listStudioPresets(job.appId);
   const revisionTitles = await studioRevisionTitles(jobId, effective.revisionId);
+  const defaultTitles = parseTitlesMap(job.app.defaultScreenshotTitles);
   const rawLocales = await studioRawLocales(jobId);
 
   const sublines = (job.screenshotSublines ?? {}) as Record<string, Record<string, string>>;
@@ -295,6 +282,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
           descKey,
           title:
             revisionTitles[locale]?.[basename] ??
+            defaultTitles[locale]?.[basename] ??
             resolveStudioTitle({ basename, locale, sublines, descriptions, fallback: fallbackTitle }),
           hasRaw,
         };
@@ -336,13 +324,14 @@ export async function renderStudioRevision(args: {
 
   const job = await prisma.screenshotJob.findUnique({
     where: { id: args.jobId },
-    include: { app: { select: { name: true, currentSubtitle: true } } },
+    include: { app: { select: { name: true, currentSubtitle: true, defaultScreenshotTitles: true } } },
   });
 
   if (!job) throw new Error(`Screenshot job ${args.jobId} not found`);
 
   const effective = await getEffectiveFramed(args.jobId);
   const revisionTitles = await studioRevisionTitles(args.jobId, effective.revisionId);
+  const defaultTitles = parseTitlesMap(job.app.defaultScreenshotTitles);
   const globalStyle = normalizeStudioStyle(args.style);
   const rawLocales = await studioRawLocales(args.jobId);
 
@@ -373,6 +362,7 @@ export async function renderStudioRevision(args: {
       const basename = assertStudioBasename(studioBasename(url));
       const currentTitle =
         revisionTitles[locale]?.[basename] ??
+        defaultTitles[locale]?.[basename] ??
         resolveStudioTitle({ basename, locale, sublines, descriptions, fallback: fallbackTitle });
 
       const title = normalizeStudioTitle(save.titles[basename] ?? currentTitle);

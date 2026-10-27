@@ -49,6 +49,26 @@ export function asFramedMap(value: unknown): FramedMap {
   return out;
 }
 
+export function parseTitlesMap(value: unknown): Record<string, Record<string, string>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const out: Record<string, Record<string, string>> = {};
+
+  for (const [locale, titles] of Object.entries(value as Record<string, unknown>)) {
+    if (!titles || typeof titles !== "object" || Array.isArray(titles)) continue;
+
+    const localeTitles: Record<string, string> = {};
+
+    for (const [base, title] of Object.entries(titles as Record<string, unknown>)) {
+      if (typeof title === "string") localeTitles[base] = title;
+    }
+
+    out[locale] = localeTitles;
+  }
+
+  return out;
+}
+
 export async function getEffectiveFramed(jobId: string): Promise<EffectiveFramed> {
   const job = await prisma.screenshotJob.findUnique({
     where: { id: jobId },
@@ -243,6 +263,7 @@ export async function setAppDefaultFromRevision(
   style.titleLines = [];
 
   const styles = storedShotStyles(revision.styles);
+  const titles = parseTitlesMap(revision.titles);
 
   await prisma.app.update({
     where: { id: appId },
@@ -250,6 +271,7 @@ export async function setAppDefaultFromRevision(
       defaultScreenshotStyle: style as Prisma.InputJsonValue,
       defaultScreenshotShotStyles: styles as Prisma.InputJsonValue,
       defaultScreenshotRevisionId: revision.id,
+      defaultScreenshotTitles: titles as Prisma.InputJsonValue,
     },
   });
 

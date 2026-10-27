@@ -218,6 +218,7 @@ model App {
   defaultScreenshotStyle       Json?
   defaultScreenshotShotStyles  Json?
   defaultScreenshotRevisionId  String?
+  defaultScreenshotTitles      Json?
   signingCertP12             String?
   signingCertPassword        String?
   signingProvisioningProfile String?
