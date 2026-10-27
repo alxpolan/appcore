@@ -161,7 +161,13 @@ function totalsFromRow(row: any): any {
 function rowsFromReport(data: any): any[] {
   if (data?.error) throw new Error(`Apple Search Ads reports error: ${JSON.stringify(data.error)}`);
 
-  return data?.data?.reportingDataResponse?.row ?? data?.data?.row ?? data?.row ?? [];
+  const envelope = data == null ? undefined : data.data;
+
+  if (envelope == null || envelope.reportingDataResponse == null || !Array.isArray(envelope.reportingDataResponse.row)) {
+    throw new Error("Apple Search Ads reports response returned no reportingDataResponse.row");
+  }
+
+  return envelope.reportingDataResponse.row;
 }
 
 export async function listAppleAdsCampaigns(
@@ -193,11 +199,7 @@ export async function listAppleAdsCampaigns(
       { headers },
     );
 
-    if (reportRes.data?.error) {
-      throw new Error(`Apple Search Ads reports error: ${JSON.stringify(reportRes.data.error)}`);
-    }
-
-    return reportRes.data?.data?.reportingDataResponse?.row ?? reportRes.data?.data?.row ?? reportRes.data?.row ?? [];
+    return rowsFromReport(reportRes.data);
   };
 
   const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
@@ -407,16 +409,17 @@ export async function listAppleAdsAdGroups(
     .filter((row) => !row.metadata?.deleted)
     .map((row) => {
       const meta = row.metadata ?? {};
+      const bid = meta.defaultCpcBid ?? meta.defaultBidAmount;
 
       return {
         id: String(meta.adGroupId),
         campaignId: String(meta.campaignId ?? campaignId),
         name: meta.adGroupName,
-        status: meta.status ?? meta.adGroupStatus,
-        servingStatus: meta.servingStatus,
-        defaultBidAmount: meta.defaultBidAmount?.amount != null ? Number(meta.defaultBidAmount.amount) : null,
+        status: meta.adGroupStatus ?? meta.status,
+        servingStatus: meta.adGroupServingStatus ?? meta.servingStatus,
+        defaultBidAmount: bid?.amount != null ? Number(bid.amount) : null,
         cpaGoal: meta.cpaGoal?.amount != null ? Number(meta.cpaGoal.amount) : null,
-        currency: meta.defaultBidAmount?.currency ?? meta.cpaGoal?.currency ?? null,
+        currency: bid?.currency ?? meta.cpaGoal?.currency ?? null,
         startTime: meta.startTime ?? null,
         endTime: meta.endTime ?? null,
         ...statsFromTotal(totalsFromRow(row)),
@@ -469,7 +472,7 @@ export async function listAppleAdsKeywords(
         adGroupId: String(meta.adGroupId ?? adGroupId),
         text: meta.keyword,
         matchType: meta.matchType,
-        status: meta.status ?? meta.keywordStatus,
+        status: meta.keywordStatus ?? meta.status,
         bidAmount: meta.bidAmount?.amount != null ? Number(meta.bidAmount.amount) : null,
         currency: meta.bidAmount?.currency ?? null,
         ...statsFromTotal(totalsFromRow(row)),
@@ -562,11 +565,17 @@ export async function listAppleAdsApps(creds: AppleAdsCredentials): Promise<Appl
   );
 
   throwIfAppleError(res.data, "app search");
-  const rows = res.data?.data ?? [];
+  const body = res.data;
 
-  return (Array.isArray(rows) ? rows : [])
+  if (body == null || !Array.isArray(body.data)) throw new Error("Apple Search Ads app search returned no app list");
+
+  return body.data
     .filter((a: any) => a?.adamId != null)
-    .map((a: any) => ({ adamId: String(a.adamId), name: String(a.appName ?? a.name ?? a.adamId) }));
+    .map((a: any) => {
+      if (a.appName == null) throw new Error("Apple Search Ads app search returned an app with no appName");
+
+      return { adamId: String(a.adamId), name: String(a.appName) };
+    });
 }
 
 export async function getAppleAdsCampaignDetail(

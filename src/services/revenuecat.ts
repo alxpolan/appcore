@@ -122,7 +122,7 @@ async function paginate<T>(firstUrl: string, apiKey: string): Promise<T[]> {
   while (url) {
     const page: RevenueCatList<T> = await getWithRetry<RevenueCatList<T>>(url, apiKey);
 
-    items.push(...(page.items ?? []));
+    items.push(...page.items);
     url = page.next_page ?? null;
   }
 
@@ -149,7 +149,7 @@ export async function listRevenueCatProjects(apiKey: string): Promise<RevenueCat
     headers: authHeaders(apiKey),
   });
 
-  const projects = res.data.items ?? [];
+  const projects = res.data.items;
 
   if (projects.length === 0) {
     throw new Error("No RevenueCat projects are visible to this API key");

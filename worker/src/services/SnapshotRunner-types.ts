@@ -51,7 +51,7 @@ export function resolveCaptureSubstitution(
   const sizeMatch = requested.match(IPAD_SIZE_RE);
 
   if (requested.startsWith("iPad Pro") && sizeMatch && sizeMatch[1] !== "11-inch") {
-    const sibling = available.find((d) => /^ipad pro\b/i.test(d.name) && /11-inch/i.test(d.name) && /\(m4\)/i.test(d.name));
+    const sibling = available.find((d) => /^ipad pro\b/i.test(d.name) && /11-inch/i.test(d.name) && /\bm4\b/i.test(d.name));
 
     if (!sibling) return null;
 

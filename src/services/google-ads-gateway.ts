@@ -41,7 +41,7 @@ function responseResourceName(r: any): string {
 }
 
 export function parseMutateResourceNames(res: any): string[] {
-  const list = res?.mutate_operation_responses ?? res?.mutateOperationResponses ?? res?.results ?? [];
+  const list = res?.mutate_operation_responses ?? res?.mutateOperationResponses ?? [];
 
   return (Array.isArray(list) ? list : []).map(responseResourceName);
 }

@@ -94,14 +94,27 @@ export function buildIntroductoryOfferBody(input: IntroductoryOfferInput) {
 }
 
 export function toIntroductoryOffer(raw: any): IntroductoryOffer {
-  const attributes = raw?.attributes ?? {};
-  const territory = raw?.relationships?.territory?.data?.id ?? null;
+  const attributes = raw?.attributes;
+
+  if (!attributes) {
+    throw new Error("ASC subscriptionIntroductoryOffers response missing required attributes");
+  }
+
+  if (!raw?.id || typeof attributes.offerMode !== "string" || typeof attributes.duration !== "string") {
+    throw new Error("ASC subscriptionIntroductoryOffers response missing required id, offerMode, or duration");
+  }
+
+  if (typeof attributes.numberOfPeriods !== "number") {
+    throw new Error("ASC subscriptionIntroductoryOffers response missing required numberOfPeriods");
+  }
+
+  const territory = raw.relationships?.territory?.data?.id ?? null;
 
   return {
-    id: raw?.id ?? "",
-    offerMode: attributes.offerMode ?? "",
-    duration: attributes.duration ?? "",
-    numberOfPeriods: attributes.numberOfPeriods ?? 1,
+    id: raw.id,
+    offerMode: attributes.offerMode,
+    duration: attributes.duration,
+    numberOfPeriods: attributes.numberOfPeriods,
     territory,
     startDate: attributes.startDate ?? null,
     endDate: attributes.endDate ?? null,

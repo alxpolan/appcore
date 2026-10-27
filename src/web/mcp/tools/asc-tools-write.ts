@@ -209,12 +209,12 @@ export function registerAscWriteTools(server: McpServer, userId: string) {
 
         const appInfoByLocale: Record<string, any> = {};
         for (const l of appInfoLocs) {
-          appInfoByLocale[l.attributes?.locale ?? l.locale] = l;
+          appInfoByLocale[l.attributes.locale] = l;
         }
 
         const versionByLocale: Record<string, any> = {};
         for (const l of versionLocs) {
-          versionByLocale[l.attributes?.locale ?? l.locale] = l;
+          versionByLocale[l.attributes.locale] = l;
         }
 
         const allLocales = Object.keys(versionByLocale);

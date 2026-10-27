@@ -387,7 +387,7 @@ async function fetchProductEqualizations(
   );
 
   return (resp.data ?? []).map((pp: any) => {
-    const terrId = pp.relationships?.territory?.data?.id ?? pp.attributes?.territory ?? null;
+    const terrId = pp.relationships?.territory?.data?.id ?? null;
 
     return {
       id: pp.id,

@@ -320,20 +320,25 @@ async function fetchLatestCommit(repoFullName: string, token: string, branch?: s
     return r.json() as Promise<T>;
   };
 
-  type GitRef = { ref?: string; object?: { sha?: string } };
+  type GitRef = { ref: string; object: { sha: string } };
 
   if (branch) {
     const ref = await get<GitRef>(`https://api.github.com/repos/${repoFullName}/git/ref/heads/${encodeURIComponent(branch)}`);
+    if (!ref.object || typeof ref.object.sha !== "string" || ref.object.sha.length === 0) throw new Error(`GitHub API response for git/ref/heads/${branch} is missing required field object.sha`);
 
-    return { commitSha: (ref?.object?.sha ?? "unknown") as string, branch };
+    return { commitSha: ref.object.sha, branch };
   }
 
   const data = await get<GitRef[]>(`https://api.github.com/repos/${repoFullName}/git/refs/heads`);
-  const ref = Array.isArray(data) ? data[0] : null;
+  if (!Array.isArray(data) || data.length === 0) throw new Error(`GitHub API response for git/refs/heads on ${repoFullName} contains no refs`);
+
+  const ref = data[0];
+  if (!ref.object || typeof ref.object.sha !== "string" || ref.object.sha.length === 0) throw new Error("GitHub API response for git/refs/heads is missing required field object.sha");
+  if (typeof ref.ref !== "string" || ref.ref.length === 0) throw new Error("GitHub API response for git/refs/heads is missing required field ref");
 
   return {
-    commitSha: (ref?.object?.sha ?? "unknown") as string,
-    branch: (ref?.ref?.replace("refs/heads/", "") ?? "main") as string,
+    commitSha: ref.object.sha,
+    branch: ref.ref.replace("refs/heads/", ""),
   };
 }
 

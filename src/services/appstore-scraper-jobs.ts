@@ -100,7 +100,7 @@ export class AppStoreScraper extends AppStoreScraperPage {
     }
 
     const description = itunesData.description;
-    const screenshotUrls = itunesData.screenshotUrls?.length ? itunesData.screenshotUrls : (webData?.screenshots ?? []);
+    const screenshotUrls = itunesData.screenshotUrls.length ? itunesData.screenshotUrls : (webData?.screenshots ?? []);
 
     await prisma.appSnapshot.create({
       data: {

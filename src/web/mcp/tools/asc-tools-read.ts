@@ -148,14 +148,14 @@ export function registerAscReadTools(server: McpServer, userId: string) {
 
         const appInfoByLocale: Record<string, any> = {};
         for (const l of appInfoLocs) {
-          const loc = l.attributes?.locale ?? l.locale;
+          const loc = l.attributes.locale;
 
           appInfoByLocale[loc] = l;
         }
 
         const localeMap: Record<string, any> = {};
         for (const l of versionLocs) {
-          const loc = l.attributes?.locale ?? l.locale;
+          const loc = l.attributes.locale;
           if (locale && loc !== locale) continue;
 
           const appInfo = appInfoByLocale[loc];
@@ -268,13 +268,13 @@ export function registerAscReadTools(server: McpServer, userId: string) {
 
         const appInfoByLocale: Record<string, any> = {};
         for (const l of appInfoLocs) {
-          const loc = l.attributes?.locale ?? l.locale;
+          const loc = l.attributes.locale;
 
           appInfoByLocale[loc] = l;
         }
 
         const merged = versionLocs.map((l) => {
-          const loc = l.attributes?.locale ?? l.locale;
+          const loc = l.attributes.locale;
           const appInfo = appInfoByLocale[loc];
 
           return {
