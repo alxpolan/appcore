@@ -76,8 +76,22 @@ export class AppStoreConnectCore {
 
         if (error?.response?.status === 429) {
           const rl = this.rateLimit;
-          const limitStr = rl ? ` (${rl.hourRemaining}/${rl.hourLimit} remaining)` : "";
-          throw new Error(`ASC rate limit exceeded${limitStr}. Warte ~1 Stunde und versuche es erneut.`);
+          const retryAfterSec = parseInt(error.response.headers?.["retry-after"], 10);
+          const hasRetryAfter = Number.isFinite(retryAfterSec);
+          const quotaNote = rl
+            ? rl.hourRemaining > 0
+              ? ` (hourly quota still has ${rl.hourRemaining}/${rl.hourLimit} left — this is a short-term burst limit, not the hourly cap)`
+              : ` (hourly quota exhausted: ${rl.hourRemaining}/${rl.hourLimit})`
+            : "";
+          const waitNote = hasRetryAfter ? `retry after ${retryAfterSec}s` : "retry shortly";
+
+          const rateLimitErr = new Error(`ASC 429: rate limited${quotaNote}. ${waitNote}.`);
+
+          if (hasRetryAfter) {
+            (rateLimitErr as Error & { ascRetryAfterMs?: number }).ascRetryAfterMs = retryAfterSec * 1000;
+          }
+
+          throw rateLimitErr;
         }
 
         throw error;

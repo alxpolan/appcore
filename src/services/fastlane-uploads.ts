@@ -238,10 +238,10 @@ export class FastlaneUploads {
         return await fn();
       } catch (err: any) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isTransientServerError = /ASC 5\d\d:/.test(msg);
+        const isTransientServerError = /ASC (5\d\d|429):/.test(msg);
         if (!isTransientServerError || attempt >= retryDelaysMs.length) throw err;
 
-        const delay = retryDelaysMs[attempt];
+        const delay = (err as Error & { ascRetryAfterMs?: number }).ascRetryAfterMs ?? retryDelaysMs[attempt];
         onLog(
           `[Screenshots] ${label} failed (${msg}). Retrying in ${delay / 1000}s… (attempt ${attempt + 2}/${retryDelaysMs.length + 1})`,
         );
