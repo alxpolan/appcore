@@ -62,6 +62,18 @@ export async function verifyMcpAppAccess(userId: string, bundleId: string) {
   return app;
 }
 
+export async function verifyMcpAppAccessById(userId: string, appId: string) {
+  const app = await prisma.app.findUnique({ where: { id: appId } });
+  if (!app) return null;
+  const teamId = await getMcpUserTeamId(userId);
+  if (!teamId) return null;
+  if (!app.teamId || app.teamId !== teamId) return null;
+  const allowed = await getMcpAllowedAppIds(userId, teamId);
+  if (allowed && !allowed.includes(app.id)) return null;
+
+  return app;
+}
+
 export async function getSettingsWithBundleId(userId: string, bundleId?: string) {
   const settings = await getEffectiveSettings(userId);
   const resolvedBundleId = bundleId;

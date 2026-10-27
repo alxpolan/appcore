@@ -7,6 +7,7 @@ import { registerAscSubscriptionTools } from "./tools/asc-subscription-tools";
 import { registerAscProductTools } from "./tools/asc-product-tools";
 import { registerAscGameCenterTools } from "./tools/asc-gamecenter-tools";
 import { registerSuggestionTools } from "./tools/suggestion-tools";
+import { registerScreenshotStudioTools } from "./tools/screenshot-studio-tools";
 
 export function createMcpServer(userId: string): McpServer {
   const server = new McpServer({
@@ -22,6 +23,7 @@ export function createMcpServer(userId: string): McpServer {
   registerAscProductTools(server, userId);
   registerAscGameCenterTools(server, userId);
   registerSuggestionTools(server, userId);
+  registerScreenshotStudioTools(server, userId);
 
   return server;
 }
