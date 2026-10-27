@@ -3,13 +3,14 @@ import Charts
 
 struct DashboardView: View {
     @Binding var bundleId: String?
+    @Binding var showAllApps: Bool
     let apps: [AppItem]
 
     @State private var dashboard: DashboardData?
     @State private var downloads: DownloadsData?
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showAllApps = false
+    @State private var showMore = false
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,16 @@ struct DashboardView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     appPicker
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showMore = true
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showMore) {
+                MoreView()
             }
             .refreshable { await loadData() }
         }
@@ -236,15 +247,28 @@ struct DashboardView: View {
     }
 
     private var quickLinks: some View {
-        HStack(spacing: 12) {
-            NavigationLink(destination: AdsView(bundleId: bundleId)) {
-                quickLinkCard(title: "Ads", icon: "megaphone.fill", color: .orange)
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                NavigationLink(destination: SuggestionsView(bundleId: bundleId)) {
+                    quickLinkCard(title: "Suggestions", icon: "lightbulb.fill", color: .yellow)
+                }
+                NavigationLink(destination: ReviewsView(bundleId: bundleId)) {
+                    quickLinkCard(title: "Reviews", icon: "star.bubble.fill", color: .green)
+                }
+                NavigationLink(destination: BuildsView(bundleId: bundleId, apps: apps)) {
+                    quickLinkCard(title: "Builds", icon: "hammer.fill", color: .blue)
+                }
             }
-            NavigationLink(destination: BuildsView(bundleId: bundleId, apps: apps)) {
-                quickLinkCard(title: "Builds", icon: "hammer.fill", color: .blue)
-            }
-            NavigationLink(destination: ScreenshotsView(bundleId: bundleId, apps: apps)) {
-                quickLinkCard(title: "Shots", icon: "photo.stack.fill", color: .purple)
+            HStack(spacing: 12) {
+                NavigationLink(destination: ScreenshotsView(bundleId: bundleId, apps: apps)) {
+                    quickLinkCard(title: "Screenshots", icon: "photo.stack.fill", color: .purple)
+                }
+                NavigationLink(destination: AdsView(bundleId: bundleId)) {
+                    quickLinkCard(title: "Ads", icon: "megaphone.fill", color: .orange)
+                }
+                NavigationLink(destination: ProductPagesView(bundleId: bundleId)) {
+                    quickLinkCard(title: "Pages", icon: "rectangle.on.rectangle.fill", color: .pink)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -259,6 +283,8 @@ struct DashboardView: View {
                 .font(.caption)
                 .fontWeight(.medium)
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)

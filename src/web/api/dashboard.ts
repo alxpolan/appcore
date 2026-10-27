@@ -4,9 +4,10 @@ import { requireAuth } from "../auth";
 import { ensureAccentColor } from "../../services/utils/icon-accent";
 import {
   buildDownloadsBreakdown,
+  fetchDownloadsInput,
+  getOwnTeamApps,
   resolveSince,
   resolveUntil,
-  revenueCatGapStart,
 } from "./analytics-shared";
 
 export const dashboardRouter = Router();
@@ -15,13 +16,7 @@ dashboardRouter.use(requireAuth);
 
 dashboardRouter.get("/all", async (req, res) => {
   try {
-    const isAdmin = req.user!.role === "ADMIN";
-    const teamId = req.user!.teamId;
-
-    const ownApps = await prisma.app.findMany({
-      where: isAdmin ? { isOwnApp: true } : teamId ? { teamId, isOwnApp: true } : { isOwnApp: true },
-      select: { id: true, bundleId: true, revenueCatConnectedAt: true },
-    });
+    const ownApps = await getOwnTeamApps({ role: req.user!.role, teamId: req.user!.teamId });
 
     const appIds = ownApps.map((a) => a.id);
     const bundleIds = ownApps.map((a) => a.bundleId);
@@ -73,51 +68,7 @@ dashboardRouter.get("/all", async (req, res) => {
       }),
     ]);
 
-    const gapStarts = await Promise.all(ownApps.map((a) => revenueCatGapStart(a.bundleId)));
-
-    const [rows, purchaseRows, sourceRows, installDeletionRows, rcRows] = await Promise.all([
-      prisma.appStoreAnalytics.findMany({
-        where: {
-          bundleId: { in: bundleIds },
-          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
-        },
-        orderBy: { reportDate: "asc" },
-      }),
-      prisma.appStoreCommercePurchase.findMany({
-        where: {
-          bundleId: { in: bundleIds },
-          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
-        },
-        select: { reportDate: true, proceedsUsd: true },
-      }),
-      prisma.appStoreCommerceDownload.groupBy({
-        by: ["reportDate", "sourceType"],
-        where: {
-          bundleId: { in: bundleIds },
-          downloadType: "First-time download",
-          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
-        },
-        _sum: { counts: true },
-      }),
-      prisma.appStoreInstallDeletion.findMany({
-        where: {
-          bundleId: { in: bundleIds },
-          ...(Object.keys(dateFilter).length ? { reportDate: dateFilter } : {}),
-        },
-        select: { reportDate: true, event: true, counts: true },
-      }),
-      prisma.revenueCatTransaction.findMany({
-        where: {
-          bundleId: { in: bundleIds },
-          ...(Object.keys(dateFilter).length ? { occurredAt: dateFilter } : {}),
-          OR: ownApps.map((a, i) => ({
-            bundleId: a.bundleId,
-            OR: [{ store: { not: "app_store" } }, { occurredAt: { gte: gapStarts[i] } }],
-          })),
-        },
-        select: { occurredAt: true, proceedsUsd: true },
-      }),
-    ]);
+    const downloadsInput = await fetchDownloadsInput(bundleIds, dateFilter);
 
     res.json({
       dashboard: {
@@ -145,7 +96,7 @@ dashboardRouter.get("/all", async (req, res) => {
           createdAt: s.createdAt,
         })),
       },
-      downloads: buildDownloadsBreakdown({ rows, purchaseRows, sourceRows, installDeletionRows, rcRows }),
+      downloads: buildDownloadsBreakdown(downloadsInput),
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });

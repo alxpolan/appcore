@@ -108,6 +108,11 @@ final class APIService {
         let _: EmptyResponse = try await post("/api/analytics/sync", body: EmptyBody())
     }
 
+    func getAllAnalytics(days: Int = 30) async throws -> (AnalyticsSummary, DownloadsData) {
+        let response: AnalyticsAllResponse = try await get("/api/analytics/all?days=\(days)")
+        return (response.summary, response.downloads)
+    }
+
     // MARK: - Keywords
 
     func getKeywords(bundleId: String?) async throws -> [Keyword] {
@@ -115,6 +120,11 @@ final class APIService {
         if let bundleId { path += "?bundleId=\(bundleId)" }
         let response: KeywordListResponse = try await get(path)
         return response.items
+    }
+
+    func getAllKeywords() async throws -> [(app: AppItem, items: [Keyword])] {
+        let response: KeywordAllResponse = try await get("/api/keywords/all")
+        return response.groups.map { (app: $0.app, items: $0.items) }
     }
 
     func getKeywordHistory(id: String) async throws -> KeywordHistoryData {

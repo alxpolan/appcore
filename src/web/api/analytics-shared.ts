@@ -124,6 +124,64 @@ export interface DownloadsBreakdownInput {
   rcRows: AnalyticsRevenueCatRow[];
 }
 
+export async function getOwnTeamApps(user: { role?: string; teamId?: string | null }) {
+  const isAdmin = user.role === "ADMIN";
+
+  return prisma.app.findMany({
+    where: isAdmin ? { isOwnApp: true } : user.teamId ? { teamId: user.teamId, isOwnApp: true } : { isOwnApp: true },
+    select: { id: true, bundleId: true, name: true, displayName: true, revenueCatConnectedAt: true },
+  });
+}
+
+export async function fetchDownloadsInput(
+  bundleIds: string[],
+  dateFilter: Record<string, Date>,
+): Promise<DownloadsBreakdownInput> {
+  if (bundleIds.length === 0) {
+    return { rows: [], purchaseRows: [], sourceRows: [], installDeletionRows: [], rcRows: [] };
+  }
+
+  const dateWhere = Object.keys(dateFilter).length ? dateFilter : undefined;
+  const gapStarts = await Promise.all(bundleIds.map((bundleId) => revenueCatGapStart(bundleId)));
+
+  const [rows, purchaseRows, sourceRows, installDeletionRows, rcRows] = await Promise.all([
+    prisma.appStoreAnalytics.findMany({
+      where: { bundleId: { in: bundleIds }, ...(dateWhere ? { reportDate: dateWhere } : {}) },
+      orderBy: { reportDate: "asc" },
+    }),
+    prisma.appStoreCommercePurchase.findMany({
+      where: { bundleId: { in: bundleIds }, ...(dateWhere ? { reportDate: dateWhere } : {}) },
+      select: { reportDate: true, proceedsUsd: true },
+    }),
+    prisma.appStoreCommerceDownload.groupBy({
+      by: ["reportDate", "sourceType"],
+      where: {
+        bundleId: { in: bundleIds },
+        downloadType: "First-time download",
+        ...(dateWhere ? { reportDate: dateWhere } : {}),
+      },
+      _sum: { counts: true },
+    }),
+    prisma.appStoreInstallDeletion.findMany({
+      where: { bundleId: { in: bundleIds }, ...(dateWhere ? { reportDate: dateWhere } : {}) },
+      select: { reportDate: true, event: true, counts: true },
+    }),
+    prisma.revenueCatTransaction.findMany({
+      where: {
+        bundleId: { in: bundleIds },
+        ...(dateWhere ? { occurredAt: dateWhere } : {}),
+        OR: bundleIds.map((bundleId, i) => ({
+          bundleId,
+          OR: [{ store: { not: "app_store" } }, { occurredAt: { gte: gapStarts[i] } }],
+        })),
+      },
+      select: { occurredAt: true, proceedsUsd: true },
+    }),
+  ]);
+
+  return { rows, purchaseRows, sourceRows, installDeletionRows, rcRows };
+}
+
 export function buildDownloadsBreakdown(input: DownloadsBreakdownInput) {
   const { rows, purchaseRows, sourceRows, installDeletionRows, rcRows } = input;
 

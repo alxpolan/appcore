@@ -3,6 +3,8 @@ import Charts
 
 struct AnalyticsView: View {
     let bundleId: String?
+    let apps: [AppItem]
+    @Binding var showAllApps: Bool
 
     @State private var summary: AnalyticsSummary?
     @State private var downloads: DownloadsData?
@@ -58,7 +60,7 @@ struct AnalyticsView: View {
             }
             .refreshable { await loadData() }
         }
-        .task(id: bundleId) { await loadData() }
+        .task(id: [bundleId, showAllApps ? "all" : "single"]) { await loadData() }
     }
 
     @ViewBuilder
@@ -310,15 +312,21 @@ struct AnalyticsView: View {
     }
 
     private func loadData() async {
-        guard bundleId != nil else { isLoading = false; return }
+        guard bundleId != nil || (showAllApps && !apps.isEmpty) else { isLoading = false; return }
         isLoading = true
         error = nil
         do {
-            async let summaryResult = APIService.shared.getAnalyticsSummary(bundleId: bundleId, days: selectedDays)
-            async let downloadsResult = APIService.shared.getDownloads(bundleId: bundleId, days: selectedDays)
-            let (s, d) = try await (summaryResult, downloadsResult)
-            summary = s
-            downloads = d
+            if showAllApps && !apps.isEmpty {
+                let (s, d) = try await APIService.shared.getAllAnalytics(days: selectedDays)
+                summary = s
+                downloads = d
+            } else {
+                async let summaryResult = APIService.shared.getAnalyticsSummary(bundleId: bundleId, days: selectedDays)
+                async let downloadsResult = APIService.shared.getDownloads(bundleId: bundleId, days: selectedDays)
+                let (s, d) = try await (summaryResult, downloadsResult)
+                summary = s
+                downloads = d
+            }
         } catch {
             self.error = error.localizedDescription
         }

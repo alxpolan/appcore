@@ -4,31 +4,24 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     @State private var apps: [AppItem] = []
     @State private var selectedBundleId: String?
+    @State private var showAllApps = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Dashboard", systemImage: "square.grid.2x2.fill", value: 0) {
-                DashboardView(bundleId: $selectedBundleId, apps: apps)
+                DashboardView(bundleId: $selectedBundleId, showAllApps: $showAllApps, apps: apps)
             }
 
             Tab("Analytics", systemImage: "chart.bar.fill", value: 1) {
-                AnalyticsView(bundleId: selectedBundleId)
+                AnalyticsView(bundleId: selectedBundleId, apps: apps, showAllApps: $showAllApps)
             }
 
             Tab("Keywords", systemImage: "key.fill", value: 2) {
-                KeywordsView(bundleId: selectedBundleId)
+                KeywordsView(bundleId: selectedBundleId, apps: apps, showAllApps: $showAllApps)
             }
 
             Tab("Versions", systemImage: "doc.text.fill", value: 3) {
                 VersionsView(bundleId: selectedBundleId)
-            }
-
-            Tab("More", systemImage: "ellipsis.circle.fill", value: 4) {
-                MoreView(
-                    bundleId: $selectedBundleId,
-                    apps: $apps,
-                    selectedTab: $selectedTab
-                )
             }
         }
         .task {
@@ -52,97 +45,11 @@ struct MainTabView: View {
 // MARK: - More Tab (Settings, Suggestions, Actions, App Switcher)
 
 struct MoreView: View {
-    @Binding var bundleId: String?
-    @Binding var apps: [AppItem]
-    @Binding var selectedTab: Int
-
     var body: some View {
         NavigationStack {
             List {
-                // App Switcher
-                Section {
-                    ForEach(apps) { app in
-                        Button {
-                            bundleId = app.bundleId
-                        } label: {
-                            HStack(spacing: 12) {
-                                AppIconView(url: app.iconUrl, size: 40)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.displayNameOrName)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.primary)
-                                    Text(app.bundleId)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if app.bundleId == bundleId {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.tint)
-                                }
-                            }
-                        }
-                    }
-                } header: {
-                    SectionHeader("Apps", icon: "app.badge")
-                }
-
-                // Features
-                Section {
-                    NavigationLink {
-                        SuggestionsView(bundleId: bundleId)
-                    } label: {
-                        Label("Suggestions", systemImage: "lightbulb.fill")
-                    }
-
-                    NavigationLink {
-                        ActionsView(bundleId: bundleId)
-                    } label: {
-                        Label("Actions", systemImage: "bolt.fill")
-                    }
-
-                    NavigationLink {
-                        ReviewsView(bundleId: bundleId)
-                    } label: {
-                        Label("Reviews", systemImage: "star.bubble.fill")
-                    }
-
-                    NavigationLink {
-                        BuildsView(bundleId: bundleId, apps: apps)
-                    } label: {
-                        Label("Builds", systemImage: "hammer.fill")
-                    }
-
-                    NavigationLink {
-                        ScreenshotsView(bundleId: bundleId, apps: apps)
-                    } label: {
-                        Label("Screenshots", systemImage: "photo.stack.fill")
-                    }
-
-                    NavigationLink {
-                        AdsView(bundleId: bundleId)
-                    } label: {
-                        Label("Ads", systemImage: "megaphone.fill")
-                    }
-
-                    NavigationLink {
-                        ProductPagesView(bundleId: bundleId)
-                    } label: {
-                        Label("Product Pages", systemImage: "rectangle.on.rectangle.fill")
-                    }
-                } header: {
-                    SectionHeader("Features", icon: "square.stack.3d.up.fill")
-                }
-
                 // Settings
                 Section {
-                    NavigationLink {
-                        AppSettingsView()
-                    } label: {
-                        Label("Settings", systemImage: "gearshape.fill")
-                    }
-
                     NavigationLink {
                         NotificationSettingsView()
                     } label: {
@@ -157,27 +64,16 @@ struct MoreView: View {
                 } header: {
                     SectionHeader("Account", icon: "person.fill")
                 }
+
+                Section {
+                    Text("Marteso \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
             .navigationTitle("More")
         }
-    }
-}
-
-// MARK: - App Settings
-
-struct AppSettingsView: View {
-    var body: some View {
-        Form {
-            Section("Server") {
-                LabeledContent("URL", value: APIService.shared.baseURL)
-            }
-
-            Section("About") {
-                LabeledContent("App Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
-            }
-        }
-        .navigationTitle("Settings")
     }
 }
 

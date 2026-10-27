@@ -24,6 +24,11 @@ struct DownloadsData: Codable {
     let byCountry: [CountryData]
 }
 
+struct AnalyticsAllResponse: Codable {
+    let summary: AnalyticsSummary
+    let downloads: DownloadsData
+}
+
 struct AnalyticsSummary: Codable {
     let totalDownloads: Int
     let totalProceeds: Double
@@ -233,6 +238,16 @@ struct Suggestion: Codable, Identifiable {
 struct KeywordListResponse: Codable {
     let items: [Keyword]
     let total: Int
+}
+
+struct KeywordAllGroup: Codable {
+    let app: AppItem
+    let items: [Keyword]
+    let total: Int
+}
+
+struct KeywordAllResponse: Codable {
+    let groups: [KeywordAllGroup]
 }
 
 struct BuildJob: Codable, Identifiable {

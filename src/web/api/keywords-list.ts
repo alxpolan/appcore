@@ -1,184 +1,185 @@
 import { Router } from "express";
 import { prisma } from "../../config";
 import { bundleAccess } from "../auth";
+import { getOwnTeamApps } from "./analytics-shared";
 import { normalizeLanguage } from "../../services/app-store-markets";
 import { FREE_KEYWORDS_PER_APP, isTeamPro } from "../../services/pro-grants";
 import { KeywordTracker } from "../../services/keyword-tracker";
 
 export const keywordsRouter = Router();
 
-keywordsRouter.get("/", bundleAccess("query", "bundleId"), async (req, res) => {
-  try {
-    const ownApp = req.bundleApp!;
-    const t0 = performance.now();
+async function fetchKeywordList(ownApp: { id: string }) {
+  type KeywordPageRow = {
+    id: string;
+    term: string;
+    country: string;
+    language: string;
+    popularity: number | null;
+    difficulty: number | null;
+    searchVolume: number | null;
+    updatedAt: Date;
+    latestRank: number | null;
+  };
+  const pageRows = await prisma.$queryRaw<KeywordPageRow[]>`
+      WITH app_keyword_ids AS MATERIALIZED (
+        SELECT DISTINCT "keywordId" AS id
+        FROM "KeywordRanking"
+        WHERE "appId" = ${ownApp.id}
+      ),
+      page AS (
+        SELECT k.id, k.term, k.country, k.language, k.popularity, k.difficulty,
+               k."searchVolume", k."updatedAt"
+        FROM "Keyword" k
+        JOIN app_keyword_ids ak ON ak.id = k.id
+        ORDER BY k.popularity DESC NULLS LAST
+      )
+      SELECT p.id, p.term, p.country, p.language, p.popularity, p.difficulty,
+             p."searchVolume", p."updatedAt",
+             lr.rank AS "latestRank"
+      FROM page p
+      LEFT JOIN LATERAL (
+        SELECT rank
+        FROM "KeywordRanking"
+        WHERE "appId" = ${ownApp.id} AND "keywordId" = p.id
+        ORDER BY "trackedAt" DESC
+        LIMIT 1
+      ) lr ON TRUE
+      ORDER BY p.popularity DESC NULLS LAST
+    `;
 
-    type KeywordPageRow = {
-      id: string;
-      term: string;
-      country: string;
-      language: string;
-      popularity: number | null;
-      difficulty: number | null;
-      searchVolume: number | null;
-      updatedAt: Date;
-      latestRank: number | null;
-    };
-    const pageRows = await prisma.$queryRaw<KeywordPageRow[]>`
-        WITH app_keyword_ids AS MATERIALIZED (
-          SELECT DISTINCT "keywordId" AS id
-          FROM "KeywordRanking"
-          WHERE "appId" = ${ownApp.id}
-        ),
-        page AS (
-          SELECT k.id, k.term, k.country, k.language, k.popularity, k.difficulty,
-                 k."searchVolume", k."updatedAt"
-          FROM "Keyword" k
-          JOIN app_keyword_ids ak ON ak.id = k.id
-          ORDER BY k.popularity DESC NULLS LAST
-        )
-        SELECT p.id, p.term, p.country, p.language, p.popularity, p.difficulty,
-               p."searchVolume", p."updatedAt",
-               lr.rank AS "latestRank"
-        FROM page p
-        LEFT JOIN LATERAL (
-          SELECT rank
-          FROM "KeywordRanking"
-          WHERE "appId" = ${ownApp.id} AND "keywordId" = p.id
-          ORDER BY "trackedAt" DESC
-          LIMIT 1
-        ) lr ON TRUE
-        ORDER BY p.popularity DESC NULLS LAST
-      `;
+  const total = pageRows.length;
 
-    const total = pageRows.length;
-    const t1 = performance.now();
+  const keywords = pageRows.map((r) => ({
+    id: r.id,
+    term: r.term,
+    country: r.country,
+    language: r.language,
+    popularity: r.popularity,
+    difficulty: r.difficulty,
+    searchVolume: r.searchVolume,
+    updatedAt: r.updatedAt,
+    rankings: r.latestRank != null ? [{ rank: r.latestRank }] : ([] as { rank: number | null }[]),
+  }));
 
-    const keywords = pageRows.map((r) => ({
-      id: r.id,
-      term: r.term,
-      country: r.country,
-      language: r.language,
-      popularity: r.popularity,
-      difficulty: r.difficulty,
-      searchVolume: r.searchVolume,
-      updatedAt: r.updatedAt,
-      rankings: r.latestRank != null ? [{ rank: r.latestRank }] : ([] as { rank: number | null }[]),
+  const keywordIds = keywords.map((k) => k.id);
+
+  if (keywordIds.length === 0) {
+    return { items: [], total };
+  }
+
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  type CompRow = {
+    keywordId: string;
+    rank: number;
+    appName: string;
+    iconUrl: string | null;
+  };
+  type PrevRow = { keywordId: string; rank: number | null };
+
+  const [topCompRows, previousRankings, groupMembers] = await Promise.all([
+    prisma.$queryRaw<CompRow[]>`
+      WITH latest AS (
+        SELECT DISTINCT ON ("keywordId", "bundleId")
+               "keywordId", "bundleId", name, "iconUrl", rank
+        FROM "KeywordSearchResult"
+        WHERE "keywordId" = ANY(${keywordIds}::text[])
+          AND "trackedAt" >= NOW() - INTERVAL '7 days'
+        ORDER BY "keywordId", "bundleId", "trackedAt" DESC
+      ),
+      ranked AS (
+        SELECT "keywordId", name, "iconUrl", rank,
+               ROW_NUMBER() OVER (PARTITION BY "keywordId" ORDER BY rank ASC) AS rn
+        FROM latest
+      )
+      SELECT "keywordId", name AS "appName", "iconUrl", rank
+      FROM ranked
+      WHERE rn <= 5
+      ORDER BY "keywordId", rank ASC
+    `,
+    prisma.$queryRaw<PrevRow[]>`
+      SELECT DISTINCT ON ("keywordId") "keywordId", rank
+      FROM "KeywordRanking"
+      WHERE "keywordId" = ANY(${keywordIds}::text[])
+        AND "appId" = ${ownApp.id}
+        AND "trackedAt" <= ${oneDayAgo}
+      ORDER BY "keywordId", "trackedAt" DESC
+    `,
+    prisma.keywordGroupMember.findMany({
+      where: { appId: ownApp.id, keywordId: { in: keywordIds } },
+      select: { keywordId: true, groupId: true },
+    }),
+  ]);
+
+  const groupByKeyword = new Map(groupMembers.map((m) => [m.keywordId, m.groupId]));
+
+  const topCompetitorsMap = new Map<string, CompRow[]>();
+  for (const r of topCompRows) {
+    const list = topCompetitorsMap.get(r.keywordId) ?? [];
+
+    list.push(r);
+    topCompetitorsMap.set(r.keywordId, list);
+  }
+
+  const previousRankMap = new Map(previousRankings.map((r) => [r.keywordId, r.rank]));
+  const result = keywords.map((k) => {
+    const list = topCompetitorsMap.get(k.id) ?? [];
+    const topCompetitors = list.map((r) => ({
+      name: r.appName,
+      iconUrl: r.iconUrl,
+      rank: r.rank,
     }));
 
-    const keywordIds = keywords.map((k) => k.id);
+    const currentRank = k.rankings[0]?.rank ?? null;
+    const previousRank = previousRankMap.get(k.id) ?? null;
+    const rankTrend = currentRank != null && previousRank != null ? previousRank - currentRank : null;
 
-    if (keywordIds.length === 0) {
-      res.json({ items: [], total });
-      return;
-    }
-
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    type CompRow = {
-      keywordId: string;
-      rank: number;
-      appName: string;
-      iconUrl: string | null;
+    return {
+      id: k.id,
+      term: k.term,
+      country: k.country,
+      language: k.language,
+      popularity: k.popularity,
+      difficulty: k.difficulty,
+      searchVolume: k.searchVolume,
+      ourRank: currentRank,
+      rankTrend,
+      topCompetitors,
+      suggestionCount: 0,
+      groupId: groupByKeyword.get(k.id) ?? null,
+      updatedAt: k.updatedAt,
     };
-    type PrevRow = { keywordId: string; rank: number | null };
+  });
 
-    const time = async <T>(label: string, p: Promise<T>): Promise<[T, number]> => {
-      const s = performance.now();
-      const v = await p;
+  return { items: result, total };
+}
 
-      return [v, performance.now() - s];
-    };
+keywordsRouter.get("/", bundleAccess("query", "bundleId"), async (req, res) => {
+  try {
+    res.json(await fetchKeywordList({ id: req.bundleApp!.id }));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
 
-    const [[topCompRows, tComp], [previousRankings, tPrev], groupMembers] = await Promise.all([
-      time(
-        "comp",
-        prisma.$queryRaw<CompRow[]>`
-        WITH latest AS (
-          SELECT DISTINCT ON ("keywordId", "bundleId")
-                 "keywordId", "bundleId", name, "iconUrl", rank
-          FROM "KeywordSearchResult"
-          WHERE "keywordId" = ANY(${keywordIds}::text[])
-            AND "trackedAt" >= NOW() - INTERVAL '7 days'
-          ORDER BY "keywordId", "bundleId", "trackedAt" DESC
-        ),
-        ranked AS (
-          SELECT "keywordId", name, "iconUrl", rank,
-                 ROW_NUMBER() OVER (PARTITION BY "keywordId" ORDER BY rank ASC) AS rn
-          FROM latest
-        )
-        SELECT "keywordId", name AS "appName", "iconUrl", rank
-        FROM ranked
-        WHERE rn <= 5
-        ORDER BY "keywordId", rank ASC
-      `,
-      ),
-      time(
-        "prev",
-        prisma.$queryRaw<PrevRow[]>`
-        SELECT DISTINCT ON ("keywordId") "keywordId", rank
-        FROM "KeywordRanking"
-        WHERE "keywordId" = ANY(${keywordIds}::text[])
-          AND "appId" = ${ownApp.id}
-          AND "trackedAt" <= ${oneDayAgo}
-        ORDER BY "keywordId", "trackedAt" DESC
-      `,
-      ),
-      prisma.keywordGroupMember.findMany({
-        where: { appId: ownApp.id, keywordId: { in: keywordIds } },
-        select: { keywordId: true, groupId: true },
-      }),
-    ]);
+keywordsRouter.get("/all", async (req, res) => {
+  try {
+    const ownApps = await getOwnTeamApps({ role: req.user!.role, teamId: req.user!.teamId });
 
-    const groupByKeyword = new Map(groupMembers.map((m) => [m.keywordId, m.groupId]));
-
-    const topCompetitorsMap = new Map<string, CompRow[]>();
-    for (const r of topCompRows) {
-      const list = topCompetitorsMap.get(r.keywordId) ?? [];
-
-      list.push(r);
-      topCompetitorsMap.set(r.keywordId, list);
-    }
-
-    const previousRankMap = new Map(previousRankings.map((r) => [r.keywordId, r.rank]));
-    const result = keywords.map((k) => {
-      const list = topCompetitorsMap.get(k.id) ?? [];
-      const topCompetitors = list.map((r) => ({
-        name: r.appName,
-        iconUrl: r.iconUrl,
-        rank: r.rank,
-      }));
-
-      const currentRank = k.rankings[0]?.rank ?? null;
-      const previousRank = previousRankMap.get(k.id) ?? null;
-      const rankTrend = currentRank != null && previousRank != null ? previousRank - currentRank : null;
-
-      return {
-        id: k.id,
-        term: k.term,
-        country: k.country,
-        language: k.language,
-        popularity: k.popularity,
-        difficulty: k.difficulty,
-        searchVolume: k.searchVolume,
-        ourRank: currentRank,
-        rankTrend,
-        topCompetitors,
-        suggestionCount: 0,
-        groupId: groupByKeyword.get(k.id) ?? null,
-        updatedAt: k.updatedAt,
-      };
-    });
-
-    const tTotal = performance.now() - t0;
-
-    res.setHeader(
-      "Server-Timing",
-      `keywords;dur=${(t1 - t0).toFixed(0)},comp;dur=${tComp.toFixed(0)},prev;dur=${tPrev.toFixed(0)},total;dur=${tTotal.toFixed(0)}`,
+    const groups = await Promise.all(
+      ownApps.map(async (app) => ({
+        app: {
+          id: app.id,
+          bundleId: app.bundleId,
+          name: app.name,
+          displayName: app.displayName,
+          isOwnApp: true,
+        },
+        ...(await fetchKeywordList({ id: app.id })),
+      })),
     );
-    console.log(
-      `[keywords] n=${keywords.length} keywords=${(t1 - t0).toFixed(0)}ms comp=${tComp.toFixed(0)}ms prev=${tPrev.toFixed(0)}ms total=${tTotal.toFixed(0)}ms`,
-    );
-    res.json({ items: result, total });
+
+    res.json({ groups });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

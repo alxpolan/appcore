@@ -3,8 +3,11 @@ import Charts
 
 struct KeywordsView: View {
     let bundleId: String?
+    let apps: [AppItem]
+    @Binding var showAllApps: Bool
 
     @State private var keywords: [Keyword] = []
+    @State private var groupedKeywords: [(app: AppItem, items: [Keyword])] = []
     @State private var isLoading = true
     @State private var error: String?
     @State private var showAddSheet = false
@@ -18,7 +21,16 @@ struct KeywordsView: View {
     }
 
     var filteredKeywords: [Keyword] {
-        var result = keywords
+        filterSort(keywords)
+    }
+
+    var filteredGroups: [(app: AppItem, items: [Keyword])] {
+        groupedKeywords.map { (app: $0.app, items: filterSort($0.items)) }
+            .filter { !$0.items.isEmpty }
+    }
+
+    private func filterSort(_ list: [Keyword]) -> [Keyword] {
+        var result = list
         if !searchText.isEmpty {
             result = result.filter { $0.term.localizedCaseInsensitiveContains(searchText) }
         }
@@ -33,14 +45,18 @@ struct KeywordsView: View {
         return result
     }
 
+    private var isEmpty: Bool {
+        showAllApps ? groupedKeywords.allSatisfy { $0.items.isEmpty } : keywords.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Group {
-                if isLoading && keywords.isEmpty {
+                if isLoading && isEmpty {
                     LoadingView("Loading keywords...")
-                } else if let error, keywords.isEmpty {
+                } else if let error, isEmpty {
                     ErrorView(message: error) { Task { await loadKeywords() } }
-                } else if keywords.isEmpty {
+                } else if isEmpty {
                     EmptyStateView(
                         icon: "key.fill",
                         title: "No Keywords",
@@ -72,9 +88,11 @@ struct KeywordsView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showAddSheet = true } label: {
-                        Image(systemName: "plus")
+                if !showAllApps {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showAddSheet = true } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
             }
@@ -83,7 +101,7 @@ struct KeywordsView: View {
             }
             .refreshable { await loadKeywords() }
         }
-        .task(id: bundleId) { await loadKeywords() }
+        .task(id: [bundleId, showAllApps ? "all" : "single"]) { await loadKeywords() }
     }
 
     @ViewBuilder
@@ -106,9 +124,21 @@ struct KeywordsView: View {
                 }
                 .padding(.horizontal)
 
-                ForEach(filteredKeywords) { keyword in
-                    keywordRow(keyword)
-                        .padding(.horizontal)
+                if showAllApps {
+                    ForEach(filteredGroups, id: \.app.id) { group in
+                        SectionHeader(group.app.displayNameOrName, icon: "app.badge")
+                            .padding(.horizontal)
+
+                        ForEach(group.items) { keyword in
+                            keywordRow(keyword, ownerBundleId: group.app.bundleId, ownerName: group.app.displayNameOrName)
+                                .padding(.horizontal)
+                        }
+                    }
+                } else {
+                    ForEach(filteredKeywords) { keyword in
+                        keywordRow(keyword)
+                            .padding(.horizontal)
+                    }
                 }
             }
             .padding(.vertical)
@@ -116,8 +146,8 @@ struct KeywordsView: View {
     }
 
     @ViewBuilder
-    private func keywordRow(_ keyword: Keyword) -> some View {
-        NavigationLink(destination: KeywordDetailView(keyword: keyword, ownBundleId: bundleId)) {
+    private func keywordRow(_ keyword: Keyword, ownerBundleId: String? = nil, ownerName: String? = nil) -> some View {
+        NavigationLink(destination: KeywordDetailView(keyword: keyword, ownBundleId: ownerBundleId ?? bundleId)) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(keyword.term)
@@ -130,6 +160,10 @@ struct KeywordsView: View {
                         if let lang = keyword.language {
                             Text("·")
                             Text(lang)
+                        }
+                        if let ownerName {
+                            Text("·")
+                            Text(ownerName)
                         }
                     }
                     .font(.caption2)
@@ -179,11 +213,16 @@ struct KeywordsView: View {
     }
 
     private func loadKeywords() async {
-        guard bundleId != nil else { isLoading = false; return }
+        guard bundleId != nil || (showAllApps && !apps.isEmpty) else { isLoading = false; return }
         isLoading = true
         error = nil
         do {
-            keywords = try await APIService.shared.getKeywords(bundleId: bundleId)
+            if showAllApps && !apps.isEmpty {
+                groupedKeywords = try await APIService.shared.getAllKeywords()
+                keywords = groupedKeywords.flatMap { $0.items }
+            } else {
+                keywords = try await APIService.shared.getKeywords(bundleId: bundleId)
+            }
         } catch {
             self.error = error.localizedDescription
         }
