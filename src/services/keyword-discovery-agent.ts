@@ -18,6 +18,7 @@ export class KeywordDiscoveryAgent {
     this.settings = settings;
     this.ai = new AIClient();
     this.bundleId = bundleId;
+
     if (!bundleId) {
       logger.warn("[Discovery] No bundle ID provided, discovery will be disabled");
     }
@@ -25,22 +26,28 @@ export class KeywordDiscoveryAgent {
 
   private async getActiveCountries(): Promise<string[]> {
     const asc = this.settings ? ascClientFromSettings(this.settings) : null;
+
     if (asc && this.bundleId) {
       try {
         const appRow = await prisma.app.findUnique({
           where: { bundleId: this.bundleId },
           select: { trackId: true },
         });
+
         const ascAppId = appRow?.trackId?.toString();
         const liveVersion = ascAppId ? await asc.getLiveVersion(ascAppId) : null;
+
         if (liveVersion) {
           const localizations = await asc.getVersionLocalizations(liveVersion.id);
           const countries = localizations
             .map((loc) => localeToCountry(loc.attributes.locale))
             .filter((c): c is string => c !== null);
+
           const unique = [...new Set(countries)];
+
           if (unique.length > 0) {
             logger.info(`[Discovery] Active countries from ASC live version: ${unique.join(", ")}`);
+
             return unique;
           }
         }
@@ -52,15 +59,18 @@ export class KeywordDiscoveryAgent {
     }
 
     const ownApp = this.bundleId ? await prisma.app.findUnique({ where: { bundleId: this.bundleId } }) : null;
+
     if (ownApp) {
       const rows = await prisma.keywordRanking.findMany({
         where: { appId: ownApp.id },
         select: { country: true },
         distinct: ["country"],
       });
+
       if (rows.length > 0) {
         return rows.map((r) => r.country);
       }
+
       return [ownApp.country];
     }
 
@@ -74,6 +84,7 @@ export class KeywordDiscoveryAgent {
       }
 
       const countries = await this.getActiveCountries();
+
       logger.info(`[Discovery] Running for ${countries.length} countries: ${countries.join(", ")}`);
 
       let totalDiscovered = 0;
@@ -82,6 +93,7 @@ export class KeywordDiscoveryAgent {
 
       for (const country of countries) {
         const result = await this.discoverForCountry(country);
+
         totalDiscovered += result.discovered;
         totalScored += result.scored;
         totalSuggested += result.suggested;
@@ -96,6 +108,7 @@ export class KeywordDiscoveryAgent {
       logger.info(
         `[Discovery] Run complete: ${result.discovered} found, ${result.scored} qualified, ${result.suggested} suggested`,
       );
+
       return result;
     } catch (error) {
       throw error;
@@ -110,8 +123,10 @@ export class KeywordDiscoveryAgent {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId: this.bundleId },
     });
+
     if (!ownApp) {
       logger.warn(`[Discovery:${country}] Own app not found for ${this.bundleId}, skipping`);
+
       return { discovered: 0, scored: 0, suggested: 0 };
     }
 
@@ -132,6 +147,7 @@ export class KeywordDiscoveryAgent {
     const candidates = new Set<string>();
     for (const term of [...fromCompetitors, ...fromAutocomplete, ...fromSemantic]) {
       const normalized = term.toLowerCase().trim();
+
       if (normalized.length >= 3 && !excludeTerms.has(normalized)) {
         candidates.add(normalized);
       }
@@ -194,12 +210,14 @@ export class KeywordDiscoveryAgent {
 
     if (!ownApp) {
       logger.debug("[Discovery:competitors] Own app not found, skipping");
+
       return [];
     }
 
     const competitorData = ownApp.competitors
       .map((rel) => {
         const snap = rel.competitor.snapshots[0];
+
         return {
           name: rel.competitor.name,
           title: rel.competitor.currentTitle ?? rel.competitor.name,
@@ -212,6 +230,7 @@ export class KeywordDiscoveryAgent {
 
     if (competitorData.length === 0) {
       logger.debug("[Discovery:competitors] No competitor data available");
+
       return [];
     }
 
@@ -243,11 +262,13 @@ Return the 25 most valuable keyword candidates not yet tracked. Respond with JSO
 
     try {
       const raw = await this.queryAI(systemPrompt, userPrompt);
+
       return this.parseKeywordArray(raw, "competitors");
     } catch (error) {
       logger.warn("[Discovery:competitors] AI query failed", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -261,6 +282,7 @@ Return the 25 most valuable keyword candidates not yet tracked. Respond with JSO
         const suggestions = await scraper.getSearchSuggestions(seed);
         for (const suggestion of suggestions) {
           const normalized = suggestion.toLowerCase().trim();
+
           if (normalized.length >= 3 && !existing.has(normalized)) {
             discovered.add(normalized);
           }
@@ -268,10 +290,12 @@ Return the 25 most valuable keyword candidates not yet tracked. Respond with JSO
       } catch {
         logger.debug(`[Discovery:autocomplete] Suggestion fetch failed for seed "${seed}"`);
       }
+
       await this.sleep(500);
     }
 
     logger.debug(`[Discovery:autocomplete] ${discovered.size} candidates from ${seeds.length} seeds`);
+
     return [...discovered];
   }
 
@@ -313,11 +337,13 @@ Return JSON only.`;
 
     try {
       const raw = await this.queryAI(systemPrompt, userPrompt);
+
       return this.parseKeywordArray(raw, "semantic");
     } catch (error) {
       logger.warn("[Discovery:semantic] AI query failed", {
         error: error instanceof Error ? error.message : error,
       });
+
       return [];
     }
   }
@@ -347,10 +373,12 @@ Return JSON only.`;
       } catch {
         logger.debug(`[Discovery:${country}] Scoring failed for "${candidate}", skipping`);
       }
+
       await this.sleep(1500);
     }
 
     logger.info(`[Discovery:${country}] ${qualified.length}/${toScore.length} candidates passed scoring`);
+
     return qualified;
   }
 
@@ -359,6 +387,7 @@ Return JSON only.`;
       where: { appId, country },
       select: { term: true },
     });
+
     return new Set(suggestions.map((s) => s.term.toLowerCase()));
   }
 
@@ -374,6 +403,7 @@ Return JSON only.`;
       },
       select: { term: true },
     });
+
     return new Set(keywords.map((k) => k.term.toLowerCase()));
   }
 
@@ -383,6 +413,7 @@ Return JSON only.`;
       maxTokens: 1000,
       jsonMode: true,
     });
+
     return response.content;
   }
 
@@ -414,9 +445,11 @@ Return JSON only.`;
         .filter((s) => s.length >= 3);
 
       logger.debug(`[Discovery:${source}] Parsed ${terms.length} candidates`);
+
       return terms;
     } catch {
       logger.warn(`[Discovery:${source}] Failed to parse AI response as JSON`);
+
       return [];
     }
   }

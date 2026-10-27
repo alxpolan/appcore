@@ -44,15 +44,18 @@ async function createGoogleAdsCampaignAssets(
       },
     });
   }
+
   for (const text of input.callouts ?? []) {
     pending.push({ fieldType: "CALLOUT", resource: { callout_asset: { callout_text: text } } });
   }
+
   for (const s of input.structuredSnippets ?? []) {
     pending.push({
       fieldType: "STRUCTURED_SNIPPET",
       resource: { structured_snippet_asset: { header: s.header, values: s.values } },
     });
   }
+
   for (const c of input.calls ?? []) {
     pending.push({
       fieldType: "CALL",
@@ -67,6 +70,7 @@ async function createGoogleAdsCampaignAssets(
     operation: "create",
     resource: { resource_name: ResourceNames.asset(customerId, String(-1 - i)), ...p.resource },
   }));
+
   const assetNames = await gw.mutate(assetOps);
 
   const linkOps: GoogleAdsMutationOperation[] = pending.map((p, i) => ({
@@ -74,6 +78,7 @@ async function createGoogleAdsCampaignAssets(
     operation: "create",
     resource: { campaign: campaignName, asset: assetNames[i], field_type: E.AssetFieldType[p.fieldType] },
   }));
+
   await gw.mutate(linkOps);
 
   return pending.length;
@@ -197,6 +202,7 @@ export async function createGoogleAdsCampaignFull(
         ...(biddingStrategy === "MANUAL_CPC" && k.bidAmount != null ? { cpc_bid_micros: toMicros(k.bidAmount) } : {}),
       },
     }));
+
     const keywordNames = keywordOps.length > 0 ? await gw.mutate(keywordOps) : [];
 
     if ((group.negativeKeywords ?? []).length > 0) {
@@ -246,6 +252,7 @@ export async function createGoogleAdsCampaignFull(
       resource: { campaign: campaignName, location: { geo_target_constant: `geoTargetConstants/${id}` } },
     });
   }
+
   for (const raw of input.languageIds ?? []) {
     const id = String(raw);
     targeting.push({
@@ -254,6 +261,7 @@ export async function createGoogleAdsCampaignFull(
       resource: { campaign: campaignName, language: { language_constant: `languageConstants/${id}` } },
     });
   }
+
   for (const slot of input.adSchedule ?? []) {
     targeting.push({
       entity: "campaign_criterion",
@@ -270,6 +278,7 @@ export async function createGoogleAdsCampaignFull(
       },
     });
   }
+
   const deviceAdjustments: [GoogleAdsDeviceBidAdjustments["mobile"], string][] = [
     [input.deviceBidAdjustments?.mobile, "MOBILE"],
     [input.deviceBidAdjustments?.desktop, "DESKTOP"],
@@ -289,6 +298,7 @@ export async function createGoogleAdsCampaignFull(
       },
     });
   }
+
   const targetingNames = await gw.mutate(targeting);
 
   const assetsCreated = await createGoogleAdsCampaignAssets(gw, customerId, campaignName, input);
@@ -337,12 +347,15 @@ export async function deleteGoogleAdsCampaign(
   await gw.mutate([
     { entity: "campaign", operation: "remove", resource: ResourceNames.campaign(creds.customerId, campaignId) },
   ]);
+
   if (!budget) {
     return { id: campaignId, deleted: true, budgetRemoved: false, budgetWarning: "campaign budget not found; left in place" };
   }
+
   if (budget.explicitlyShared !== false) {
     return { id: campaignId, deleted: true, budgetRemoved: false, budgetWarning: "shared budget left in place" };
   }
+
   try {
     await gw.mutate([{ entity: "campaign_budget", operation: "remove", resource: budget.resourceName }]);
 

@@ -22,47 +22,51 @@ const num = (v: unknown): number => {
 
 const GOOGLE_ADS_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ENABLED", "PAUSED", "REMOVED"];
 
-/**
- * The live API returns status enums as numbers (2 = ENABLED, 3 = PAUSED)
- * while the fake gateway uses names. Normalize both to names.
- */
 export function normalizeGoogleAdsStatus(value: unknown): string {
   if (typeof value === "number" && Number.isInteger(value)) {
     return GOOGLE_ADS_STATUS_NAMES[value] ?? String(value);
   }
+
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const n = Number(value.trim());
+
     return GOOGLE_ADS_STATUS_NAMES[n] ?? value;
   }
+
   return String(value ?? "");
 }
 
 const GOOGLE_ADS_MATCH_TYPE_NAMES = ["UNSPECIFIED", "UNKNOWN", "EXACT", "PHRASE", "BROAD"];
 
-/** Keyword match types arrive numeric too (2 = EXACT, 3 = PHRASE, 4 = BROAD). */
 export function normalizeGoogleAdsMatchType(value: unknown): string {
   if (value == null || value === "") return "";
+
   if (typeof value === "number" && Number.isInteger(value)) {
     return GOOGLE_ADS_MATCH_TYPE_NAMES[value] ?? String(value);
   }
+
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const n = Number(value.trim());
+
     return GOOGLE_ADS_MATCH_TYPE_NAMES[n] ?? value;
   }
+
   return String(value);
 }
 
 const GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES = ["UNSPECIFIED", "UNKNOWN", "ADDED", "EXCLUDED", "ADDED_EXCLUDED", "NONE"];
 
-/** Search term view status: 2 = added, 3 = excluded, 4 = both, 5 = neither yet. */
 export function normalizeGoogleAdsSearchTermStatus(value: unknown): string {
   if (typeof value === "number" && Number.isInteger(value)) {
     return GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES[value] ?? String(value);
   }
+
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const n = Number(value.trim());
+
     return GOOGLE_ADS_SEARCH_TERM_STATUS_NAMES[n] ?? value;
   }
+
   return String(value ?? "");
 }
 
@@ -178,6 +182,7 @@ export async function getGoogleAdsCampaignBidding(
       "campaign.target_roas.target_roas, campaign.target_roas.cpc_bid_ceiling_micros " +
       `FROM campaign WHERE campaign.id = ${campaignId} LIMIT 1`,
   );
+
   const c = rows[0]?.campaign ?? {};
   const rawStrategy = typeof c.bidding_strategy_type === "string" ? c.bidding_strategy_type : null;
   const strategy = rawStrategy === "TARGET_SPEND" ? "MAXIMIZE_CLICKS" : rawStrategy;
@@ -358,6 +363,7 @@ export async function getGoogleAdsCampaignDailySpend(
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
+
     days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0, installs: 0 });
   }
 
@@ -383,6 +389,7 @@ export async function getGoogleAdsDailyStats(
     t += 86_400_000
   ) {
     const date = new Date(t).toISOString().slice(0, 10);
+
     days.push(byDay.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0, conversions: 0, installs: 0 });
   }
 
@@ -491,6 +498,7 @@ export async function getGoogleAdsCampaignBudget(
     "SELECT campaign.campaign_budget, campaign_budget.explicitly_shared " +
       `FROM campaign WHERE campaign.id = ${campaignId}`,
   );
+
   const row = rows[0];
   const name = row?.campaign?.campaign_budget ? String(row.campaign.campaign_budget) : "";
   if (!name) return null;

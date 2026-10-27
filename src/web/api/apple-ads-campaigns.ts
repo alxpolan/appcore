@@ -43,11 +43,13 @@ appleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) => 
     if (bundleId) {
       const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
       if (!app) return;
+
       if (!app.appleAdsOrgId) {
         res.status(400).json({ error: "No campaign group mapped for this app — map one in Integrations." });
 
         return;
       }
+
       groupAppId = app.id;
       orgIds = [app.appleAdsOrgId];
     } else {
@@ -67,7 +69,9 @@ appleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) => 
       where: { appId: groupAppId, externalCampaignId: { in: campaigns.map((c) => c.id) } },
       select: { externalCampaignId: true, groupId: true },
     });
+
     const groupByCampaign = new Map(members.map((m) => [m.externalCampaignId, m.groupId]));
+
     res.json({ campaigns: campaigns.map((c) => ({ ...c, groupId: groupByCampaign.get(c.id) ?? null })) });
   } catch (err: any) {
     logger.error("[apple-ads] campaigns fetch error", {
@@ -98,11 +102,13 @@ appleAdsCampaignsRouter.get("/daily", loadTeamSettings, async (req, res) => {
     if (bundleId) {
       const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
       if (!app) return;
+
       if (!app.appleAdsOrgId) {
         res.status(400).json({ error: "No campaign group mapped for this app — map one in Integrations." });
 
         return;
       }
+
       orgIds = [app.appleAdsOrgId];
     } else {
       orgIds = (await listTeamAppleAdsOrgs(req.user!.teamId)).map((o) => o.orgId);
@@ -184,6 +190,7 @@ appleAdsCampaignsRouter.post("/campaigns", loadTeamSettings, async (req, res) =>
     });
 
     const status = err?.response?.status;
+
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
 });
@@ -263,6 +270,7 @@ appleAdsCampaignsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings,
     const verb = status === "ENABLED" ? "Published" : "Paused";
     const target = prev?.name ? `"${prev.name}" (${updated.id})` : `campaign ${updated.id}`;
     const transition = prev?.status ? `: ${prev.status} → ${status}` : "";
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -291,6 +299,7 @@ appleAdsCampaignsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings,
     });
 
     const status = err?.response?.status;
+
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
 });
@@ -311,6 +320,7 @@ appleAdsCampaignsRouter.delete("/campaigns/:campaignId", loadTeamSettings, async
     const prev = before?.find((c) => String(c.id) === String(req.params.campaignId));
 
     const deleted = await deleteAppleAdsCampaign(creds, req.params.campaignId as string);
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -333,7 +343,9 @@ appleAdsCampaignsRouter.delete("/campaigns/:campaignId", loadTeamSettings, async
       status: err?.response?.status,
       body: err?.response?.data,
     });
+
     const status = err?.response?.status;
+
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
 });

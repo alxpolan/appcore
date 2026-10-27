@@ -41,6 +41,7 @@ oauthRouter.post("/register", async (req: Request, res: Response) => {
   for (const uri of redirect_uris) {
     try {
       const u = new URL(uri);
+
       if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
         res.status(400).json({
           error: "invalid_redirect_uri",
@@ -112,6 +113,7 @@ oauthRouter.get("/authorize", async (req: Request, res: Response) => {
     res.status(400).send("Unsupported response_type");
     return;
   }
+
   if (!client_id) {
     res.status(400).send("Missing client_id");
     return;
@@ -125,14 +127,17 @@ oauthRouter.get("/authorize", async (req: Request, res: Response) => {
     res.status(500).send("Internal server error");
     return;
   }
+
   if (!client) {
     res.status(400).send("Unknown client_id");
     return;
   }
+
   if (!redirect_uri || !client.redirectUris.includes(redirect_uri)) {
     res.status(400).send("Invalid redirect_uri");
     return;
   }
+
   if (!code_challenge || code_challenge_method !== "S256") {
     res.status(400).send("PKCE with S256 is required");
     return;
@@ -323,6 +328,7 @@ oauthRouter.post("/authorize", express.urlencoded({ extended: false }), async (r
     const client = await prisma.oAuthClient.findUnique({
       where: { clientId: client_id },
     });
+
     if (!client) {
       redirectToForm("Invalid client");
       return;
@@ -346,25 +352,28 @@ oauthRouter.post("/authorize", express.urlencoded({ extended: false }), async (r
         },
       },
     });
-    
+
     if (!user || !user.passwordHash) {
       redirectToForm("Invalid email or password");
       return;
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
+
     if (!valid) {
       redirectToForm("Invalid email or password");
       return;
     }
 
     const mcpEnabled = user.teamMembers.some((m) => m.team.settings?.mcpEnabled);
+
     if (!mcpEnabled) {
       redirectToForm("MCP access is not enabled. Enable it in AppCore settings first.");
       return;
     }
 
     const code = randomBytes(32).toString("hex");
+
     await prisma.oAuthCode.create({
       data: {
         code,
@@ -391,6 +400,7 @@ oauthRouter.post(
   "/token",
   (req, res, next) => {
     const ct = req.headers["content-type"] ?? "";
+
     if (ct.includes("application/json")) {
       express.json()(req, res, next);
     } else {
@@ -405,9 +415,11 @@ oauthRouter.post(
     let client_id: string | undefined = (req.body as Record<string, string>).client_id;
     let client_secret: string | undefined = (req.body as Record<string, string>).client_secret;
     const authHeader = req.headers.authorization;
+
     if (authHeader?.startsWith("Basic ")) {
       const decoded = Buffer.from(authHeader.slice(6), "base64").toString("utf8");
       const colonIdx = decoded.indexOf(":");
+
       if (colonIdx !== -1) {
         client_id = decodeURIComponent(decoded.slice(0, colonIdx));
         client_secret = decodeURIComponent(decoded.slice(colonIdx + 1));
@@ -452,6 +464,7 @@ oauthRouter.post(
     try {
       const accessToken = await prisma.$transaction(async (tx) => {
         const authCode = await tx.oAuthCode.findUnique({ where: { code } });
+
         if (!authCode || authCode.used || authCode.expiresAt < new Date() || authCode.clientId !== client_id) {
           throw new Error("invalid_grant");
         }
@@ -463,10 +476,12 @@ oauthRouter.post(
         if (!authCode.codeChallenge) {
           throw new Error("invalid_grant");
         }
+
         if (!code_verifier) {
           throw new Error("code_verifier_required");
         }
         const expected = createHash("sha256").update(code_verifier).digest("base64url");
+
         if (expected !== authCode.codeChallenge) {
           throw new Error("pkce_failed");
         }
@@ -474,6 +489,7 @@ oauthRouter.post(
         await tx.oAuthCode.update({ where: { code }, data: { used: true } });
 
         const token = randomBytes(32).toString("hex");
+
         await tx.oAuthToken.create({
           data: {
             accessToken: token,

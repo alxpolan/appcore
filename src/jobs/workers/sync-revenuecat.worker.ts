@@ -14,8 +14,10 @@ export async function handler([job]: Job<SyncRevenueCatData>[]): Promise<void> {
   logger.info(`[BOSS] Starting "${QUEUE_NAME}" job ${id} for app ${bundleId}…`);
 
   const app = await prisma.app.findUnique({ where: { bundleId } });
+
   if (!app?.revenueCatConnectedAt || !app.revenueCatProjectId || !app.revenueCatApiKey) {
     logger.warn(`[BOSS] RevenueCat not connected for app ${bundleId} — skipping`);
+
     return;
   }
 
@@ -24,6 +26,7 @@ export async function handler([job]: Job<SyncRevenueCatData>[]): Promise<void> {
     app.revenueCatProjectId,
     bundleId,
   );
+
   logger.info(
     `[BOSS] "${QUEUE_NAME}" job ${id} completed — ${result.customers} customers, ${result.events} revenue events`,
   );

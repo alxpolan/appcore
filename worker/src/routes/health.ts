@@ -7,6 +7,7 @@ export const healthRouter = Router();
 healthRouter.get("/health", async (_req: Request, res: Response) => {
   try {
     const fastlaneVersion = await findFastlane();
+
     res.json({
       ok: true,
       fastlaneVersion,

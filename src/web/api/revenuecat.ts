@@ -5,10 +5,12 @@ import { encrypt } from "../../config/encryption";
 import { listRevenueCatProjects } from "../../services/revenuecat";
 
 export const revenueCatRouter = Router();
+
 revenueCatRouter.use(requireAuth);
 
 revenueCatRouter.get("/status", async (req, res) => {
   const bundleId = req.query.bundleId as string | undefined;
+
   if (!bundleId) {
     res.status(400).json({ error: "bundleId required" });
     return;
@@ -35,6 +37,7 @@ revenueCatRouter.post("/connect", async (req, res) => {
       res.status(400).json({ error: "bundleId required" });
       return;
     }
+
     const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
     if (!app) return;
 
@@ -64,19 +67,23 @@ revenueCatRouter.post("/connect", async (req, res) => {
     }
 
     let selected = projects.find((p) => p.projectId === projectId);
+
     if (!selected) {
       if (projectId) {
         res.status(400).json({ error: "That project isn't accessible with this API key." });
         return;
       }
+
       if (projects.length > 1) {
         res.json({ needsProjectSelection: true, projects });
         return;
       }
+
       selected = projects[0];
     }
 
     const connectedAt = new Date();
+
     await prisma.app.update({
       where: { bundleId },
       data: {
@@ -99,10 +106,12 @@ revenueCatRouter.post("/disconnect", async (req, res) => {
     if (!(await requireTeamAdmin(req, res))) return;
 
     const { bundleId } = req.body as Record<string, string>;
+
     if (!bundleId) {
       res.status(400).json({ error: "bundleId required" });
       return;
     }
+
     const app = await verifyAppOwnershipByBundleId(req, res, bundleId);
     if (!app) return;
 

@@ -12,6 +12,7 @@ export class ASOEvaluator {
 
   async evaluatePendingExperiments(appId: string) {
     const cutoff = new Date();
+
     cutoff.setDate(cutoff.getDate() - ASOEvaluator.MATURITY_DAYS);
 
     const experiments = await prisma.asoExperiment.findMany({
@@ -45,6 +46,7 @@ export class ASOEvaluator {
     for (const exp of experiments) {
       try {
         const evaluation = await this.evaluateSingle(exp);
+
         results.push(evaluation);
       } catch (err) {
         logger.error(
@@ -55,6 +57,7 @@ export class ASOEvaluator {
 
     const successes = results.filter((r) => r.success).length;
     const failures = results.filter((r) => !r.success).length;
+
     logger.info(
       `[ASOEvaluator] Evaluation complete for app ${appId}: ${successes} successes, ${failures} failures`,
     );
@@ -91,6 +94,7 @@ export class ASOEvaluator {
             },
             orderBy: { trackedAt: "desc" },
           });
+
           rankBefore = beforeRanking?.rank ?? null;
         }
 
@@ -101,6 +105,7 @@ export class ASOEvaluator {
           },
           orderBy: { trackedAt: "desc" },
         });
+
         rankAfter = afterRanking?.rank ?? null;
       }
     }
@@ -130,6 +135,7 @@ export class ASOEvaluator {
 
         const avgBefore = beforeImpressions._avg.impressions ?? 0;
         const avgAfter = afterImpressions._avg.impressions ?? 0;
+
         impressionsDelta = Math.round(avgAfter - avgBefore);
       }
     }
@@ -144,6 +150,7 @@ export class ASOEvaluator {
     });
 
     const icon = success ? "✓ SUCCESS" : "✗ FAILED";
+
     logger.info(
       `[ASOEvaluator] ${icon} Experiment ${experimentId} (${exp.type}): ` +
         `rank ${rankBefore ?? "?"} → ${rankAfter ?? "?"}, impressions Δ${impressionsDelta ?? "?"}`,

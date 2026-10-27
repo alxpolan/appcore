@@ -18,6 +18,7 @@ function loadWordmark(): Buffer | null {
     logger.warn("[email] wordmark logo not found, falling back to text", { err });
     wordmarkCache = null;
   }
+
   return wordmarkCache;
 }
 
@@ -67,6 +68,7 @@ class NotificationService {
     if (!NotificationService.instance) {
       NotificationService.instance = new NotificationService();
     }
+
     return NotificationService.instance;
   }
 
@@ -97,12 +99,14 @@ class NotificationService {
     } as any);
 
     this.jwtIssuedAt = now;
+
     return this.jwtToken!;
   }
 
   async pushToDevice(deviceToken: string, payload: PushPayload): Promise<boolean> {
     if (!this.apnsConfig) {
       logger.warn("[PUSH] APNs not configured, skipping push");
+
       return false;
     }
 
@@ -119,6 +123,7 @@ class NotificationService {
 
     return new Promise((resolve) => {
       const client = http2.connect(`https://${this.apnsConfig!.apnsHost}`);
+
       client.on("error", (err) => {
         logger.error(`[PUSH] HTTP/2 connection error: ${err.message}`);
         resolve(false);
@@ -167,6 +172,7 @@ class NotificationService {
 
         if (!success) {
           logger.error(`[PUSH] APNs error ${statusCode}: ${responseData}`);
+
           if (statusCode === 410 || statusCode === 400) {
             try {
               await prisma.deviceToken.updateMany({
@@ -180,6 +186,7 @@ class NotificationService {
         } else {
           logger.info(`[PUSH] Sent to ${deviceToken.substring(0, 8)}...`);
         }
+
         resolve(success);
       });
 
@@ -199,6 +206,7 @@ class NotificationService {
     const failed = results.length - sent;
 
     logger.info(`[PUSH] Broadcast: ${sent} sent, ${failed} failed (of ${tokens.length} devices)`);
+
     return { sent, failed };
   }
 
@@ -210,14 +218,17 @@ class NotificationService {
     const results = await Promise.all(tokens.map((t) => this.pushToDevice(t.token, payload)));
 
     const sent = results.filter(Boolean).length;
+
     return { sent, failed: results.length - sent };
   }
 
   async sendEmail(emailOpts: NonNullable<NotifyOptions["email"]>): Promise<NotifyResult["email"]> {
     if (!env.RESEND_API_KEY) {
       logger.warn(`[email] RESEND_API_KEY not set — skipping "${emailOpts.subject}" to ${emailOpts.to}`);
+
       return "skipped";
     }
+
     try {
       const { to, subject, ...content } = emailOpts;
 
@@ -276,6 +287,7 @@ class NotificationService {
   }): Promise<"sent" | "skipped" | "failed"> {
     if (!env.RESEND_API_KEY) {
       logger.warn(`[email] RESEND_API_KEY not set - skipping plain "${opts.subject}" to ${opts.to}`);
+
       return "skipped";
     }
 
@@ -291,12 +303,14 @@ class NotificationService {
       return "sent";
     } catch (err) {
       logger.error("[email] sendPlainEmail failed", err);
+
       return "failed";
     }
   }
 
   async notify(userId: string, options: NotifyOptions): Promise<NotifyResult> {
     const result: NotifyResult = {};
+
     await Promise.all([
       options.push
         ? this.pushToUser(userId, options.push)
@@ -308,11 +322,13 @@ class NotificationService {
         : Promise.resolve(),
       options.email ? this.sendEmail(options.email).then((r) => (result.email = r)) : Promise.resolve(),
     ]);
+
     return result;
   }
 
   async broadcast(options: NotifyOptions): Promise<NotifyResult> {
     const result: NotifyResult = {};
+
     await Promise.all([
       options.push
         ? this.pushToAll(options.push)
@@ -324,11 +340,13 @@ class NotificationService {
         : Promise.resolve(),
       options.email ? this.sendEmail(options.email).then((r) => (result.email = r)) : Promise.resolve(),
     ]);
+
     return result;
   }
 
   async notifyDevice(deviceToken: string, options: NotifyOptions): Promise<NotifyResult> {
     const result: NotifyResult = {};
+
     await Promise.all([
       options.push
         ? this.pushToDevice(deviceToken, options.push)
@@ -340,6 +358,7 @@ class NotificationService {
         : Promise.resolve(),
       options.email ? this.sendEmail(options.email).then((r) => (result.email = r)) : Promise.resolve(),
     ]);
+
     return result;
   }
 }

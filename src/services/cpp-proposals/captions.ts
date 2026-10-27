@@ -25,6 +25,7 @@ export async function generateGroupCaptions(args: {
     themeDescriptions(args.descriptions, args.label, args.topTerms.slice(0, 5)),
     args.locales,
   );
+
   const captions = normalizeCppCaptions(sublines);
 
   for (const locale of args.locales) {

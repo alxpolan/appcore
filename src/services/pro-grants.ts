@@ -24,11 +24,13 @@ export async function isTeamPro(teamId: string | null | undefined): Promise<bool
     where: { teamId },
     select: { status: true },
   });
+
   return !!sub && (PRO_STATUSES as readonly string[]).includes(sub.status);
 }
 
 export function isGrantExpired(sub: SubLike, now: Date = new Date()): boolean {
   if (!isAdminGrant(sub) || !sub?.endsAt) return false;
+
   return new Date(sub.endsAt) <= now;
 }
 
@@ -45,5 +47,6 @@ export async function expireStaleAdminGrants(): Promise<number> {
     },
     data: { status: "expired" },
   });
+
   return result.count;
 }

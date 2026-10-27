@@ -14,6 +14,7 @@ router.post("/register", async (req: Request, res: Response) => {
     }
 
     const userId = req.user?.userId ?? null;
+
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -22,6 +23,7 @@ router.post("/register", async (req: Request, res: Response) => {
       where: { token: deviceToken },
       select: { userId: true },
     });
+
     if (existing && existing.userId && existing.userId !== userId) {
       return res.status(409).json({ error: "Token already registered" });
     }
@@ -54,11 +56,13 @@ router.post("/register", async (req: Request, res: Response) => {
 router.post("/unregister", async (req: Request, res: Response) => {
   try {
     const { deviceToken } = req.body;
+
     if (!deviceToken) {
       return res.status(400).json({ error: "deviceToken is required" });
     }
 
     const userId = req.user?.userId;
+
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -93,6 +97,7 @@ router.post("/send", async (req: Request, res: Response) => {
       category,
       data,
     });
+
     res.json(result);
   } catch (error: any) {
     logger.error(`[PUSH] Send error: ${error.message}`);
@@ -103,6 +108,7 @@ router.post("/send", async (req: Request, res: Response) => {
 router.post("/test", async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
+
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -123,6 +129,7 @@ router.post("/test", async (req: Request, res: Response) => {
 router.get("/devices", async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
+
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -132,6 +139,7 @@ router.get("/devices", async (req: Request, res: Response) => {
       where,
       orderBy: { createdAt: "desc" },
     });
+
     res.json(devices);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -141,18 +149,22 @@ router.get("/devices", async (req: Request, res: Response) => {
 router.get("/logs", async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
+
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
+
     const limit = parseInt(req.query.limit as string) || 50;
 
     if (req.user?.role !== "ADMIN") {
       return res.status(403).json({ error: "System admin required" });
     }
+
     const logs = await prisma.pushNotificationLog.findMany({
       orderBy: { sentAt: "desc" },
       take: limit,
     });
+
     res.json(logs);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

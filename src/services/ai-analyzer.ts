@@ -1,5 +1,5 @@
 import { prisma, logger } from "../config";
-import { AIClient } from "./ai-client"; //queryOllama
+import { AIClient } from "./ai-client";
 import type { AIResponse } from "./ai-client";
 import { SuggestionType, SuggestionStatus } from "@prisma/client";
 import { LOCALE_MAP, LocaleConfig } from "./utils/country_lang";
@@ -15,8 +15,6 @@ function getLocaleConfig(locale: string): LocaleConfig {
   );
 }
 
-// const TRANSLATION_POLISH_MODEL = "qwen2.5:7b";
-// const TRANSLATION_REVIEW_MODEL = "llama3.1:8b";
 const TRANSLATION_OPENAI_MODEL = "gpt-5.5";
 
 function parseTranslationJson(content: string): Record<string, string> | null {
@@ -24,8 +22,8 @@ function parseTranslationJson(content: string): Record<string, string> | null {
     const match = content.trim().match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
   } catch {
-    // fall through
   }
+
   return null;
 }
 
@@ -61,6 +59,7 @@ export class AIAnalyzer {
   constructor(bundleId: string) {
     this.bundleId = bundleId;
     this.ai = new AIClient();
+
     if (!this.ai.hasProvider) {
       logger.warn("No AI provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
     }
@@ -124,88 +123,14 @@ export class AIAnalyzer {
     });
 
     const parsed = parseTranslationJson(response.content);
+
     if (!parsed) {
       logger.warn("Translation produced no valid JSON", { content: response.content.substring(0, 500) });
+
       return {};
     }
+
     return parsed;
-
-    /* --- previous 3-stage local Ollama pipeline (kept for reference) ---
-    const constraintsBlock = `
-      App Store length & format rules:
-      - name / title: max 30 characters
-      - subtitle: max 30 characters
-      - keywords: max 100 characters total, comma-separated, NO spaces after commas (spaces allowed inside multi-word phrases)
-      - description: max 4000 characters, PRESERVE the full length and all details of the original. Do NOT summarize, shorten, or omit anything.
-      - promotionalText: max 170 characters
-      - whatsNew: max 4000 characters, PRESERVE the full length and all details of the original. Do NOT summarize, shorten, or omit anything.
-      - Preserve the JSON keys exactly as given. Never add, remove, or rename keys. Never wrap output in markdown.
-    `;
-
-    const stage1Model = targetConfig.ollamaModel ?? "qwen2.5:7b";
-    logger.info(`Translation stage 1 (rough) ${sourceLocale} → ${targetLocale} via ${stage1Model}`);
-
-    const stage1 = await queryOllama(
-      `You are an expert App Store localization specialist. Translate app metadata from ${sourceConfig.language} to ${targetConfig.language} for the ${targetConfig.market} market. Return only a JSON object with the translated values, same keys as input.`,
-      `Translate this App Store metadata to ${targetConfig.language}. Output JSON only, no explanations, same keys.
-      ${
-        hasKeywords
-          ? `\nFor "keywords": produce App Store keywords for the ${targetConfig.market} market (comma-separated, ≤100 chars total, no spaces after commas).`
-          : ""
-      }
-
-      ${constraintsBlock}
-
-      INPUT:
-      ${JSON.stringify(Object.fromEntries(fieldsToTranslate), null, 2)}`,
-      { model: stage1Model, jsonMode: true },
-    );
-
-    const draft = parseTranslationJson(stage1.content);
-    if (!draft) {
-      logger.warn("Translation stage 1 produced no valid JSON", { content: stage1.content });
-      return {};
-    }
-
-    logger.info(`Translation stage 2 (polish) ${targetLocale} via ${TRANSLATION_POLISH_MODEL}`);
-
-    const stage2 = await queryOllama(
-      `You are a native ${targetConfig.language} copywriter for App Store metadata in the ${targetConfig.market} market. Refine each value so it reads naturally to a native ${targetConfig.promptLang} speaker — fix awkward phrasing, literal translations, unnatural word order, and cultural mismatches. Do not change keys. Return only a JSON object with the same keys.`,
-      `Refine these ${targetConfig.language} App Store metadata values for natural, native phrasing. Keep meaning intact, but rewrite anything that sounds translated, stiff, or unidiomatic. Match the marketing register of the App Store in the ${targetConfig.market} market.
-
-      ${constraintsBlock}
-      ${
-        hasKeywords
-          ? `\nFor "keywords": replace any awkward or literal terms with ones a native ${targetConfig.promptLang} user would actually search. Keep ≤100 chars total, comma-separated, no spaces after commas.`
-          : ""
-      }
-
-      DRAFT:
-      ${JSON.stringify(draft, null, 2)}`,
-      { model: TRANSLATION_POLISH_MODEL, jsonMode: true },
-    );
-
-    const polished = parseTranslationJson(stage2.content) ?? draft;
-    logger.info(`Translation stage 3 (review) ${targetLocale} via ${TRANSLATION_REVIEW_MODEL}`);
-
-    const stage3 = await queryOllama(
-      `You are a senior App Store localization reviewer for ${targetConfig.language} (${targetConfig.market} market). Do a final pass: fix any remaining awkward phrasing, enforce App Store length and format rules, ensure consistency. Output JSON with the same keys, no explanations, no markdown.`,
-      `Final review pass. Polish any remaining unnatural wording and enforce all App Store rules below. Output the final JSON only.
-
-      ${constraintsBlock}
-      ${
-        hasKeywords
-          ? `\nFor "keywords": verify ≤100 chars total, comma-separated, no spaces after commas, no duplicates of words already in name/subtitle, no generic filler ("app", "the").`
-          : ""
-      }
-
-      CANDIDATE:
-      ${JSON.stringify(polished, null, 2)}`,
-      { model: TRANSLATION_REVIEW_MODEL, jsonMode: true },
-    );
-
-    return parseTranslationJson(stage3.content) ?? polished;
-    --- end of previous 3-stage local Ollama pipeline --- */
   }
 
   async analyzeAndSuggest(locales?: string[]): Promise<Map<string, ASOAnalysis>> {
@@ -225,6 +150,7 @@ export class AIAnalyzer {
           logger.error(`AI analysis failed for locale ${locale}`, {
             error: error instanceof Error ? error.message : error,
           });
+
           return null;
         }
       }),
@@ -381,9 +307,11 @@ Generate detailed ASO optimization suggestions in ${lc.promptLang} for the ${lc.
     try {
       let jsonStr = response.content;
       const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+
       if (jsonMatch) {
         jsonStr = jsonMatch[1];
       }
+
       analysis = JSON.parse(jsonStr);
     } catch (error) {
       logger.error(`Failed to parse AI response as JSON for locale ${locale}`, {
@@ -465,6 +393,7 @@ Generate detailed ASO optimization suggestions in ${lc.promptLang} for the ${lc.
 
     if (descriptions.length === 0) {
       logger.warn("No competitor data available for keyword extraction");
+
       return [];
     }
 
@@ -500,9 +429,11 @@ Extrahiere die 30 wichtigsten Keywords/Suchbegriffe die Nutzer verwenden würden
       const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) jsonStr = jsonMatch[1];
       const parsed = JSON.parse(jsonStr);
+
       return parsed.keywords ?? [];
     } catch {
       logger.error("Failed to parse keyword extraction response");
+
       return [];
     }
   }

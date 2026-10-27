@@ -13,9 +13,11 @@ export function localeToCountry(locale: string): string | null {
     "zh-hans": "cn",
     "zh-hant": "tw",
   };
+
   if (scriptMap[lower]) return scriptMap[lower];
 
   const parts = lower.split("-");
+
   if (parts.length >= 2) {
     const region = parts[parts.length - 1];
     if (region.length === 2) return region;
@@ -26,6 +28,7 @@ export function localeToCountry(locale: string): string | null {
     ja: "jp",
     zh: "cn",
   };
+
   return langMap[parts[0] ?? ""] ?? null;
 }
 
@@ -47,5 +50,6 @@ export function normalizeLanguage(language: string | null | undefined, country: 
 
 export function storefrontHeaderForCountry(country: string): string {
   const storeId = STOREFRONT_IDS[country.toUpperCase()] ?? STOREFRONT_IDS.US;
+
   return `${storeId},29`;
 }

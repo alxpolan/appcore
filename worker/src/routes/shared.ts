@@ -11,48 +11,44 @@ export function findConfigFile(dir: string, maxDepth = 4): string | null {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".") || entry.name === "fastlane" || entry.name === "node_modules") continue;
     const full = path.join(dir, entry.name);
+
     if (entry.isDirectory()) {
       const found = findConfigFile(full, maxDepth - 1);
       if (found) return found;
     } else if (entry.name === "config.json") return full;
   }
+
   return null;
 }
 
 export interface SigningCreds {
   p12Base64: string;
   p12Password: string;
-  /** Legacy single-profile form, still accepted. */
   profileBase64?: string;
-  /** One entry per bundle ID. Apps with extensions need several. */
   profilesBase64?: string[];
   teamId?: string;
 }
 
 export interface InstalledProfile {
   uuid: string;
-  /** Bundle ID the profile is valid for, team prefix stripped. May end in "*". */
   appId: string;
   name: string;
 }
 
-/** Matches a bundle ID against a profile App ID, honouring wildcard profiles. */
 export function profileMatchesBundleId(appId: string, bundleId: string): boolean {
   if (appId === bundleId) return true;
   if (!appId.endsWith("*")) return false;
+
   return bundleId.startsWith(appId.slice(0, -1));
 }
 
-/**
- * Picks the most specific profile for a bundle ID: an exact match always wins over a
- * wildcard, and among wildcards the longest prefix wins.
- */
 export function pickProfileFor(profiles: InstalledProfile[], bundleId: string): InstalledProfile | undefined {
   return profiles
     .filter((p) => profileMatchesBundleId(p.appId, bundleId))
     .sort((a, b) => {
       if (a.appId === bundleId) return -1;
       if (b.appId === bundleId) return 1;
+
       return b.appId.length - a.appId.length;
     })[0];
 }
@@ -76,6 +72,7 @@ export function resolveRepoWorkDir(repoDir: string, iosDir: string | undefined, 
   }
 
   logs.push(`[repo] Using iOS subdirectory: ${normalized}`);
+
   return workDir;
 }
 
@@ -84,6 +81,7 @@ export async function installSigningCreds(
   logs: string[],
 ): Promise<{ cleanup: () => Promise<void>; profiles: InstalledProfile[] }> {
   const tmpSignDir = path.join(os.tmpdir(), `signing-${Date.now()}`);
+
   fs.mkdirSync(tmpSignDir, { recursive: true });
 
   const p12Path = path.join(tmpSignDir, "cert.p12");
@@ -98,6 +96,7 @@ export async function installSigningCreds(
     : creds.profileBase64
       ? [creds.profileBase64]
       : [];
+
   if (rawProfiles.length === 0) throw new Error("No provisioning profile supplied");
 
   fs.mkdirSync(profilesDir, { recursive: true });
@@ -107,12 +106,12 @@ export async function installSigningCreds(
 
   for (const [index, base64] of rawProfiles.entries()) {
     const profilePath = path.join(tmpSignDir, `profile-${index}.mobileprovision`);
+
     fs.writeFileSync(profilePath, Buffer.from(base64, "base64"));
 
-    // `security cms -D` unwraps the CMS signature around the plist; every field below
-    // comes from that decoded plist.
     const read = async (expr: string): Promise<string> => {
       const { stdout } = await execAsync(`security cms -D -i "${profilePath}" 2>/dev/null | plutil ${expr} -`);
+
       return stdout.trim();
     };
 
@@ -123,11 +122,10 @@ export async function installSigningCreds(
       uuid = `appcore-${Date.now()}-${index}`;
     }
 
-    // application-identifier is "TEAMID.com.example.app"; the team prefix has to go so
-    // it can be compared against a target's PRODUCT_BUNDLE_IDENTIFIER.
     let appId = "";
     try {
       const raw = await read("-extract Entitlements.application-identifier raw");
+
       appId = raw.includes(".") ? raw.slice(raw.indexOf(".") + 1) : raw;
     } catch {
       appId = "";
@@ -141,6 +139,7 @@ export async function installSigningCreds(
     }
 
     const destProfile = path.join(profilesDir, `${uuid}.mobileprovision`);
+
     fs.copyFileSync(profilePath, destProfile);
     destProfiles.push(destProfile);
 
@@ -173,23 +172,19 @@ export async function installSigningCreds(
       await execAsync(`security delete-keychain "${keychainName}"`);
       logs.push("[signing] Temporary keychain deleted");
     } catch {
-      /* ignore */
     }
     try {
       for (const p of destProfiles) fs.rmSync(p, { force: true });
       logs.push("[signing] Signing credentials removed");
     } catch {
-      /* ignore */
     }
     try {
       fs.rmSync(tmpSignDir, { recursive: true, force: true });
     } catch {
-      /* ignore */
     }
     try {
       await execAsync(`security list-keychains -d user -s ${existing.map((k) => `"${k}"`).join(" ")}`);
     } catch {
-      /* ignore */
     }
   };
 
@@ -201,23 +196,16 @@ interface TargetInfo {
   bundleId: string;
 }
 
-/** xcodebuild can prefix its JSON with warnings, so the array is located explicitly. */
 function parseBuildSettingsJson(stdout: string): Array<{ target?: string; buildSettings?: Record<string, string> }> {
   const start = stdout.indexOf("[");
   if (start < 0) return [];
+
   return JSON.parse(stdout.slice(start));
 }
 
-/**
- * Reads every target in the project along with its bundle ID, so each one can be pointed
- * at the profile that actually covers it.
- */
 async function listBuildTargets(repoDir: string, scheme: string, logs: string[]): Promise<TargetInfo[]> {
   const projectFile = fs.readdirSync(repoDir).find((e) => e.endsWith(".xcodeproj"));
 
-  // `-alltargets` is what makes extensions visible. Querying by `-scheme` only reports
-  // targets listed in the scheme, and a widget is usually built as an implicit
-  // dependency instead, so it never shows up and silently stays unsigned.
   const attempts: string[] = [];
   if (projectFile) attempts.push(`-showBuildSettings -json -project "${projectFile}" -alltargets`);
   attempts.push(`-showBuildSettings -json -scheme "${scheme}"`);
@@ -229,15 +217,19 @@ async function listBuildTargets(repoDir: string, scheme: string, logs: string[])
         timeout: 300_000,
         maxBuffer: 50 * 1024 * 1024,
       });
+
       const targets: TargetInfo[] = [];
       for (const entry of parseBuildSettingsJson(stdout)) {
         const bundleId = entry.buildSettings?.PRODUCT_BUNDLE_IDENTIFIER;
+
         if (entry.target && bundleId && !targets.some((t) => t.target === entry.target)) {
           targets.push({ target: entry.target, bundleId });
         }
       }
+
       if (targets.length > 0) {
         logs.push(`[signing] Targets found: ${targets.map((t) => `${t.target} (${t.bundleId})`).join(", ")}`);
+
         return targets;
       }
     } catch (err) {
@@ -246,6 +238,7 @@ async function listBuildTargets(repoDir: string, scheme: string, logs: string[])
   }
 
   logs.push("[signing] WARNING: could not enumerate targets - only the main bundle ID will be signed");
+
   return [];
 }
 
@@ -270,9 +263,11 @@ export async function buildWithGym(
 
   let signingCleanup: (() => Promise<void>) | undefined;
   let installedProfiles: InstalledProfile[] = [];
+
   if (signingCreds) {
     logs.push("[build] Installing signing credentials ...");
     const { cleanup, profiles } = await installSigningCreds(signingCreds, logs);
+
     signingCleanup = cleanup;
     installedProfiles = profiles;
     logs.push(`[build] ${profiles.length} provisioning profile(s) installed successfully`);
@@ -281,6 +276,7 @@ export async function buildWithGym(
   }
 
   const fastlaneDir = path.join(repoDir, "fastlane");
+
   fs.mkdirSync(fastlaneDir, { recursive: true });
 
   const buildNumber = String(Math.floor(Date.now() / 1000));
@@ -298,12 +294,11 @@ export async function buildWithGym(
 
   const scheme = gymScheme ?? appName;
 
-  // Every embedded target needs its own entry under manual signing, so the mapping is
-  // derived from the project's targets rather than assuming a single bundle ID.
   const schemeTargets = installedProfiles.length > 0 ? await listBuildTargets(repoDir, scheme, logs) : [];
   const signedTargets: Array<{ target: string; bundleId: string; profile: InstalledProfile }> = [];
   for (const t of schemeTargets) {
     const profile = pickProfileFor(installedProfiles, t.bundleId);
+
     if (profile) {
       signedTargets.push({ target: t.target, bundleId: t.bundleId, profile });
     } else {
@@ -311,14 +306,12 @@ export async function buildWithGym(
     }
   }
 
-  // Fallback for when target enumeration fails: at least sign the main bundle ID.
   if (signedTargets.length === 0 && installedProfiles.length > 0) {
     const profile = pickProfileFor(installedProfiles, bundleId) ?? installedProfiles[0];
+
     signedTargets.push({ target: scheme, bundleId, profile });
   }
 
-  // An uploaded profile that never gets used almost always means its target was missed,
-  // which previously only surfaced as an archive failure much later.
   for (const profile of installedProfiles) {
     if (!signedTargets.some((t) => t.profile.uuid === profile.uuid)) {
       logs.push(`[signing] WARNING: profile "${profile.name}" (${profile.appId}) matched no target and is unused`);
@@ -328,10 +321,12 @@ export async function buildWithGym(
   if (installedProfiles.length > 0) {
     if (signingCreds?.teamId) xcargsList.push(`DEVELOPMENT_TEAM=${signingCreds.teamId}`);
   }
+
   gymfile.push(`xcargs("${xcargsList.join(" ")}")`);
 
   if (installedProfiles.length > 0) {
     const mapping = new Map(signedTargets.map((t) => [t.bundleId, t.profile.uuid]));
+
     gymfile.push(
       `export_options({`,
       `  method: "${exportMethod}",`,
@@ -351,22 +346,22 @@ export async function buildWithGym(
       `})`,
     );
   }
+
   fs.writeFileSync(path.join(fastlaneDir, "Gymfile"), gymfile.join("\n"));
 
   const buildDir = path.join(repoDir, "build");
+
   fs.mkdirSync(buildDir, { recursive: true });
 
   if (versionString) {
     logs.push(`[build] Version set to ${versionString} (via xcargs)`);
   }
+
   logs.push(`[build] Build number set to ${buildNumber}`);
 
   logs.push(`[build] Building ...`);
   const gymStart = Date.now();
   try {
-    // One call per target. Without `targets:` the action writes the same profile into
-    // every target, which is what made extensions fail: a profile is bound to exactly
-    // one App ID and can never cover both the app and its widget.
     for (const { target, bundleId: targetBundleId, profile } of signedTargets) {
       const updateSigningArgs = [
         `run`,
@@ -379,6 +374,7 @@ export async function buildWithGym(
       ]
         .filter(Boolean)
         .join(` `);
+
       await execAsync(`${fastlanePath} ${updateSigningArgs} 2>&1`, {
         cwd: repoDir,
         timeout: 60_000,
@@ -430,15 +426,18 @@ export async function buildWithGym(
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isFile() && entry.name.endsWith(".ipa")) return full;
+
       if (entry.isDirectory()) {
         const nested = findIpa(full);
         if (nested) return nested;
       }
     }
+
     return undefined;
   };
 
   const ipa = findIpa(buildDir) ?? findIpa(repoDir);
+
   if (!ipa) {
     await signingCleanup?.();
     throw new Error("gym completed but no .ipa file was found");
@@ -457,6 +456,7 @@ export async function buildWithGym(
     `[build] Binary ready (${(ipaSize / 1024 / 1024).toFixed(1)} MB)${appStoreInfoBase64 ? " + AppStoreInfo.plist" : ""}`,
   );
   await signingCleanup?.();
+
   return {
     ipaBase64,
     originalFilename: path.basename(ipa),

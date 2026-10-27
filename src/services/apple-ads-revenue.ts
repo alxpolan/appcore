@@ -34,8 +34,6 @@ export interface AppleAdsRevenueBucket {
   byCountry: Record<string, AppleAdsCountryRevenue>;
 }
 
-/** Country stats enriched with attributed trials and payments, for the
- * country breakdown endpoints (Apple metrics + RevenueCat revenue merged). */
 export interface AppleAdsCountryStatsWithRevenue extends AppleAdsCountryStats {
   trials: number;
   proceedsUsd: number;
@@ -44,13 +42,10 @@ export interface AppleAdsCountryStatsWithRevenue extends AppleAdsCountryStats {
 function normalizeCountry(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const code = value.trim().toUpperCase();
+
   return code === "" ? null : code;
 }
 
-/** Merge Apple country stats with attributed revenue buckets. Union of
- * countries: revenue-only countries (e.g. renewals without spend in range)
- * appear with zeroed Apple metrics; unattributed-country revenue lands on
- * an "unknown" row so no money silently disappears. */
 export function mergeCountryRevenue(
   apple: AppleAdsCountryStats[],
   revenueByCountry: Record<string, AppleAdsCountryRevenue> | undefined,
@@ -58,8 +53,10 @@ export function mergeCountryRevenue(
   const byCode = new Map<string, AppleAdsCountryStatsWithRevenue>();
   for (const row of apple) {
     const revenue = revenueByCountry?.[row.countryOrRegion] ?? { trials: 0, proceedsUsd: 0 };
+
     byCode.set(row.countryOrRegion, { ...row, trials: revenue.trials, proceedsUsd: revenue.proceedsUsd });
   }
+
   for (const [code, revenue] of Object.entries(revenueByCountry ?? {})) {
     if (byCode.has(code)) continue;
     if (revenue.trials === 0 && revenue.proceedsUsd === 0) continue;
@@ -77,6 +74,7 @@ export function mergeCountryRevenue(
       proceedsUsd: revenue.proceedsUsd,
     });
   }
+
   return [...byCode.values()].sort((a, b) => b.spend - a.spend);
 }
 
@@ -91,14 +89,17 @@ export async function getAppleAdsCampaignRevenue(
   range: AppleAdsReportRange,
 ): Promise<{ byCampaign: AppleAdsCampaignRevenueMap }> {
   const bundleIds = accessibleApps.map((app) => app.bundleId);
+
   if (bundleIds.length === 0) {
     return { byCampaign: {} };
   }
 
   const start = new Date(`${range.startDate}T00:00:00Z`);
   const until = new Date(`${range.endDate}T00:00:00Z`);
+
   until.setUTCDate(until.getUTCDate() + 1);
   const priceStart = new Date();
+
   priceStart.setUTCDate(priceStart.getUTCDate() - 90);
   priceStart.setUTCHours(0, 0, 0, 0);
   const [customers, transactions, priceSamples] = await Promise.all([
@@ -133,6 +134,7 @@ export async function getAppleAdsCampaignRevenue(
       _avg: { proceedsUsd: true },
     }),
   ]);
+
   const trialPrices = buildTrialPriceMap(
     priceSamples.map((sample) => ({
       bundleId: sample.bundleId,
@@ -141,16 +143,15 @@ export async function getAppleAdsCampaignRevenue(
     })),
   );
 
-  // Cohort links: trial starts and conversions for the customers in the
-  // window, so conversions attribute back to their trial-start day and
-  // converted trials carry no open potential anymore.
   const cohortLookback = new Date();
+
   cohortLookback.setUTCDate(cohortLookback.getUTCDate() - 365);
   cohortLookback.setUTCHours(0, 0, 0, 0);
   const cohortCustomerIds = [...new Set(transactions.map((transaction) => transaction.customerId))];
   const cohortSelect = { bundleId: true, customerId: true, productId: true, occurredAt: true } as const;
   let trialStarts: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
   let trialConversions: { bundleId: string; customerId: string; productId: string; occurredAt: Date }[] = [];
+
   if (cohortCustomerIds.length > 0) {
     [trialStarts, trialConversions] = await Promise.all([
       prisma.revenueCatTransaction.findMany({
@@ -181,6 +182,7 @@ export async function getAppleAdsCampaignRevenue(
       appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes),
     ]),
   );
+
   const countryByCustomer = new Map(
     customers.map((customer) => [`${customer.bundleId}\0${customer.customerId}`, normalizeCountry(customer.country)]),
   );
@@ -191,6 +193,7 @@ export async function getAppleAdsCampaignRevenue(
     if (isTrial) entry.trials += 1;
     entry.proceedsUsd += proceedsUsd;
   }
+
   const appNameByBundle = new Map(accessibleApps.map((app) => [app.bundleId, app.displayName || app.name]));
   const byCampaign: AppleAdsCampaignRevenueMap = {};
 
@@ -206,6 +209,7 @@ export async function getAppleAdsCampaignRevenue(
       productId: transaction.productId,
       occurredAt: transaction.occurredAt,
     };
+
     const convertedTrial = isTrial && isTrialConverted(trialConversions, cohortEvent);
     const cohortStart = transaction.isTrialConversion ? findCohortStart(trialStarts, cohortEvent) : null;
     const country = normalizeCountry(transaction.country) ?? countryByCustomer.get(customerKey) ?? null;
@@ -231,19 +235,18 @@ export async function getAppleAdsCampaignRevenue(
       byKeyword: {},
       byCountry: {},
     });
+
     campaign.proceedsUsd += transaction.proceedsUsd;
     campaign.transactions.push(entry);
     addCountry(campaign, country, isTrial, transaction.proceedsUsd);
 
-    // Not every click carries a keyword (e.g. Search Match, or non-keyword
-    // placements) — those still count toward the campaign total above, but
-    // can't be attributed to one specific keyword below.
     if (attribution.keywordId) {
       const keyword = (campaign.byKeyword[attribution.keywordId] ??= {
         proceedsUsd: 0,
         transactions: [],
         byCountry: {},
       });
+
       keyword.proceedsUsd += transaction.proceedsUsd;
       keyword.transactions.push(entry);
       addCountry(keyword, country, isTrial, transaction.proceedsUsd);

@@ -32,6 +32,7 @@ const allowedOrigins = [
 
 app.use((req, res, next) => {
   const p = req.path;
+
   if (
     p.startsWith("/oauth") ||
     p.startsWith("/mcp") ||
@@ -41,12 +42,16 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,MCP-Protocol-Version");
+
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
+
       return;
     }
+
     return next();
   }
+
   cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -63,16 +68,19 @@ app.use("/oauth", oauthRouter);
 
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.json({ resource: `${base}/mcp`, authorization_servers: [base] });
 });
 
 app.get("/.well-known/oauth-protected-resource-admin", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.json({ resource: `${base}/mcp-admin`, authorization_servers: [base] });
 });
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
@@ -89,6 +97,7 @@ app.post("/mcp", adminMcpAuth, createAdminMcpHandler());
 app.post("/mcp-admin", adminMcpAuth, createAdminMcpHandler());
 
 const adminDist = path.join(__dirname, "../../admin/dist");
+
 if (isProd) {
   app.use(express.static(adminDist));
   app.get("*", (_req, res) => {
@@ -109,6 +118,7 @@ if (isProd) {
         proxyRes.pipe(res);
       },
     );
+
     req.pipe(proxyReq);
     proxyReq.on("error", () => {
       res.status(502).send("Admin dev server not running — cd admin && npm run dev");

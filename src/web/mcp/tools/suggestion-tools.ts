@@ -37,23 +37,29 @@ export function registerSuggestionTools(server: McpServer, userId: string) {
     async ({ bundleId, status, limit }) => {
       const teamId = await getMcpUserTeamId(userId);
       const resolvedBundleId = bundleId;
+
       if (!teamId) {
         return { content: [{ type: "text", text: "[]" }] };
       }
 
       let allowedBundleIds: string[];
+
       if (resolvedBundleId) {
         const app = await verifyMcpAppAccess(userId, resolvedBundleId);
+
         if (!app) {
           return { content: [{ type: "text", text: "[]" }] };
         }
+
         allowedBundleIds = [resolvedBundleId];
       } else {
         const teamApps = await prisma.app.findMany({
           where: { teamId },
           select: { bundleId: true },
         });
+
         allowedBundleIds = teamApps.map((a) => a.bundleId);
+
         if (allowedBundleIds.length === 0) {
           return { content: [{ type: "text", text: "[]" }] };
         }
@@ -62,6 +68,7 @@ export function registerSuggestionTools(server: McpServer, userId: string) {
       const where: Record<string, any> = {
         appBundleId: { in: allowedBundleIds },
       };
+
       if (status) where.status = status;
 
       const suggestions = await prisma.aSOSuggestion.findMany({

@@ -17,6 +17,7 @@ const activeJobs = new Map<string, JobState>();
 
 function createJob(runId: string) {
   const state: JobState = { logs: [], result: null, emitter: new EventEmitter() };
+
   state.emitter.setMaxListeners(10);
   activeJobs.set(runId, state);
   setTimeout(() => activeJobs.delete(runId), 60 * 60 * 1000).unref();
@@ -45,12 +46,15 @@ function downloadFile(url: string, destPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proto = url.startsWith("https") ? require("https") : require("http");
     const file = fs.createWriteStream(destPath);
+
     proto
       .get(url, (res: any) => {
         if (res.statusCode !== 200) {
           reject(new Error(`IPA download failed: HTTP ${res.statusCode}`));
+
           return;
         }
+
         res.pipe(file);
         file.on("finish", () => file.close(() => resolve()));
         file.on("error", reject);
@@ -64,6 +68,7 @@ function normalizeP8Key(raw: string): string {
     /-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|-----BEGIN EC PRIVATE KEY-----|-----END EC PRIVATE KEY-----|\s/g,
     "",
   );
+
   return `-----BEGIN PRIVATE KEY-----\n${stripped.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----\n`;
 }
 
@@ -71,6 +76,7 @@ async function resolveITMSTransporter(): Promise<string> {
   const p = process.env.ITMS_TRANSPORTER_PATH;
   if (!p) throw new Error("ITMS_TRANSPORTER_PATH env var not set.");
   if (!fs.existsSync(p)) throw new Error(`iTMSTransporter not found at ITMS_TRANSPORTER_PATH: ${p}`);
+
   return p;
 }
 
@@ -79,11 +85,13 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
 
   if (!ipaUrl || !keyId || !issuerId || !privateKey) {
     res.status(400).json({ error: "Missing required fields: ipaUrl, keyId, issuerId, privateKey" });
+
     return;
   }
 
   const runId = String(Date.now());
   const job = createJob(runId);
+
   res.json({ ok: true, runId });
 
   const tmpDir = path.join(os.tmpdir(), `worker-binary-${runId}`);
@@ -107,6 +115,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
     fs.mkdirSync(tmpDir, { recursive: true });
 
     const ipaPath = path.join(tmpDir, "app.ipa");
+
     pushLog(`Downloading IPA from server...`);
 
     await downloadFile(ipaUrl, ipaPath);
@@ -130,6 +139,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
     pushLog(`AppStoreInfo.plist downloaded`);
 
     const transporter = await resolveITMSTransporter();
+
     pushLog(`Using iTMSTransporter at: ${transporter}`);
 
     await new Promise<void>((resolve, reject) => {
@@ -147,6 +157,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
         "-v",
         "detailed",
       ];
+
       pushLog(`Running: iTMSTransporter -m upload -assetFile app.ipa -assetDescription AppStoreInfo.plist`);
 
       const proc = spawn(transporter, args, {
@@ -167,6 +178,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
 
       proc.stdout?.on("data", (data: Buffer) => {
         const line = data.toString().trim();
+
         if (line) {
           stdoutBuffer += line + "\n";
           pushLog(line);
@@ -175,6 +187,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
 
       proc.stderr?.on("data", (data: Buffer) => {
         const line = data.toString().trim();
+
         if (line) {
           stderrBuffer += line + "\n";
           pushLog(`[stderr] ${line}`);
@@ -183,26 +196,34 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
 
       proc.on("close", (code) => {
         clearTimeout(hardTimeout);
+
         if (code !== 0) {
           const allOutput = stdoutBuffer + stderrBuffer;
+
           if (allOutput.includes("is already complete")) {
             pushLog("iTMSTransporter: upload already complete — treating as success.");
             resolve();
+
             return;
           }
-          
+
           const msg = `iTMSTransporter exited with code ${code}`;
+
           pushError(msg);
           reject(new Error(msg));
+
           return;
         }
 
         if (!stdoutBuffer.includes("uploaded successfully")) {
           const msg = "iTMSTransporter exited 0 but no packages uploaded — IPA may be invalid or already processing.";
+
           pushError(msg);
           reject(new Error(msg));
+
           return;
         }
+
         pushLog("iTMSTransporter upload completed successfully.");
         resolve();
       });
@@ -217,6 +238,7 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
     job.finish({ ok: true, logs, errors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
     pushError(msg);
     job.finish({ ok: false, logs, errors });
   } finally {
@@ -224,21 +246,22 @@ uploadBinaryRouter.post("/upload-binary", async (req: Request, res: Response) =>
       try {
         fs.unlinkSync(privateKeyPath);
       } catch {
-        /* ignore */
       }
     }
+
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
-      /* ignore */
     }
   }
 });
 
 uploadBinaryRouter.get("/upload-binary/:runId/stream", (req: Request, res: Response) => {
   const job = activeJobs.get(req.params.runId as string);
+
   if (!job) {
     res.status(404).json({ error: "Unknown runId" });
+
     return;
   }
 
@@ -263,6 +286,7 @@ uploadBinaryRouter.get("/upload-binary/:runId/stream", (req: Request, res: Respo
   if (job.result) {
     send("result", job.result);
     if (!closed) res.end();
+
     return;
   }
 
@@ -285,6 +309,7 @@ uploadBinaryRouter.get("/upload-binary/:runId/stream", (req: Request, res: Respo
       }
     }
   }, 15_000);
+
   heartbeat.unref();
 
   req.on("close", () => {

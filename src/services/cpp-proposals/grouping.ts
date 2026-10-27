@@ -78,6 +78,7 @@ export function groupKeywordsByTheme(terms: CppKeywordStat[]): CppKeywordGroup[]
     if (!key) continue;
 
     const group = groups.get(key) ?? [];
+
     group.push(term);
     groups.set(key, group);
   }

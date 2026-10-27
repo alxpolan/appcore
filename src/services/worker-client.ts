@@ -20,7 +20,6 @@ export interface WorkerSnapshotParams {
   exportMethod?: string;
   buildBinary?: boolean;
   envVars?: Record<string, string>;
-  // Split a single app run across workers; the worker filters its language share.
   splitIndex?: number;
   splitCount?: number;
 }
@@ -192,6 +191,7 @@ class FastlaneWorkerClient {
       if (urls.length === 0) {
         throw new Error("FASTLANE_WORKER_URL(S) not set. Cannot communicate with Fastlane worker.");
       }
+
       if (!secret) {
         throw new Error("FASTLANE_WORKER_SECRET not set. Cannot authenticate with Fastlane worker.");
       }
@@ -212,6 +212,7 @@ class FastlaneWorkerClient {
         }),
       }));
     }
+
     return this.slots;
   }
 
@@ -241,15 +242,19 @@ class FastlaneWorkerClient {
 
   private async acquire(): Promise<WorkerSlot> {
     const free = this.getSlots().find((s) => !s.busy);
+
     if (free) {
       free.busy = true;
+
       return free;
     }
+
     return new Promise((resolve) => this.waiters.push(resolve));
   }
 
   private release(slot: WorkerSlot): void {
     const next = this.waiters.shift();
+
     if (next) {
       next(slot);
     } else {
@@ -257,12 +262,10 @@ class FastlaneWorkerClient {
     }
   }
 
-  /** Workers not currently running a job - callers use this to decide whether splitting pays off. */
   freeSlotCount(): number {
     return this.getSlots().filter((s) => !s.busy).length;
   }
 
-  /** Configured workers in total - callers size parallel dispatch off this. */
   slotCount(): number {
     return this.getSlots().length;
   }
@@ -286,6 +289,7 @@ class FastlaneWorkerClient {
         lastError = { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     }
+
     return lastError ?? { ok: false, error: "no workers configured" };
   }
 
@@ -308,7 +312,9 @@ class FastlaneWorkerClient {
     const startRes = await slot.client.post<{ ok: boolean; runId: string }>("/worker/snapshot", params, {
       timeout: 30_000,
     });
+
     const { runId } = startRes.data;
+
     logger.info(`[WorkerClient] Snapshot job started: runId=${runId} on ${slot.baseURL}`);
 
     return new Promise((resolve, reject) => {
@@ -328,6 +334,7 @@ class FastlaneWorkerClient {
           stream.on("data", (chunk: Buffer) => {
             buf += chunk.toString();
             const parts = buf.split("\n\n");
+
             buf = parts.pop() ?? "";
 
             for (const block of parts) {
@@ -337,13 +344,16 @@ class FastlaneWorkerClient {
                 if (line.startsWith("event: ")) event = line.slice(7).trim();
                 else if (line.startsWith("data: ")) data = line.slice(6);
               }
+
               if (!data) continue;
 
               if (event === "log") {
                 const line = JSON.parse(data) as string;
+
                 onLog?.(line);
               } else if (event === "result") {
                 const result = JSON.parse(data) as WorkerSnapshotResult;
+
                 stream.destroy();
                 this.fetchXcresultLogs(slot, runId, result, onLog)
                   .then(() => resolve(result))
@@ -388,10 +398,13 @@ class FastlaneWorkerClient {
           maxContentLength: 500 * 1024 * 1024,
           maxBodyLength: 500 * 1024 * 1024,
         });
+
         meta.data = Buffer.from(res.data).toString("base64");
+
         onLog?.(`[snapshot] Downloaded xcresult ${meta.filename} (${Math.round(meta.sizeBytes / 1024)} KB)`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+
         onLog?.(`[snapshot] Warning: failed to download ${meta.filename}: ${msg}`);
       }
     }
@@ -406,6 +419,7 @@ class FastlaneWorkerClient {
         headersTimeout: headersTimeoutFor(FRAMEIT_TIMEOUT_MS),
         validateStatus: () => true,
       });
+
       return res.data;
     } finally {
       slot.sem.release();
@@ -420,6 +434,7 @@ class FastlaneWorkerClient {
         timeout: BUILD_TIMEOUT_MS,
         headersTimeout: headersTimeoutFor(BUILD_TIMEOUT_MS),
       });
+
       return res.data;
     } finally {
       this.release(slot);
@@ -452,6 +467,7 @@ class FastlaneWorkerClient {
     );
 
     const { runId } = startRes.data;
+
     logger.info(`[WorkerClient] Binary upload job started: runId=${runId}`);
 
     return new Promise((resolve, reject) => {
@@ -466,6 +482,7 @@ class FastlaneWorkerClient {
           stream.on("data", (chunk: Buffer) => {
             buf += chunk.toString();
             const parts = buf.split("\n\n");
+
             buf = parts.pop() ?? "";
 
             for (const block of parts) {
@@ -478,6 +495,7 @@ class FastlaneWorkerClient {
               }
 
               if (!data) continue;
+
               if (event === "log") {
                 onLog?.(JSON.parse(data) as string);
               } else if (event === "result") {

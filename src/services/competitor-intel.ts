@@ -35,6 +35,7 @@ export class CompetitorIntelService {
           { signal: AbortSignal.timeout(10000) },
         ).then((r) => {
           if (!r.ok) throw new Error(`iTunes API Error: ${r.status}`);
+
           return r.json();
         });
 
@@ -90,6 +91,7 @@ export class CompetitorIntelService {
     }
 
     logger.info(`Scraped ${totalSaved} reviews for app ${appId} (track ${tid})`);
+
     return totalSaved;
   }
 
@@ -121,6 +123,7 @@ export class CompetitorIntelService {
       if (!comp.trackId) continue;
 
       const count = await this.scrapeReviews(comp.trackId, comp.id, country);
+
       total += count;
       apps++;
 
@@ -128,6 +131,7 @@ export class CompetitorIntelService {
     }
 
     logger.info(`Scraped reviews for ${apps} competitors, ${total} total reviews`);
+
     return { total, apps };
   }
 
@@ -140,6 +144,7 @@ export class CompetitorIntelService {
 
     if (reviews.length === 0) {
       logger.info(`No reviews to summarize for app ${appId}`);
+
       return "No reviews available";
     }
 
@@ -188,6 +193,7 @@ Be concise but thorough. Extract actionable insights.`;
       });
 
       logger.info(`Created review summary for app ${appId}`);
+
       return parsed.summary;
     } catch {
       await prisma.competitorReviewSummary.create({
@@ -203,6 +209,7 @@ Be concise but thorough. Extract actionable insights.`;
           aiModel: ai.model,
         },
       });
+
       return ai.content;
     }
   }
@@ -226,6 +233,7 @@ Be concise but thorough. Extract actionable insights.`;
       const reviewCount = await prisma.competitorReview.count({
         where: { appId: rel.competitor.id },
       });
+
       if (reviewCount === 0) continue;
 
       await this.summarizeReviews(rel.competitor.id);
@@ -369,6 +377,7 @@ Be concise but thorough. Extract actionable insights.`;
     const ownApp = await prisma.app.findUnique({
       where: { bundleId: ownBundleId },
     });
+
     if (!ownApp) return [];
 
     const keywords = await prisma.keyword.findMany({
@@ -443,6 +452,7 @@ Be concise but thorough. Extract actionable insights.`;
     }
 
     logger.info(`Scraped monetization for ${apps} competitors, ${products} products total`);
+
     return { products, apps };
   }
 
@@ -476,6 +486,7 @@ Be concise but thorough. Extract actionable insights.`;
     }
 
     logger.info(`Scraped languages for ${apps} competitors`);
+
     return { apps };
   }
 
@@ -501,6 +512,7 @@ Be concise but thorough. Extract actionable insights.`;
       bundleId,
       competitorAppIds,
     );
+
     const { apps: languagesScraped } = await this.scrapeLanguagesForAllCompetitors(bundleId, competitorAppIds);
 
     logger.info(

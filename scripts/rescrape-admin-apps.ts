@@ -1,12 +1,3 @@
-/**
- * Manually re-scrape all own apps for the admin@fringelo.com team.
- * Uses the same runFullScrapeJob() path as a fresh import, so it also
- * backfills fields added after the app was first imported (e.g. minimumOsVersion).
- *
- * Example:
- *   npx tsx scripts/rescrape-admin-apps.ts
- *   npx tsx scripts/rescrape-admin-apps.ts --bundle-id com.fringelo.gymnio.Gymnio
- */
 import "dotenv/config";
 import { prisma } from "../src/config/database";
 import { AppStoreScraper } from "../src/services/appstore-scraper";
@@ -15,6 +6,7 @@ const USER_EMAIL = "admin@fringelo.com";
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(name);
+
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
@@ -46,6 +38,7 @@ async function main() {
         where: { bundleId: app.bundleId },
         select: { minimumOsVersion: true },
       });
+
       console.log(`  ok — minimumOsVersion: ${updated?.minimumOsVersion ?? "(not returned by iTunes lookup)"}`);
     } catch (err) {
       console.log(`  failed: ${err instanceof Error ? err.message : err}`);

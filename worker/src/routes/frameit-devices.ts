@@ -99,6 +99,7 @@ export function loadBezelImage(device: FrameitDevice): Promise<Buffer> {
   if (cached) return cached;
 
   const promise = fs.promises.readFile(path.join(FRAMEIT_ASSETS_DIR, device.bezelFile));
+
   bezelCache.set(device.bezelFile, promise);
 
   return promise;

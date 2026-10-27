@@ -257,7 +257,9 @@ export function registerAscProductTools(server: McpServer, userId: string) {
 
       try {
         const asc = await createAscClient(settings);
+
         await asc.client.delete(`${ASC_V2}/inAppPurchases/${productDbId}`);
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);
@@ -408,7 +410,9 @@ export function registerAscProductTools(server: McpServer, userId: string) {
 
       try {
         const asc = await createAscClient(settings);
+
         await asc.client.delete(`/inAppPurchaseLocalizations/${localizationId}`);
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);
@@ -442,9 +446,11 @@ export function registerAscProductTools(server: McpServer, userId: string) {
           "fields[inAppPurchasePricePoints]": "customerPrice,proceeds,territory",
           limit: 200,
         };
+
         if (territory) params["filter[territory]"] = territory;
 
         const { data: resp } = await asc.client.get(`${ASC_V2}/inAppPurchases/${productDbId}/pricePoints`, { params });
+
         return json(
           (resp.data ?? []).map((pp: any) => ({
             id: pp.id,
@@ -480,6 +486,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
         let scheduleId: string | undefined;
         try {
           const { data: sched } = await asc.client.get(`${ASC_V2}/inAppPurchases/${productDbId}/iapPriceSchedule`);
+
           scheduleId = sched.data?.id;
         } catch (err: any) {
           if (err?.response?.status === 404) return json([]);
@@ -523,6 +530,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
 
       try {
         const asc = await createAscClient(settings);
+
         await asc.client.post("/inAppPurchasePriceSchedules", {
           data: {
             type: "inAppPurchasePriceSchedules",
@@ -548,6 +556,7 @@ export function registerAscProductTools(server: McpServer, userId: string) {
             },
           ],
         });
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);

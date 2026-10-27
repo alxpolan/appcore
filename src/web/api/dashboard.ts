@@ -4,6 +4,7 @@ import { requireAuth } from "../auth";
 import { ensureAccentColor } from "../../services/utils/icon-accent";
 
 export const dashboardRouter = Router();
+
 dashboardRouter.use(requireAuth);
 
 dashboardRouter.get("/", async (req, res) => {
@@ -82,6 +83,7 @@ dashboardRouter.get("/", async (req, res) => {
 
     const iconUrl = ownApp?.snapshots[0]?.iconUrl ?? null;
     const accentColor = ownApp?.accentColor ?? null;
+
     if (ownApp && iconUrl && ownApp.accentColorIconUrl !== iconUrl) {
       ensureAccentColor(ownApp.id, iconUrl, {
         accentColor: ownApp.accentColor,

@@ -102,6 +102,7 @@ export async function listTeamAppleAdsOrgs(teamId: string): Promise<AppleAdsOrgO
     where: { teamId, isOwnApp: true, appleAdsOrgId: { not: null } },
     select: { appleAdsOrgId: true, appleAdsOrgName: true },
   });
+
   const byId = new Map<string, string>();
   for (const app of apps) {
     if (app.appleAdsOrgId && !byId.has(app.appleAdsOrgId)) {

@@ -15,6 +15,7 @@ app.use(express.json({ limit: "200mb" }));
 app.get("/health", async (_req, res) => {
   try {
     const fp = await findFastlane();
+
     res.json({ ok: true, fastlane: fp });
   } catch {
     res.json({ ok: false, error: "Fastlane not found" });

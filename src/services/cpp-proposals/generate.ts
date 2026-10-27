@@ -65,6 +65,7 @@ export async function generateCppProposals(args: {
     campaignInfoOf(args.creds, args.campaignId),
     sourceJobLocales(args.appId),
   ]);
+
   const locales = resolveProposalLocales(campaign.countries, jobLocales);
   const groups = groupKeywordsByTheme(terms.map(toKeywordStat));
 

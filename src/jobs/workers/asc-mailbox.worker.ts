@@ -18,14 +18,17 @@ export const QUEUE_NAME = "asc-mailbox-check";
 
 async function provisionApiKey(invite: AscInviteEmail): Promise<void> {
   const keyResult = await generateIndividualKeyForTeam([invite.subject, invite.rawTextExcerpt]);
+
   if (!keyResult.ok || !keyResult.key) {
     await ascKeyGenerationFailed({
       subject: invite.subject,
       reason: keyResult.reason ?? "Unknown error",
       screenshotPath: keyResult.screenshotPath,
     });
+
     return;
   }
+
   const { keyId, privateKey, providerName, backupPath } = keyResult.key;
 
   try {
@@ -35,6 +38,7 @@ async function provisionApiKey(invite: AscInviteEmail): Promise<void> {
       subject: invite.subject,
       reason: `Individual key ${keyId} (ASC team "${providerName}") failed verification against the ASC API: ${err} (backup: ${backupPath})`,
     });
+
     return;
   }
 
@@ -65,8 +69,10 @@ export async function handler([job]: Job<Record<string, never>>[]): Promise<void
   logger.info(`[BOSS] Starting "${QUEUE_NAME}" job ${job.id}…`);
 
   const invites = await fetchNewInvites();
+
   if (invites.length === 0) {
     logger.info(`[BOSS] "${QUEUE_NAME}" job ${job.id}: no new invites`);
+
     return;
   }
 

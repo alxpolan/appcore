@@ -59,6 +59,7 @@ studioRouter.get("/screenshots/studio/:jobId", requireAuth, async (req: Request,
     res.json(await getStudioData(req.params.jobId as string));
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`studio data error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -85,6 +86,7 @@ studioRouter.post("/screenshots/studio/:jobId/revisions", writeAuth, async (req:
     );
   } catch (err: any) {
     const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+
     logger.error(`studio revision error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -108,6 +110,7 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
     });
 
     let closed = false;
+
     res.on("close", () => {
       closed = true;
     });
@@ -133,6 +136,7 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
         onProgress: (event) => write(event),
         pusher: req.user?.userId ?? null,
       });
+
       write({ result });
     } catch (err: any) {
       logger.error(`studio revision stream error: ${err.message}`);
@@ -144,6 +148,7 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
   } catch (err: any) {
     if (!res.headersSent) {
       const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+
       logger.error(`studio revision stream error: ${err.message}`);
       res.status(status).json({ error: err.message });
     } else {
@@ -157,6 +162,7 @@ studioRouter.post("/screenshots/studio/:jobId/duplicate", writeAuth, async (req:
     res.json(await duplicateStudioJob(req.params.jobId as string, req.user?.userId ?? null));
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`studio duplicate error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -176,6 +182,7 @@ studioRouter.patch("/screenshots/studio/:jobId/active-revision", writeAuth, asyn
     res.json({ ok: true });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`studio activate error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -186,6 +193,7 @@ studioRouter.delete("/screenshots/studio/revisions/:revisionId", writeAuth, asyn
     res.json(await deleteStudioRevision(req.params.revisionId as string));
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`studio delete revision error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -206,6 +214,7 @@ studioRouter.post(
       res.json(await setAppDefaultFromRevision(appId, req.params.revisionId as string));
     } catch (err: any) {
       const status = err.message.includes("not found") ? 404 : 500;
+
       logger.error(`studio set default error: ${err.message}`);
       res.status(status).json({ error: err.message });
     }
@@ -247,6 +256,7 @@ studioRouter.post("/screenshots/presets/:appId", writeAuth, async (req: Request,
     res.json({ preset: await createStudioPreset(internalAppId, name, normalizeStudioStyle(style)) });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : err.message.includes("already exists") ? 409 : 500;
+
     logger.error(`studio create preset error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -259,6 +269,7 @@ studioRouter.patch("/screenshots/presets/:presetId", writeAuth, async (req: Requ
     res.json({ preset: await updateStudioPreset(req.params.presetId as string, { name, style }) });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : err.message.includes("already exists") ? 409 : 500;
+
     logger.error(`studio update preset error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -271,6 +282,7 @@ studioRouter.delete("/screenshots/presets/:presetId", writeAuth, async (req: Req
     res.json({ ok: true });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`studio delete preset error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }

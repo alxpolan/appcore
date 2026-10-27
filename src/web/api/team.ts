@@ -59,6 +59,7 @@ teamRouter.use(requireAuth, demoGuard, loadTeamRole, requireWriteRole);
 
 async function getMyMembership(userId: string, teamId: string | null) {
   if (!teamId) return null;
+
   return prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } },
   });
@@ -79,6 +80,7 @@ teamRouter.get("/", async (req, res) => {
     }
 
     const resolvedTeamId = teamId ?? (await prisma.team.findFirst())?.id;
+
     if (!resolvedTeamId) {
       res.json({ team: null, members: [] });
       return;
@@ -144,6 +146,7 @@ teamRouter.post("/invite", async (req, res) => {
     }
 
     const email = normalizeEmail(rawEmail);
+
     if (!EMAIL_RE.test(email)) {
       res.status(400).json({ error: "Invalid email" });
       return;
@@ -163,6 +166,7 @@ teamRouter.post("/invite", async (req, res) => {
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
+
     if (existingUser) {
       const alreadyMember = await prisma.teamMember.findUnique({
         where: { teamId_userId: { teamId, userId: existingUser.id } },
@@ -180,7 +184,7 @@ teamRouter.post("/invite", async (req, res) => {
     });
 
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const inviter = await prisma.user.findUnique({
       where: { id: req.user!.userId },
@@ -243,6 +247,7 @@ teamRouter.put("/members/:id", async (req, res) => {
     if (!(await requireTeamAdmin(req, res))) return;
 
     const { role } = req.body as { role?: string };
+
     if (!role || !VALID_ROLES.includes(role as TeamRoleName)) {
       res.status(400).json({ error: "Invalid role" });
       return;
@@ -278,6 +283,7 @@ teamRouter.put("/members/:id", async (req, res) => {
 
     if (target.role === "OWNER" && newRole !== "OWNER") {
       const owners = await countOwners(teamId);
+
       if (owners <= 1) {
         res.status(409).json({ error: "A team must have at least one owner" });
         return;
@@ -330,6 +336,7 @@ teamRouter.delete("/members/:id", async (req, res) => {
 
     if (existing.role === "OWNER") {
       const owners = await countOwners(existing.teamId);
+
       if (owners <= 1) {
         res.status(409).json({ error: "A team must have at least one owner" });
         return;
@@ -374,6 +381,7 @@ teamRouter.put("/members/:id/apps", async (req, res) => {
     if (!(await requireTeamAdmin(req, res))) return;
 
     const { appIds } = req.body as { appIds?: string[] };
+
     if (!Array.isArray(appIds) || appIds.some((v) => typeof v !== "string")) {
       res.status(400).json({ error: "appIds array required" });
       return;

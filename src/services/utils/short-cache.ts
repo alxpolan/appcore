@@ -14,13 +14,16 @@ export class ShortCache {
   get(key: string, now = Date.now()): string | undefined {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
+
     if (entry.expiresAt <= now) {
       this.entries.delete(key);
+
       return undefined;
     }
 
     this.entries.delete(key);
     this.entries.set(key, entry);
+
     return entry.value;
   }
 
@@ -42,6 +45,7 @@ export class ShortCache {
         removed++;
       }
     }
+
     return removed;
   }
 

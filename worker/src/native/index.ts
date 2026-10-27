@@ -12,6 +12,7 @@ export async function prepareNativeDeps(
   framework?: string,
 ): Promise<void> {
   const isCapacitor = framework ? framework === "capacitor" : isCapacitorProject(repoDir);
+
   log(`[deps] Framework: ${isCapacitor ? "capacitor" : "native"}${framework ? " (configured)" : " (auto-detected)"}`);
 
   if (isCapacitor) {
@@ -20,6 +21,7 @@ export async function prepareNativeDeps(
     }
 
     await syncCapacitor(repoDir, log);
+
     return;
   }
 

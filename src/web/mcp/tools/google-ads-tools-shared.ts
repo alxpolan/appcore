@@ -45,6 +45,7 @@ export async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpC
   const teamId = await getMcpUserTeamId(userId);
   if (!teamId) return { error: "No team found for this user." };
   const settings = await prisma.teamSettings.findUnique({ where: { teamId } });
+
   if (
     !settings?.googleAdsConnectedAt ||
     !settings.googleAdsClientId ||
@@ -75,6 +76,7 @@ export async function getGoogleAdsContext(userId: string): Promise<GoogleAdsMcpC
 
 export function googleAdsError(tool: string, err: unknown) {
   const message = googleAdsErrorMessage(err, "request");
+
   logger.error(`[mcp] ${tool} error`, { err: message });
 
   return textResult(message);

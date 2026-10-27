@@ -24,6 +24,7 @@ const AI_FINDING_KEY: Record<AiFieldKey, string> = {
   keywords: "keyword",
   description: "description",
 };
+
 const AI_FINDING_TITLE: Record<AiFieldKey, string> = {
   title: "Sharpen your title",
   subtitle: "Rework your subtitle",
@@ -38,6 +39,7 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     where: { bundleId },
     include: { snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 } },
   });
+
   const snapshot = app?.snapshots[0] ?? null;
 
   if (!app || !snapshot) {
@@ -73,8 +75,6 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
   const rating = snapshot.rating ?? null;
   const pool: Finding[] = [];
 
-  // Subtitle: only nag on length when it's genuinely under-used. A 28/30 subtitle
-  // has no meaningful free space — quality (slogan vs. keywords) is judged by the AI pass below.
   if (!subtitle) {
     pool.push({
       key: "subtitle",
@@ -95,8 +95,6 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     });
   }
 
-  // Title: same logic. Don't flag a near-full title; the AI pass judges whether
-  // the characters are well spent (brand + keywords vs. brand alone).
   if (title && title.length < 16) {
     pool.push({
       key: "title",
@@ -108,7 +106,6 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     });
   }
 
-  // Screenshots: scale the nudge to how many are missing. 7-9 is a minor tweak, not a warning.
   if (screenshots < 4) {
     pool.push({
       key: "screenshots",
@@ -142,8 +139,10 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     const totalImpressions = platformImpressions.reduce((sum, row) => sum + (row._sum.impressions ?? 0), 0);
     const belowMinOs = platformImpressions.reduce((sum, row) => {
       const major = majorVersionNumber(row.platformVersion);
+
       return major != null && major < minOsMajor ? sum + (row._sum.impressions ?? 0) : sum;
     }, 0);
+
     const belowMinOsPct = totalImpressions > 0 ? (belowMinOs / totalImpressions) * 100 : 0;
 
     if (totalImpressions >= 50 && belowMinOsPct >= 8) {
@@ -197,9 +196,6 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     });
   }
 
-  // Localization is the single biggest untapped reach lever for most apps, so we always
-  // surface it as an opportunity. We can't measure locale coverage from a public scrape,
-  // so it's framed as an opportunity rather than a deficiency.
   pool.push({
     key: "localization",
     title: "Localize for more markets",
@@ -226,10 +222,6 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
     description: app.currentDescription ?? snapshot.description ?? "",
   });
 
-  // Merge the AI's qualitative verdicts into the findings. The AI catches what length
-  // checks can't: a subtitle wasted on a marketing slogan, generic/duplicate keywords,
-  // a brand-only title. AI insight is more specific, so it overrides the matching
-  // heuristic finding (and adds a finding when the field passes length checks but reads poorly).
   const byKey = new Map<string, Finding>();
   for (const f of pool) byKey.set(f.key, f);
 
@@ -241,6 +233,7 @@ export async function runQuickScan(req: Request, res: Response): Promise<void> {
       const gap = insight.verdict === "poor" ? 0.85 : 0.6;
       const desc = insight.issue || insight.reasoning;
       const existing = byKey.get(key);
+
       if (existing) {
         if (desc) existing.desc = desc;
         existing.suggestion = insight.suggestion || existing.suggestion;

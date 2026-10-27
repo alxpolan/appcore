@@ -45,6 +45,7 @@ export class ASOBrain {
     };
 
     const thirtyDaysAgo = new Date();
+
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const rankings = await prisma.keywordRanking.findMany({
@@ -66,6 +67,7 @@ export class ASOBrain {
 
     for (const r of rankings) {
       const existing = keywordMap.get(r.keywordId);
+
       if (!existing) {
         keywordMap.set(r.keywordId, {
           term: r.keyword.term,
@@ -88,6 +90,7 @@ export class ASOBrain {
     const competitorAppIds = app.competitors.map((c) => c.competitorId);
 
     let competitorKeywords: { term: string; appsUsing: number }[] = [];
+
     if (competitorAppIds.length > 0) {
       const compRankings = await prisma.keywordRanking.findMany({
         where: {
@@ -146,12 +149,14 @@ export class ASOBrain {
         reason: s.reason,
         confidence: s.confidence,
       });
+
       saved.push(experiment);
     }
 
     logger.info(
       `[ASOBrain] Analysis complete for app ${appId}: ${saved.length} experiments created`,
     );
+
     return saved;
   }
 
@@ -283,6 +288,7 @@ Schlage nichts vor mit confidence < 0.65.`;
         );
         return this.callAI(anthropic, prompt, attempt + 1);
       }
+
       throw new Error(
         `AI response is not valid JSON after ${ASOBrain.MAX_RETRIES + 1} attempts. Raw: ${raw.slice(0, 500)}`,
       );
@@ -309,6 +315,7 @@ Schlage nichts vor mit confidence < 0.65.`;
         );
         return this.callAI(anthropic, prompt, attempt + 1);
       }
+
       throw new Error(
         `AI response JSON parse failed after ${ASOBrain.MAX_RETRIES + 1} attempts: ${(err as Error).message}`,
       );

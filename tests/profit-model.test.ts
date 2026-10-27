@@ -28,6 +28,7 @@ describe("profit model: economics", () => {
 
   it("moves profit when trial conversion rises 10%", () => {
     const lifted = economics({ ...base, trialConvRate: 0.44 });
+
     assert.equal(lifted.converted, 22);
     assert.equal(lifted.proceeds, 550);
     assert.equal(lifted.profit, -1450);
@@ -36,6 +37,7 @@ describe("profit model: economics", () => {
 
   it("moves profit when trial rate rises 10%", () => {
     const lifted = economics({ ...base, trialRate: 0.55 });
+
     assert.ok(Math.abs(lifted.trials - 55) < 1e-9);
     assert.ok(Math.abs(lifted.converted - 22) < 1e-9);
     assert.ok(Math.abs(lifted.proceeds - 550) < 1e-9);
@@ -44,6 +46,7 @@ describe("profit model: economics", () => {
 
   it("keeps fixed direct proceeds on top of trial proceeds", () => {
     const withDirect = economics({ ...base, directBase: 100 });
+
     assert.equal(withDirect.proceeds, 600);
     assert.equal(withDirect.profit, -1400);
   });

@@ -330,6 +330,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
 
       const token = String(params.ctToken ?? "").trim() || null;
       const groups = Array.isArray(params.adGroups) ? params.adGroups : [];
+
       if (token) {
         for (const g of groups) {
           for (const ad of g?.ads ?? []) {
@@ -350,6 +351,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
         const campaign = await createGoogleAdsCampaignFull(ctx.creds, input);
         let appleMapping: { bundleId: string; ctToken: string } | null = null;
         const bundleId = String(params.appleBundleId ?? "").trim();
+
         if (bundleId) {
           const fromUrls = new Set<string>();
           for (const g of groups) {
@@ -359,6 +361,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
             }
           }
           const effective = token ?? (fromUrls.size === 1 ? [...fromUrls][0] : null);
+
           if (effective) {
             const mapping = await upsertGoogleAdsAppleMapping(ctx.teamId, campaign.id, bundleId, effective);
             if (mapping) appleMapping = { bundleId, ctToken: mapping.ctToken };
@@ -572,6 +575,7 @@ export function registerGoogleAdsCampaignTools(server: McpServer, userId: string
       if (!(await isTeamAdmin(userId, ctx.teamId))) {
         return textResult("Updating campaign targeting requires the team admin role.");
       }
+
       if (locationIds === undefined && languageIds === undefined) {
         return textResult("Pass locationIds and/or languageIds.");
       }

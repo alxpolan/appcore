@@ -15,6 +15,7 @@ async function getTeamIdForUser(userId: string): Promise<string | null> {
     where: { userId },
     orderBy: { createdAt: "asc" },
   });
+
   return membership?.teamId ?? null;
 }
 
@@ -26,6 +27,7 @@ export async function getEffectiveSettingsForTeam(teamId: string): Promise<Effec
   const s = await getTeamSettings(teamId);
 
   const hasManualKey = !!(s?.ascIssuerId && s?.ascKeyId && s?.ascPrivateKey);
+
   if (!hasManualKey && s?.ascAutoKeyId && s?.ascAutoPrivateKey) {
     return {
       teamId,
@@ -48,5 +50,6 @@ export async function getEffectiveSettingsForTeam(teamId: string): Promise<Effec
 export async function getEffectiveSettings(userId: string): Promise<EffectiveSettings> {
   const teamId = await getTeamIdForUser(userId);
   if (!teamId) return getEffectiveSettingsForTeam("");
+
   return getEffectiveSettingsForTeam(teamId);
 }

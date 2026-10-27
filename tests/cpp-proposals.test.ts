@@ -43,6 +43,7 @@ describe("cpp grouping: themes", () => {
     assert.ok(keys.includes("maschenzähler"));
 
     const rows = groups.find((group) => group.key === "reihenzähler")!;
+
     assert.deepEqual(
       rows.keywords.map((item) => item.term),
       ["reihenzähler stricken", "reihenzähler"],

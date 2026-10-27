@@ -40,6 +40,7 @@ export function registerSubscriptionTools(server: McpServer, adminUserId: string
         const expired = isGrantExpired(s, now);
         const effectiveStatus = expired ? "expired" : (s?.status ?? null);
         const isPro = !!effectiveStatus && (PRO_STATUSES as readonly string[]).includes(effectiveStatus);
+
         return {
           teamId: t.id,
           teamName: t.name,
@@ -97,6 +98,7 @@ export function registerSubscriptionTools(server: McpServer, adminUserId: string
         where: { id: teamId },
         include: { subscription: true },
       });
+
       if (!team) return fail("Team not found.");
 
       const s = team.subscription;
@@ -160,20 +162,25 @@ export function registerSubscriptionTools(server: McpServer, adminUserId: string
           members: { where: { role: "OWNER" }, include: { user: true }, take: 1 },
         },
       });
+
       if (!team) return fail("Team not found.");
 
       const existing = team.subscription;
+
       if (existing && !isAdminGrant(existing)) {
         return fail("Team has a real paid subscription. Manage it in Lemon Squeezy instead.");
       }
 
       let endsAt: Date | null = null;
+
       if (!forever) {
         if (!durationDays || durationDays <= 0) {
           return fail("Provide a positive durationDays or set forever=true.");
         }
+
         const base =
           existing?.endsAt && new Date(existing.endsAt) > new Date() ? new Date(existing.endsAt) : new Date();
+
         endsAt = new Date(base.getTime() + durationDays * 86_400_000);
       }
 
@@ -200,6 +207,7 @@ export function registerSubscriptionTools(server: McpServer, adminUserId: string
           });
 
       const ownerEmail = team.members[0]?.user.email;
+
       if (ownerEmail) {
         premiumGranted({ to: ownerEmail, teamName: team.name, endsAt }).catch((err) =>
           logger.error("premium grant email failed", { err, teamId }),
@@ -236,12 +244,14 @@ export function registerSubscriptionTools(server: McpServer, adminUserId: string
     async ({ teamId }) => {
       const existing = await prisma.subscription.findUnique({ where: { teamId } });
       if (!existing) return fail("Team has no subscription.");
+
       if (!isAdminGrant(existing)) {
         return fail("This is a real paid subscription. Cancel it in Lemon Squeezy instead.");
       }
 
       await prisma.subscription.delete({ where: { teamId } });
       logger.info(`Admin MCP: revoked Pro grant for team ${teamId} by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true });
     },
   );

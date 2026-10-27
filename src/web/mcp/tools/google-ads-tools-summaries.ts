@@ -103,6 +103,7 @@ export const summarizeGoogleUpdateCampaign = (args: any, text: string): ToolSumm
 
   if (args?.dailyBudgetAmount != null) {
     const ccy = prev?.currency ? ` ${prev.currency}` : "";
+
     parts.push(fromTo("daily budget", prev?.dailyBudget, `${args.dailyBudgetAmount}${ccy}`));
     changes.push({
       label: "Daily budget",
@@ -130,6 +131,7 @@ export const summarizeGoogleUpdateCampaign = (args: any, text: string): ToolSumm
     ]
       .filter(Boolean)
       .join(", ");
+
     parts.push(fromTo("bidding", null, target));
     changes.push({ label: "Bidding", from: null, to: String(args.biddingStrategy) });
   }
@@ -256,6 +258,7 @@ export const summarizeGoogleUpdateKeywords = (args: any, text: string): ToolSumm
 
     return `${name}: ${bits.join(", ") || "no changes"}`;
   });
+
   const more = rows.length > 5 ? `; +${rows.length - 5} more` : "";
 
   return {
@@ -339,9 +342,11 @@ export const summarizeGoogleCreateRsa = (args: any): ToolSummary => {
 export const summarizeGoogleCampaignTargeting = (args: any, text: string): ToolSummary => {
   const prev = tryParseJson(text)?.previous;
   const parts: string[] = [];
+
   if (args?.locationIds !== undefined) {
     parts.push(`locations ${(prev?.locations ?? []).join(", ") || "none"} → ${(args.locationIds ?? []).join(", ") || "none"}`);
   }
+
   if (args?.languageIds !== undefined) {
     parts.push(`languages ${(prev?.languages ?? []).join(", ") || "none"} → ${(args.languageIds ?? []).join(", ") || "none"}`);
   }

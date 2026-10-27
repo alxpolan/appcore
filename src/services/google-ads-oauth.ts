@@ -3,10 +3,8 @@ import crypto from "crypto";
 import { env } from "../config";
 import { decrypt, encrypt } from "../config/encryption";
 
-/** Scope for the Google Ads API (read + mutate campaigns). */
 export const GOOGLE_ADS_OAUTH_SCOPE = "https://www.googleapis.com/auth/adwords";
 
-/** State lifetime: 10 minutes, like the sign-in flow. */
 export const GOOGLE_ADS_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 export interface GoogleAdsOAuthState {
@@ -20,7 +18,6 @@ export function googleAdsOAuthAvailable(): boolean {
   return Boolean(env.GOOGLE_ADS_OAUTH_CLIENT_ID && env.GOOGLE_ADS_OAUTH_CLIENT_SECRET);
 }
 
-/** Must be registered as an authorized redirect URI on the OAuth client. */
 export function googleAdsOAuthRedirectUri(): string {
   return `${env.APP_URL}/api/google-ads/oauth/callback`;
 }
@@ -29,9 +26,9 @@ function hmac(data: string): string {
   return crypto.createHmac("sha256", env.JWT_SECRET).update(data).digest("base64url");
 }
 
-/** Sign (and encrypt, when ENCRYPTION_KEY is set) the state carried through Google. */
 export function signGoogleAdsOAuthState(input: Omit<GoogleAdsOAuthState, "ts">): string {
   const data = Buffer.from(encrypt(JSON.stringify({ ...input, ts: Date.now() }))).toString("base64url");
+
   return `${data}.${hmac(data)}`;
 }
 
@@ -49,17 +46,19 @@ export function verifyGoogleAdsOAuthState(state: string): GoogleAdsOAuthState | 
 
   try {
     const parsed = JSON.parse(decrypt(Buffer.from(data, "base64url").toString())) as GoogleAdsOAuthState;
+
     if (!parsed.teamId || !parsed.userId || !parsed.customerId || !parsed.ts) {
       return null;
     }
+
     if (Date.now() - parsed.ts > GOOGLE_ADS_OAUTH_STATE_TTL_MS) return null;
+
     return parsed;
   } catch {
     return null;
   }
 }
 
-/** Google consent URL. `prompt=consent` guarantees a refresh token on every connect. */
 export function buildGoogleAdsAuthUrl(state: string): string {
   const clientId = env.GOOGLE_ADS_OAUTH_CLIENT_ID;
   if (!clientId) throw new Error("Google Ads OAuth is not configured");
@@ -72,6 +71,7 @@ export function buildGoogleAdsAuthUrl(state: string): string {
     access_type: "offline",
     prompt: "consent",
   });
+
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
@@ -91,10 +91,13 @@ export async function exchangeGoogleAdsCode(code: string): Promise<{ refreshToke
     }).toString(),
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
+
   if (tokenRes.data.error) {
     throw new Error(tokenRes.data.error_description ?? tokenRes.data.error);
   }
+
   const refreshToken = tokenRes.data.refresh_token;
   if (!refreshToken) throw new Error("Google did not return a refresh token");
+
   return { refreshToken };
 }

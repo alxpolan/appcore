@@ -101,12 +101,15 @@ async function getWithRetry<T>(url: string, apiKey: string): Promise<T> {
       return res.data;
     } catch (err: any) {
       const status = err?.response?.status;
+
       if (status === 429 && attempt < MAX_RETRIES) {
         const backoffMs =
           Number(err.response?.data?.backoff_ms) || Number(err.response?.headers?.["retry-after"]) * 1000 || 1000;
+
         await sleep(backoffMs);
         continue;
       }
+
       throw err;
     }
   }
@@ -118,9 +121,11 @@ async function paginate<T>(firstUrl: string, apiKey: string): Promise<T[]> {
 
   while (url) {
     const page: RevenueCatList<T> = await getWithRetry<RevenueCatList<T>>(url, apiKey);
+
     items.push(...(page.items ?? []));
     url = page.next_page ?? null;
   }
+
   return items;
 }
 
@@ -145,6 +150,7 @@ export async function listRevenueCatProjects(apiKey: string): Promise<RevenueCat
   });
 
   const projects = res.data.items ?? [];
+
   if (projects.length === 0) {
     throw new Error("No RevenueCat projects are visible to this API key");
   }
@@ -168,6 +174,7 @@ async function getCustomerAttributes(
     `${API_BASE}/projects/${projectId}/customers/${customerId}/attributes?limit=100`,
     apiKey,
   );
+
   return Object.fromEntries(attrs.map((a) => [a.name, a.value]));
 }
 
@@ -181,6 +188,7 @@ export async function syncRevenueCatTransactions(
   bundleId: string,
 ): Promise<RevenueCatSyncResult> {
   const customers = await listAllCustomers(apiKey, projectId);
+
   logger.info(`[revenuecat] syncing ${customers.length} customers for ${bundleId}`);
 
   let eventCount = 0;
@@ -197,7 +205,6 @@ export async function syncRevenueCatTransactions(
     ]);
 
     const customerDims = { bundleId, customerId };
-    // first_seen_at is unix millis; guard against a seconds variant.
     const firstSeenMs = customer.first_seen_at ?? customerDetail.first_seen_at ?? null;
     const customerFields = {
       platform: customer.last_seen_platform,
@@ -209,6 +216,7 @@ export async function syncRevenueCatTransactions(
       appleAttribution: ((customerDetail.apple_attribution ?? customer.apple_attribution) as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
       syncedAt: new Date(),
     };
+
     await prisma.revenueCatCustomer.upsert({
       where: { revenueCatCustomerKey: customerDims },
       create: { ...customerDims, ...customerFields },
@@ -243,6 +251,7 @@ export async function syncRevenueCatTransactions(
           proceedsUsd: gross - tax - commission,
           syncedAt: new Date(),
         };
+
         return prisma.revenueCatTransaction.upsert({
           where: { revenueCatTransactionKey: dims },
           create: { ...dims, ...fields },

@@ -91,6 +91,7 @@ export const summarizeUpdateCampaign = (args: any, text: string): ToolSummary =>
   if (args?.dailyBudgetAmount != null) {
     const ccy = args?.currency ?? prev?.currency;
     const suffix = ccy ? ` ${ccy}` : "";
+
     parts.push(fromTo("daily budget", prev?.dailyBudget, `${args.dailyBudgetAmount}${suffix}`));
     changes.push({
       label: "Daily budget",
@@ -101,6 +102,7 @@ export const summarizeUpdateCampaign = (args: any, text: string): ToolSummary =>
 
   if (args?.countriesOrRegions != null) {
     const from = (prev?.countriesOrRegions ?? []).join(", ") || null;
+
     parts.push(fromTo("countries", from, args.countriesOrRegions.join(", ")));
     changes.push({ label: "Countries", from, to: args.countriesOrRegions.join(", ") });
   }
@@ -242,6 +244,7 @@ export const summarizeUpdateKeywords = (args: any, text: string): ToolSummary =>
 
     return `${name}: ${bits.join(", ") || "no changes"}`;
   });
+
   const more = rows.length > 5 ? `; +${rows.length - 5} more` : "";
 
   return {

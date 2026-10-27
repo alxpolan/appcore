@@ -1,12 +1,10 @@
 export const DEFAULT_PRICE_MULTIPLIER = 1.0;
 
 export const PRICE_MULTIPLIERS: Record<string, number> = {
-  // North America
   USA: 1.0,
   CAN: 0.9,
   MEX: 0.55,
 
-  // Western & Northern Europe
   GBR: 0.95,
   IRL: 1.0,
   FRA: 0.9,
@@ -22,7 +20,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   FIN: 0.95,
   ISL: 1.0,
 
-  // Southern Europe
   ITA: 0.85,
   ESP: 0.8,
   PRT: 0.75,
@@ -30,7 +27,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   MLT: 0.8,
   CYP: 0.75,
 
-  // Central & Eastern Europe
   POL: 0.65,
   CZE: 0.7,
   SVK: 0.65,
@@ -57,7 +53,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   AZE: 0.4,
   TUR: 0.4,
 
-  // Middle East
   ISR: 0.95,
   SAU: 0.8,
   ARE: 0.9,
@@ -70,7 +65,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   IRQ: 0.4,
   YEM: 0.25,
 
-  // Asia-Pacific
   JPN: 0.85,
   KOR: 0.85,
   CHN: 0.6,
@@ -116,7 +110,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   KIR: 0.35,
   TUV: 0.4,
 
-  // Latin America & Caribbean
   BRA: 0.5,
   ARG: 0.4,
   CHL: 0.6,
@@ -155,7 +148,6 @@ export const PRICE_MULTIPLIERS: Record<string, number> = {
   AIA: 0.6,
   MSR: 0.5,
 
-  // Africa
   ZAF: 0.45,
   EGY: 0.3,
   MAR: 0.4,

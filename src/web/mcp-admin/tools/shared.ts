@@ -32,6 +32,7 @@ const SECRET_KEYS = new Set([
 
 export function redactSecrets<T>(value: T): T {
   if (Array.isArray(value)) return value.map(redactSecrets) as unknown as T;
+
   if (value && typeof value === "object" && !(value instanceof Date)) {
     const out: Record<string, unknown> = {};
 
@@ -41,5 +42,6 @@ export function redactSecrets<T>(value: T): T {
     
     return out as T;
   }
+
   return value;
 }

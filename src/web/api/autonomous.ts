@@ -51,6 +51,7 @@ autonomousRouter.get("/:appId/experiments", async (req, res) => {
     const status = req.query.status as string | undefined;
 
     const where: any = { appId };
+
     if (status) {
       where.status = status.toUpperCase();
     }

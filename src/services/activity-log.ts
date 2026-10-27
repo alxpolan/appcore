@@ -21,7 +21,6 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** Persists one audit entry. Never throws: logging must not break the action. */
 export async function logActivity(input: LogActivityInput): Promise<void> {
   try {
     await prisma.activityLog.create({

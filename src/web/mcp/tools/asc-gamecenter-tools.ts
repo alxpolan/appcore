@@ -39,6 +39,7 @@ function json(data: unknown) {
 async function getGameCenterDetailId(asc: any, appId: string): Promise<string | null> {
   try {
     const { data: resp } = await asc.client.get(`/apps/${appId}/gameCenterDetail`);
+
     return resp.data?.id ?? null;
   } catch {
     return null;
@@ -68,6 +69,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
       try {
         const asc = await createAscClient(settings);
         const app = await asc.getApp(resolvedBundleId);
+
         if (!app) {
           return {
             content: [
@@ -80,6 +82,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
         }
 
         const gcDetailId = await getGameCenterDetailId(asc, app.id);
+
         if (!gcDetailId) {
           return json({ leaderboards: [], gcEnabled: false });
         }
@@ -197,6 +200,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
             },
           },
         });
+
         return json({
           id: resp.data.id,
           referenceName: resp.data.attributes?.referenceName ?? referenceName,
@@ -241,6 +245,7 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
             attributes: attrs,
           },
         });
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);
@@ -262,7 +267,9 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
 
       try {
         const asc = await createAscClient(settings);
+
         await asc.client.delete(`/gameCenterLeaderboards/${leaderboardId}`);
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);
@@ -415,7 +422,9 @@ export function registerAscGameCenterTools(server: McpServer, userId: string) {
 
       try {
         const asc = await createAscClient(settings);
+
         await asc.client.delete(`/gameCenterLeaderboardLocalizations/${localizationId}`);
+
         return json({ ok: true });
       } catch (err: any) {
         return ascError(err);

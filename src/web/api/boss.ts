@@ -5,6 +5,7 @@ import { requireAuth } from "../auth";
 import { bossScheduler } from "../../jobs/boss";
 
 export const bossRouter = Router();
+
 bossRouter.use(requireAuth);
 
 const VALID_QUEUES = [
@@ -29,7 +30,7 @@ bossRouter.get("/jobs", async (req, res) => {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
-  
+
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
     const queue = (req.query.queue as string) || null;
@@ -70,6 +71,7 @@ bossRouter.get("/schedules", async (req, res) => {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
+
   try {
     const rows = await prisma.$queryRaw(
       Prisma.sql`
@@ -78,6 +80,7 @@ bossRouter.get("/schedules", async (req, res) => {
         ORDER BY name
       `,
     );
+
     res.json(rows);
   } catch (err) {
     if (isMissingSchema(err)) return res.json([]);
@@ -91,6 +94,7 @@ bossRouter.post("/send", async (req, res) => {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
+
   const { queue } = req.body as { queue?: string };
 
   if (!queue || !VALID_QUEUES.includes(queue)) {
@@ -118,6 +122,7 @@ bossRouter.delete("/jobs", async (req, res) => {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
+
   const queue = (req.query.queue as string) || undefined;
 
   if (queue && !VALID_QUEUES.includes(queue)) {

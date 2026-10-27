@@ -29,10 +29,12 @@ function isDayString(value: unknown): value is string {
 
 export function resolveAppleAdsRange(query: Record<string, any>): AppleAdsReportRange {
   const today = new Date();
+
   today.setUTCHours(0, 0, 0, 0);
   const endDefault = fmtDay(today);
   const back = (n: number) => {
     const d = new Date(today);
+
     d.setUTCDate(d.getUTCDate() - n);
 
     return fmtDay(d);
@@ -67,6 +69,7 @@ export function splitReportSpan(range: AppleAdsReportRange): AppleAdsReportRange
   let cursor = new Date(`${range.startDate}T00:00:00Z`);
   while (cursor <= end) {
     const chunkEnd = new Date(cursor);
+
     chunkEnd.setUTCDate(chunkEnd.getUTCDate() + MAX_CHUNK_DAYS - 1);
     chunks.push({ startDate: fmtDay(cursor), endDate: fmtDay(chunkEnd > end ? end : chunkEnd) });
     cursor = new Date(chunkEnd);
@@ -81,6 +84,7 @@ function mergeTotals(into: any, add: any): any {
     if (typeof value === "number") into[key] = (into[key] ?? 0) + value;
     else if (key === "localSpend" && value && typeof value === "object") {
       const amount = Number((into.localSpend as any)?.amount ?? 0) + Number((value as any).amount ?? 0);
+
       into.localSpend = { ...(value as object), amount: String(amount) };
     } else if (into[key] == null) {
       into[key] = value;
@@ -104,6 +108,7 @@ export function mergeReportRows(rows: any[], idOf: (row: any) => string | undefi
       merged.set(id, copy);
     } else {
       if (row.total != null) existing.total = mergeTotals(existing.total ?? {}, row.total);
+
       if (Array.isArray(row.granularity)) {
         if (!Array.isArray(existing.granularity)) existing.granularity = [];
         existing.granularity.push(...row.granularity);
@@ -141,6 +146,7 @@ function totalsFromRow(row: any): any {
         if (typeof v === "number") acc[k] = (acc[k] ?? 0) + v;
         else if (k === "localSpend" && v && typeof v === "object") {
           const amt = Number((v as any).amount ?? 0);
+
           acc.localSpend = { amount: String((Number(acc.localSpend?.amount ?? 0) + amt).toString()) };
         }
       }
@@ -479,8 +485,6 @@ export async function listAppleAdsSearchTerms(
   const accessToken = await fetchAppleAdsAccessToken(creds);
   const headers = authedHeaders(accessToken, creds.orgId);
 
-  // NOTE: no timeZone / returnRecordsWithNoMetrics — the searchterms report
-  // rejects both. Rollup rows (other: true, no searchTermText) are skipped.
   const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
     const reportRes = await axios.post<any>(
       `${API_BASE}/reports/campaigns/${campaignId}/searchterms`,
@@ -510,11 +514,11 @@ export async function listAppleAdsSearchTerms(
         ? `${row.metadata.adGroupId}::${row.metadata.keywordId}::${row.metadata.searchTermText}`
         : undefined,
   );
-  // Keywords whose queries all fell below Apple's privacy threshold get no
-  // term rows — show their rollup (keyword total) instead so no spend hides.
+
   const withTerms = new Set(
     rows.map((row) => `${row.metadata?.adGroupId}::${row.metadata?.keywordId}`),
   );
+
   const rollups = mergeReportRows(
     all,
     (row) =>

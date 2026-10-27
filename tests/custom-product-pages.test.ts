@@ -91,6 +91,7 @@ describe("custom product pages: request bodies", () => {
 
   it("links screenshot sets to the CPP localization, not the version localization", () => {
     const body = buildCreateScreenshotSetBody("l1", "APP_IPHONE_67");
+
     assert.deepEqual(body.data.relationships, {
       appCustomProductPageLocalization: { data: { type: "appCustomProductPageLocalizations", id: "l1" } },
     });

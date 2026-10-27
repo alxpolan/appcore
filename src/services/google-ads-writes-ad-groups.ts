@@ -32,8 +32,10 @@ export function validateRsaInput(ad: any, label: string): GoogleAdsCreateRsaInpu
     if (v == null) return undefined;
     const p = String(v).trim();
     if (!p || p.length > 15) throw new Error(`${label} ${name} must be 1-15 characters`);
+
     return p;
   };
+
   const status = ad.status == null ? "PAUSED" : String(ad.status).toUpperCase();
   if (status !== "ENABLED" && status !== "PAUSED") throw new Error(`${label} status must be "ENABLED" or "PAUSED"`);
 
@@ -294,6 +296,7 @@ export function validateTargetingIds(list: unknown, label: string): string[] {
   return list.map((v: any, i: number) => {
     const id = String(v ?? "").trim();
     if (!/^\d+$/.test(id)) throw new Error(`${label} [${i + 1}] must be a numeric id`);
+
     return id;
   });
 }
@@ -318,6 +321,7 @@ export async function replaceGoogleAdsCampaignTargeting(
         resource: `${campaignName}/campaignCriteria/${campaignId}~${c.criterionId}`,
       });
     }
+
     locations = patch.locationIds.map(String);
     for (const id of locations) {
       ops.push({
@@ -327,6 +331,7 @@ export async function replaceGoogleAdsCampaignTargeting(
       });
     }
   }
+
   if (patch.languageIds !== undefined) {
     for (const c of current.languages) {
       ops.push({
@@ -335,6 +340,7 @@ export async function replaceGoogleAdsCampaignTargeting(
         resource: `${campaignName}/campaignCriteria/${campaignId}~${c.criterionId}`,
       });
     }
+
     languages = patch.languageIds.map(String);
     for (const id of languages) {
       ops.push({
@@ -344,6 +350,7 @@ export async function replaceGoogleAdsCampaignTargeting(
       });
     }
   }
+
   await gw.mutate(ops);
 
   return { locations, languages };

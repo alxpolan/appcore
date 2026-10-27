@@ -16,9 +16,9 @@ export async function findPod(): Promise<string> {
   for (const candidate of POD_CANDIDATES) {
     try {
       await execAsync(`${candidate} --version`, { env: nativeEnv() });
+
       return candidate;
     } catch {
-      /* try next */
     }
   }
   throw new Error(

@@ -148,6 +148,7 @@ describe("asc web analytics: grouped timeseries parsing", () => {
         },
       ],
     });
+
     assert.deepEqual(rows, [{ dateStr: "2026-10-07", territory: "US", downloads: 0, trials: 2, proceedsUsd: 9.5 }]);
   });
 
@@ -173,8 +174,7 @@ describe("asc web analytics: grouped timeseries parsing", () => {
         { dateStr: "2026-10-07", territory: "DE", value: 2 },
       ],
     });
-    // 10-07: 7 total - 4 split - 2 uncovered legacy (DE; GB is covered) = 1
-    // 10-08: 2 total - 2 split = 0
+
     assert.deepEqual(
       [...remainder.entries()],
       [

@@ -15,11 +15,14 @@ export async function handler([job]: Job<SyncMetadataData>[]): Promise<void> {
     data: { teamId, bundleId },
     id,
   } = job;
+
   logger.info(`[BOSS] Starting "${QUEUE_NAME}" job ${id} for ${bundleId}…`);
 
   const asc = await ascClientForTeam(teamId);
+
   if (!asc) {
     logger.warn(`[BOSS] ASC credentials not configured for team ${teamId}, skipping`);
+
     return;
   }
 
@@ -31,6 +34,7 @@ export async function handler([job]: Job<SyncMetadataData>[]): Promise<void> {
       : ["en-US"];
 
   const primaryState = await asc.getCurrentASOState(locales[0], bundleId);
+
   if (primaryState) {
     await prisma.app.update({
       where: { bundleId },

@@ -82,6 +82,7 @@ export function registerStatsTools(server: McpServer, _adminUserId: string | nul
         date: (r.day instanceof Date ? r.day : new Date(r.day)).toISOString().split("T")[0],
         count: Number(r.count),
       }));
+
       return ok({ days, data });
     },
   );

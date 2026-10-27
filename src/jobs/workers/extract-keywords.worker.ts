@@ -20,6 +20,7 @@ export async function handler([job]: Job<ExtractKeywordsData>[]): Promise<void> 
 
   if (keywords.length > 0) {
     const terms = keywords.map((k) => k.keyword);
+
     await new KeywordTracker(bundleId, country, settings).addKeywords(terms);
     logger.info(`[BOSS] Extracted and added ${terms.length} keywords for ${bundleId}`);
   } else {

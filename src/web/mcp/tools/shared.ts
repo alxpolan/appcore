@@ -142,6 +142,7 @@ export async function resolveAscAppId(
 
   if (!ascAppId && resolvedBundleId) {
     const ascApp = await asc.getApp(resolvedBundleId);
+
     ascAppId = ascApp?.id ?? "";
   }
 
@@ -207,12 +208,14 @@ async function logToolCall(
   let actor: string | undefined;
   try {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+
     actor = user?.email ?? undefined;
   } catch {
   }
 
   if (thrown) {
     const message = String((thrown as any)?.message ?? thrown);
+
     await logActivity({
       teamId,
       userId,
@@ -230,6 +233,7 @@ async function logToolCall(
 
   const text = resultText ?? "";
   const failed = text.trim().length === 0 || FAILURE_PATTERNS.some((re) => re.test(text.trim()));
+
   await logActivity({
     teamId,
     userId,
@@ -254,6 +258,7 @@ export function registerMutatingTool(
   opts: MutatingToolOpts = {},
 ): void {
   const action = opts.action ?? `mcp.${name}`;
+
   (server as any).registerTool(name, config, async (args: any, extra: any) => {
     let result: any;
     try {
@@ -263,6 +268,7 @@ export function registerMutatingTool(
       throw err;
     }
     const text: string = result?.content?.[0]?.text ?? "";
+
     await logToolCall(userId, action, args, text, null, opts.summarize?.(args, text) ?? undefined);
 
     return result;

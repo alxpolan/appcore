@@ -83,6 +83,7 @@ export async function applyCppProposal(args: {
       const localization =
         localizations.find((entry) => entry.attributes.locale === locale) ??
         (await args.asc.createCustomProductPageLocalization(version.id, locale));
+
       const sets = await args.asc.listCustomProductPageScreenshotSets(localization.id);
 
       for (const url of framedByLocale[locale] ?? []) {

@@ -33,6 +33,7 @@ export interface UpdateOutcomeInput {
 export class ASOMemory {
   async getHistory(appId: string, days = 90) {
     const since = new Date();
+
     since.setDate(since.getDate() - days);
 
     const experiments = await prisma.asoExperiment.findMany({
@@ -46,6 +47,7 @@ export class ASOMemory {
     logger.info(
       `[ASOMemory] Loaded ${experiments.length} experiments for app ${appId} (last ${days} days)`,
     );
+
     return experiments;
   }
 
@@ -66,6 +68,7 @@ export class ASOMemory {
       `[ASOMemory] Saved experiment ${experiment.id}: ${experiment.type} ` +
         `"${experiment.fromValue}" → "${experiment.toValue}" (confidence: ${experiment.confidence})`,
     );
+
     return experiment;
   }
 
@@ -85,6 +88,7 @@ export class ASOMemory {
       `[ASOMemory] Updated outcome for experiment ${experimentId}: ` +
         `rank ${outcome.rankBefore} → ${outcome.rankAfter}, impressions Δ${outcome.impressionsDelta}`,
     );
+
     return updated;
   }
 }

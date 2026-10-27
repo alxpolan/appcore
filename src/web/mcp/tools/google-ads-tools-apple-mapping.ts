@@ -54,6 +54,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
 
         const range = resolveGoogleAdsRange({ days, startDate, endDate });
         const end = new Date(`${range.endDate}T00:00:00Z`);
+
         end.setUTCDate(end.getUTCDate() + 1);
         const rows = await prisma.appStoreCampaignMetrics.findMany({
           where: {
@@ -63,6 +64,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           },
           orderBy: { reportDate: "asc" },
         });
+
         const days = mergeCampaignDayMetrics(
           rows.map((r) => ({
             date: r.reportDate.toISOString().slice(0, 10),
@@ -73,6 +75,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
             proceedsUsd: r.proceedsUsd,
           })),
         );
+
         const totals = days.reduce(
           (acc, d) => ({
             downloads: acc.downloads + d.downloads,
@@ -82,7 +85,9 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           }),
           { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
         );
+
         const priceStart = new Date();
+
         priceStart.setUTCDate(priceStart.getUTCDate() - 90);
         priceStart.setUTCHours(0, 0, 0, 0);
         const priceSample = await prisma.revenueCatTransaction.aggregate({
@@ -94,6 +99,7 @@ export function registerGoogleAdsAppleMappingTools(server: McpServer, userId: st
           },
           _avg: { proceedsUsd: true },
         });
+
         const avgTrialValueUsd = Math.round((priceSample._avg.proceedsUsd ?? 0) * 100) / 100;
 
         return jsonResult({

@@ -25,6 +25,7 @@ export function missingLocalizationFields(loc: LocLike, isFirstVersion: boolean)
   return VERSION_LOCALIZATION_FIELDS.filter((field) => {
     if (isFirstVersion && field === "whatsNew") return false;
     const value = loc[field];
+
     return !(typeof value === "string" && value.trim().length > 0);
   });
 }
@@ -55,6 +56,7 @@ export function analyzeKeywords(keywords: string, title: string, subtitle: strin
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
+
   const indexedWords = new Set(
     `${title} ${subtitle}`
       .toLowerCase()
@@ -68,18 +70,22 @@ export function analyzeKeywords(keywords: string, title: string, subtitle: strin
   const overlaps: string[] = [];
   for (const tok of rawTokens) {
     const key = norm(tok);
+
     if (seen.has(key)) {
       duplicates.push(tok);
       continue;
     }
+
     seen.add(key);
     const words = key.split(/\s+/).filter(Boolean);
+
     if (words.length > 0 && words.every((w) => indexedWords.has(w))) {
       overlaps.push(tok);
     }
   }
 
   const hasWeakness = overLimitBy > 0 || underutilized || duplicates.length > 0 || overlaps.length > 0;
+
   return { used, max: KEYWORD_MAX, overLimitBy, unusedBudget, underutilized, duplicates, overlaps, hasWeakness };
 }
 
@@ -90,27 +96,33 @@ export function hasKeywordWeakness(keywords: string, title: string, subtitle: st
 export function isLocalizationOptimal(loc: LocLike): boolean {
   const keywords = typeof loc.keywords === "string" ? loc.keywords : "";
   if (keywords.trim().length === 0) return false;
+
   return !hasKeywordWeakness(keywords, loc.name ?? "", loc.subtitle ?? "");
 }
 
 export function keywordWeaknessReasons(analysis: KeywordAnalysis): string[] {
   const reasons: string[] = [];
+
   if (analysis.overLimitBy > 0) {
     reasons.push(
       `Keyword field is ${analysis.overLimitBy} char(s) over the ${analysis.max} limit — trim before submitting.`,
     );
   }
+
   if (analysis.underutilized) {
     reasons.push(
       `Only ${analysis.used}/${analysis.max} keyword chars used — ${analysis.unusedBudget} chars of reach left unused.`,
     );
   }
+
   if (analysis.overlaps.length > 0) {
     reasons.push(`Keywords already indexed via title/subtitle (redundant): ${analysis.overlaps.join(", ")}.`);
   }
+
   if (analysis.duplicates.length > 0) {
     reasons.push(`Duplicate keywords in the field: ${analysis.duplicates.join(", ")}.`);
   }
+
   return reasons;
 }
 
@@ -148,6 +160,7 @@ export function evaluateLocalizationQuality(loc: LocLike, isFirstVersion: boolea
   }
 
   const isOptimal = !keywords.hasWeakness;
+
   return {
     locale: loc.locale ?? "",
     status: isOptimal ? "optimal" : "non_optimal",

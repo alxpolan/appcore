@@ -167,6 +167,7 @@ export async function renderCppProposal(
     const keywords = Array.isArray(proposal.keywords)
       ? (proposal.keywords as Array<{ term?: unknown }>).map((item) => String(item.term ?? "")).filter(Boolean)
       : [];
+
     const captions =
       Object.keys(stored).length > 0
         ? stored
@@ -223,6 +224,7 @@ export async function renderCppProposal(
 
     const total = planned.length;
     let done = 0;
+
     onProgress?.({ done: 0, total, locale: null, basenames: [] });
 
     const queue = new PQueue({ concurrency: workerClient.slotCount() });
@@ -276,6 +278,7 @@ export async function renderCppProposal(
     for (const item of planned) {
       const base = item.basename.replace(/\.[^.]+$/, "");
       const list = framedByLocale[item.locale] ?? [];
+
       list.push(`/screenshots/${job.id}/framed/${item.locale}/${base}.png`);
       framedByLocale[item.locale] = list;
     }

@@ -3,11 +3,13 @@ import { prisma } from "../../config";
 import { requireAuth } from "../auth";
 
 export const searchRouter = Router();
+
 searchRouter.use(requireAuth);
 
 searchRouter.get("/", async (req, res) => {
   try {
     const q = ((req.query.q as string) ?? "").trim();
+
     if (!q || q.length < 1) {
       res.json([]);
       return;
@@ -33,6 +35,7 @@ searchRouter.get("/", async (req, res) => {
       take: 5,
       orderBy: { popularity: "desc" },
     });
+
     for (const kw of keywords) {
       results.push({
         id: `keyword-${kw.id}`,
@@ -63,6 +66,7 @@ searchRouter.get("/", async (req, res) => {
 
     for (const app of apps) {
       const isOwn = app.bundleId === activeBundleId;
+
       results.push({
         id: `app-${app.id}`,
         label: app.name ?? app.bundleId,

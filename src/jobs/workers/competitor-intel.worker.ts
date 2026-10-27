@@ -15,6 +15,7 @@ export async function handler([job]: Job<CompetitorIntelData>[]): Promise<void> 
     data: { bundleId, competitorAppIds },
     id,
   } = job;
+
   logger.info(`[BOSS] Starting "${QUEUE_NAME}" job ${id} for ${bundleId}…`);
 
   const result = await new CompetitorIntelService().runFullIntelJob(bundleId, competitorAppIds);

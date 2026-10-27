@@ -8,6 +8,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 describe("short cache: TTL + LRU store", () => {
   it("returns misses for unknown keys and hits after set", () => {
     const cache = new ShortCache();
+
     assert.equal(cache.get("a"), undefined);
     cache.set("a", "1", 1000);
     assert.equal(cache.get("a"), "1");
@@ -15,6 +16,7 @@ describe("short cache: TTL + LRU store", () => {
 
   it("expires entries after their TTL", async () => {
     const cache = new ShortCache();
+
     cache.set("a", "1", 20);
     assert.equal(cache.get("a"), "1");
     await sleep(40);
@@ -23,6 +25,7 @@ describe("short cache: TTL + LRU store", () => {
 
   it("evicts the least recently used key beyond capacity", () => {
     const cache = new ShortCache(2);
+
     cache.set("a", "1", 1000);
     cache.set("b", "2", 1000);
     assert.equal(cache.get("a"), "1");
@@ -34,6 +37,7 @@ describe("short cache: TTL + LRU store", () => {
 
   it("overwriting a key refreshes its value and TTL", async () => {
     const cache = new ShortCache();
+
     cache.set("a", "1", 20);
     cache.set("a", "2", 1000);
     await sleep(40);
@@ -42,6 +46,7 @@ describe("short cache: TTL + LRU store", () => {
 
   it("invalidates by prefix and keeps other keys", () => {
     const cache = new ShortCache();
+
     cache.set("ads:t1:/x", "1", 1000);
     cache.set("ads:t1:/y", "2", 1000);
     cache.set("ads:t2:/x", "3", 1000);
@@ -63,6 +68,7 @@ describe("ads response cache: middleware", () => {
       sentBody: undefined as unknown,
       finishHandlers: [] as (() => void)[],
     };
+
     const res: any = {
       get statusCode() {
         return state.statusCode;
@@ -90,6 +96,7 @@ describe("ads response cache: middleware", () => {
         for (const fn of state.finishHandlers) fn();
       },
     };
+
     return { res, state };
   }
 
@@ -97,6 +104,7 @@ describe("ads response cache: middleware", () => {
     const url = "/api/apple-ads/campaigns?days=30&case=hit";
     const first = fakeRes();
     let nextCalls = 0;
+
     mw(req("GET", url), first.res, () => {
       nextCalls++;
     });
@@ -105,6 +113,7 @@ describe("ads response cache: middleware", () => {
     assert.equal(first.state.headers["X-Cache"], "MISS");
 
     const second = fakeRes();
+
     mw(req("GET", url), second.res, () => {
       nextCalls++;
     });
@@ -115,11 +124,13 @@ describe("ads response cache: middleware", () => {
 
   it("keys entries per URL and per user", () => {
     const a = fakeRes();
+
     mw(req("GET", "/api/apple-ads/campaigns?case=url-a"), a.res, () => {});
     a.res.json({ v: "a" });
 
     const otherUrl = fakeRes();
     let nextCalls = 0;
+
     mw(req("GET", "/api/apple-ads/campaigns?case=url-b"), otherUrl.res, () => {
       nextCalls++;
     });
@@ -127,6 +138,7 @@ describe("ads response cache: middleware", () => {
     assert.equal(otherUrl.state.headers["X-Cache"], undefined);
 
     const otherUser = fakeRes();
+
     mw(
       req("GET", "/api/apple-ads/campaigns?case=url-a", { userId: "u2", teamId: "t1" }),
       otherUser.res,
@@ -141,6 +153,7 @@ describe("ads response cache: middleware", () => {
   it("never caches error responses", () => {
     const url = "/api/apple-ads/campaigns?case=err";
     const failing = fakeRes();
+
     mw(req("GET", url), failing.res, () => {});
     failing.res.statusCode = 500;
     failing.res.json({ error: "boom" });
@@ -148,6 +161,7 @@ describe("ads response cache: middleware", () => {
 
     const retry = fakeRes();
     let nextCalls = 0;
+
     mw(req("GET", url), retry.res, () => {
       nextCalls++;
     });
@@ -158,11 +172,13 @@ describe("ads response cache: middleware", () => {
   it("successful mutations invalidate the team's cached reads", () => {
     const url = "/api/apple-ads/campaigns?case=invalidate";
     const primed = fakeRes();
+
     mw(req("GET", url), primed.res, () => {});
     primed.res.json({ campaigns: [] });
 
     const mutating = fakeRes();
     let nextCalls = 0;
+
     mw(req("POST", "/api/apple-ads/campaigns"), mutating.res, () => {
       nextCalls++;
     });
@@ -170,6 +186,7 @@ describe("ads response cache: middleware", () => {
     mutating.res.finish(200);
 
     const after = fakeRes();
+
     mw(req("GET", url), after.res, () => {
       nextCalls++;
     });
@@ -180,15 +197,18 @@ describe("ads response cache: middleware", () => {
   it("failed mutations keep the cache", () => {
     const url = "/api/apple-ads/campaigns?case=keep";
     const primed = fakeRes();
+
     mw(req("GET", url), primed.res, () => {});
     primed.res.json({ campaigns: [] });
 
     const mutating = fakeRes();
+
     mw(req("POST", "/api/apple-ads/campaigns"), mutating.res, () => {});
     mutating.res.finish(500);
 
     const after = fakeRes();
     let nextCalls = 0;
+
     mw(req("GET", url), after.res, () => {
       nextCalls++;
     });
@@ -199,6 +219,7 @@ describe("ads response cache: middleware", () => {
   it("passes requests without a user straight through", () => {
     const plain = fakeRes();
     let nextCalls = 0;
+
     mw(req("GET", "/api/apple-ads/campaigns?case=anon", undefined), plain.res, () => {
       nextCalls++;
     });

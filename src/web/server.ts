@@ -56,6 +56,7 @@ const allowedOrigins = env.CORS_ORIGIN
 
 app.use((req, res, next) => {
   const p = req.path;
+
   if (
     p.startsWith("/oauth") ||
     p.startsWith("/mcp") ||
@@ -68,10 +69,13 @@ app.use((req, res, next) => {
 
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
+
       return;
     }
+
     return next();
   }
+
   cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -84,6 +88,7 @@ app.use((req, res, next) => {
 app.post("/api/billing/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const result = await handleLemonSqueezyWebhook(req.body as Buffer, req.header("x-signature") ?? undefined);
+
     res.json(result);
   } catch (err) {
     logger.warn("lemon squeezy webhook rejected", { err: String(err) });
@@ -91,7 +96,6 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), asyn
   }
 });
 
-// Raised for base64 screenshot uploads (custom product pages, review screenshots).
 app.use(express.json({ limit: "25mb" }));
 
 app.use("/api/auth", authRouter);
@@ -125,14 +129,18 @@ app.use("/oauth", oauthRouter);
 
 app.get("/internal/ipa/:token", (req, res) => {
   const ipaPath = ipaDownloadTokens.get(req.params.token as string);
+
   if (!ipaPath) {
     res.status(404).end();
+
     return;
   }
 
   ipaDownloadTokens.delete(req.params.token as string);
+
   if (!fs.existsSync(ipaPath)) {
     res.status(404).end();
+
     return;
   }
 
@@ -143,14 +151,18 @@ app.get("/internal/ipa/:token", (req, res) => {
 
 app.get("/internal/appstoreinfo/:token", (req, res) => {
   const plistPath = appStoreInfoTokens.get(req.params.token as string);
+
   if (!plistPath) {
     res.status(404).end();
+
     return;
   }
 
   appStoreInfoTokens.delete(req.params.token as string);
+
   if (!fs.existsSync(plistPath)) {
     res.status(404).end();
+
     return;
   }
 
@@ -161,6 +173,7 @@ app.get("/internal/appstoreinfo/:token", (req, res) => {
 
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.json({
     resource: `${base}/mcp`,
     authorization_servers: [base],
@@ -169,6 +182,7 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
@@ -183,15 +197,18 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 app.post("/mcp", mcpAuth, createMcpHandler());
 
 const screenshotsDir = path.join(process.cwd(), "screenshots");
+
 app.get("/screenshots-thumb/:width/*", requireAuth, serveScreenshotThumb);
 app.use("/screenshots", express.static(screenshotsDir));
 
 const ADMIN_HOST = env.ADMIN_URL ?? "https://admin.marteso.com";
+
 app.all(/^\/admin(\/.*)?$/, (req, res) => {
   res.redirect(308, ADMIN_HOST + (req.path.replace(/^\/admin/, "") || "/"));
 });
 
 const webDist = path.join(__dirname, "../../web/dist");
+
 app.use(express.static(webDist));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(webDist, "index.html"));

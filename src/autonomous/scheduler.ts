@@ -15,6 +15,7 @@ async function getSystemUserId(): Promise<string> {
     where: { role: "ADMIN" },
     orderBy: { createdAt: "asc" },
   });
+
   if (!admin) {
     throw new Error(
       "[ASOScheduler] No admin user found. Cannot run autonomous analysis without user context.",
@@ -36,6 +37,7 @@ export function initScheduler() {
     try {
       const userId = await getSystemUserId();
       const apps = await getActiveApps();
+
       logger.info(`[ASOScheduler] Processing ${apps.length} active apps`);
 
       for (const app of apps) {
@@ -44,6 +46,7 @@ export function initScheduler() {
             `[ASOScheduler] Analyzing app "${app.name}" (${app.bundleId})`,
           );
           const experiments = await brain.analyze(app.id, userId);
+
           logger.info(
             `[ASOScheduler] App "${app.name}": ${experiments.length} new experiments created`,
           );
@@ -76,6 +79,7 @@ export function initScheduler() {
           );
           const results = await evaluator.evaluatePendingExperiments(app.id);
           const successes = results.filter((r) => r.success).length;
+
           logger.info(
             `[ASOScheduler] App "${app.name}": ${results.length} evaluated, ${successes} successful`,
           );
@@ -104,6 +108,7 @@ export function initScheduler() {
       for (const app of apps) {
         try {
           const report = await generateWeeklyReport(app.id);
+
           logger.info(
             `[ASOScheduler] Weekly Report for "${app.name}":\n` +
               JSON.stringify(report, null, 2),
@@ -126,9 +131,11 @@ export function initScheduler() {
   cron.schedule("30 0 * * *", async () => {
     try {
       const expired = await expireStaleAdminGrants();
+
       if (expired > 0) {
         logger.info(`[GrantScheduler] Expired ${expired} admin Pro grant(s) past their end date`);
       }
+
     } catch (err) {
       logger.error(`[GrantScheduler] Failed to expire admin grants: ${(err as Error).message}`);
     }

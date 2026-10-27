@@ -1,28 +1,13 @@
-/**
- * Pure helpers for App Store Connect Custom Product Pages.
- *
- * This module is intentionally dependency-free so the JSON:API request shapes
- * and mapping logic can be unit-tested without ASC credentials.
- *
- * Resource hierarchy (verified against Apple docs):
- * appCustomProductPages (attrs: name, url[ro], visible)
- *  └─ appCustomProductPageVersions (attrs: deepLink, state[ro], version[ro])
- *      └─ appCustomProductPageLocalizations (attrs: locale, promotionalText)
- *          └─ appScreenshotSets → appScreenshots (standard screenshot model)
- */
-
 export const CPP_VERSION_EDITABLE_STATES = new Set(["PREPARE_FOR_SUBMISSION", "REJECTED"]);
 
 export function isEditableCppVersionState(state: string | null | undefined): boolean {
   return !!state && CPP_VERSION_EDITABLE_STATES.has(state);
 }
 
-// Apple requires an inline version + localization when creating a page (JSON:API
-// compound document): a bare create fails with 409 ENTITY_ERROR.RELATIONSHIP.REQUIRED.
 export function buildCreatePageBody(appId: string, name: string, locale: string) {
-  // Apple requires local ids in the literal '${...}' format for inline creation.
   const versionId = "${new-cpp-version}";
   const localizationId = "${new-cpp-localization}";
+
   return {
     data: {
       type: "appCustomProductPages",
@@ -58,6 +43,7 @@ export function buildUpdatePageBody(pageId: string, updates: { name?: string; vi
   const attributes: { name?: string; visible?: boolean } = {};
   if (updates.name !== undefined) attributes.name = updates.name;
   if (updates.visible !== undefined) attributes.visible = updates.visible;
+
   return { data: { type: "appCustomProductPages", id: pageId, attributes } };
 }
 
@@ -148,7 +134,6 @@ export function buildSubmitReviewSubmissionBody(submissionId: string) {
   };
 }
 
-/** Image dimensions (WxH, portrait or landscape) → ASC screenshotDisplayType. */
 export const DIMENSION_TO_DISPLAY_TYPE: Record<string, string> = {
   "1320x2868": "APP_IPHONE_67",
   "2868x1320": "APP_IPHONE_67",
@@ -187,10 +172,10 @@ export function detectDisplayTypeFromDimensions(
   height: number | undefined,
 ): string | null {
   if (!width || !height) return null;
+
   return DIMENSION_TO_DISPLAY_TYPE[`${width}x${height}`] ?? null;
 }
 
-/** Resolves an ASC imageAsset templateUrl ({w}/{h}/{c}/{f}) to a concrete URL. */
 export function buildScreenshotAssetUrl(templateUrl: string, w: number, h: number): string {
   return templateUrl
     .replace("{w}", String(w))

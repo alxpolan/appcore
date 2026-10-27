@@ -38,6 +38,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
     async ({ search, role, page, pageSize }) => {
       const where: any = {};
       if (role) where.role = role;
+
       if (search) {
         where.OR = [
           { email: { contains: search, mode: "insensitive" } },
@@ -115,6 +116,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       });
 
       if (!user) return fail("User not found.");
+
       return ok(redactSecrets(user));
     },
   );
@@ -168,6 +170,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       });
 
       let team;
+
       if (teamId) {
         await prisma.teamMember.create({ data: { teamId, userId: user.id, role: teamRole } });
         team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true, name: true } });
@@ -182,6 +185,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       }
 
       logger.info(`Admin MCP: user created ${user.email} (${user.id}) by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true, user, team });
     },
   );
@@ -212,6 +216,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       const data: any = {};
       if (email !== undefined) data.email = email;
       if (name !== undefined) data.name = name;
+
       if (role !== undefined && role !== user.role) {
         data.role = role;
         data.tokenVersion = { increment: 1 };
@@ -220,7 +225,9 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       if (Object.keys(data).length === 0) return fail("No fields to update.");
 
       const updated = await prisma.user.update({ where: { id: userId }, data, select: userSelect });
+
       logger.info(`Admin MCP: user updated ${userId} by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true, user: updated });
     },
   );
@@ -242,12 +249,14 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       if (!user) return fail("User not found.");
 
       const passwordHash = await bcrypt.hash(newPassword, 12);
+
       await prisma.user.update({
         where: { id: userId },
         data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
       logger.info(`Admin MCP: password reset for ${userId} by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true });
     },
   );
@@ -278,6 +287,7 @@ export function registerUserTools(server: McpServer, adminUserId: string | null)
       await prisma.user.delete({ where: { id: userId } });
 
       logger.info(`Admin MCP: user deleted ${user.email} (${userId}) by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true, deleted: userId });
     },
   );

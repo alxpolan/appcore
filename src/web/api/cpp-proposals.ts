@@ -72,6 +72,7 @@ cppProposalsRouter.get("/:id", requireAuth, async (req: Request, res: Response) 
     res.json({ proposal: withJob });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`cpp proposal get error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -135,6 +136,7 @@ cppProposalsRouter.post("/:id/render/stream", ...writeAuth, async (req: Request,
     });
 
     let closed = false;
+
     res.on("close", () => {
       closed = true;
     });
@@ -154,6 +156,7 @@ cppProposalsRouter.post("/:id/render/stream", ...writeAuth, async (req: Request,
     try {
       const proposal = await renderCppProposal(req.params.id as string, (event) => write(event));
       const [withJob] = await attachScreenshotJobs([proposal]);
+
       write({ result: { proposal: withJob } });
     } catch (err: any) {
       logger.error(`cpp proposal render error: ${err.message}`);
@@ -165,6 +168,7 @@ cppProposalsRouter.post("/:id/render/stream", ...writeAuth, async (req: Request,
   } catch (err: any) {
     if (!res.headersSent) {
       const status = err.message.includes("not found") ? 404 : 500;
+
       logger.error(`cpp proposal render error: ${err.message}`);
       res.status(status).json({ error: err.message });
     } else {
@@ -182,6 +186,7 @@ cppProposalsRouter.patch("/:id/captions", ...writeAuth, async (req: Request, res
     res.json({ proposal: await updateCppProposalCaptions(req.params.id as string, captions) });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`cpp proposal captions error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -203,11 +208,13 @@ cppProposalsRouter.post("/:id/apply", ...writeAuth, async (req: Request, res: Re
       asc,
       bundleId: app.bundleId,
     });
+
     const [withJob] = await attachScreenshotJobs([proposal]);
 
     res.json({ proposal: withJob });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : 500;
+
     logger.error(`cpp proposal apply error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }
@@ -221,6 +228,7 @@ cppProposalsRouter.delete("/:id", ...writeAuth, async (req: Request, res: Respon
     res.json({ ok: true });
   } catch (err: any) {
     const status = err.message.includes("not found") ? 404 : err.message.includes("stay") || err.message.includes("busy") ? 409 : 500;
+
     logger.error(`cpp proposal delete error: ${err.message}`);
     res.status(status).json({ error: err.message });
   }

@@ -85,6 +85,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
 
   if (!images || images.length === 0) {
     res.status(400).json({ error: "No images provided" });
+
     return;
   }
 
@@ -110,6 +111,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
   };
 
   const tmpDir = path.join(os.tmpdir(), `worker-frameit-${Date.now()}`);
+
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
@@ -186,7 +188,9 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       </defs>
       <rect width="${w}" height="${h}" fill="url(#bg)"/>
     </svg>`;
+
       const rendered = await sharp(Buffer.from(svg)).png().toBuffer();
+
       backgroundCache.set(key, rendered);
 
       return rendered;
@@ -219,6 +223,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       if (cached) return cached;
 
       const loaded = await loadBezelImage(device);
+
       bezelCacheByFile.set(device.bezelFile, loaded);
 
       return loaded;
@@ -256,11 +261,13 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       const device = deviceByBase.get(base)!;
       const bezel = await loadBezelCached(device);
       const layer = await renderDeviceLayer(workBufferByBase.get(base)!, device, bezel);
+
       deviceLayerByBase.set(base, layer);
     }
 
     const gravityFor = (base: string) => {
       const layout = layoutByBase.get(base) ?? "center";
+
       return layout === "top" ? "north" : layout === "bottom" ? "south" : "centre";
     };
 

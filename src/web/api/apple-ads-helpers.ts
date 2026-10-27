@@ -78,6 +78,7 @@ export async function accessibleRevenueApps(req: Request) {
     where: { teamId: req.user!.teamId, revenueCatConnectedAt: { not: null } },
     select: { id: true, bundleId: true, displayName: true, name: true },
   });
+
   if (req.user!.role === "ADMIN") return apps;
 
   const checked = await Promise.all(

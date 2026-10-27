@@ -29,16 +29,19 @@ snapshotRouter.post("/snapshot", async (req: Request, res: Response) => {
 
   if (!repoUrl || !accessToken || !appName) {
     res.status(400).json({ error: "Missing required fields" });
+
     return;
   }
 
   if (!/^https:\/\/[^\s"'`\\;<>&|$(){}[\]]+$/.test(repoUrl)) {
     res.status(400).json({ error: "Invalid repository URL" });
+
     return;
   }
 
   if (branch && !/^[a-zA-Z0-9/_.-]+$/.test(branch)) {
     res.status(400).json({ error: "Invalid branch name" });
+
     return;
   }
 
@@ -53,15 +56,17 @@ snapshotRouter.post("/snapshot", async (req: Request, res: Response) => {
     emitLog,
     finish,
   );
+
   runner.run().catch(() => {
-    /* errors are captured inside SnapshotRunner */
   });
 });
 
 snapshotRouter.get("/snapshot/:runId/stream", (req: Request, res: Response) => {
   const job = getSnapshotJob(req.params.runId as string);
+
   if (!job) {
     res.status(404).json({ error: "Unknown runId" });
+
     return;
   }
 
@@ -88,6 +93,7 @@ snapshotRouter.get("/snapshot/:runId/stream", (req: Request, res: Response) => {
   if (job.result) {
     send("result", job.result);
     if (!closed) res.end();
+
     return;
   }
 
@@ -111,6 +117,7 @@ snapshotRouter.get("/snapshot/:runId/stream", (req: Request, res: Response) => {
       }
     }
   }, 15_000);
+
   heartbeat.unref?.();
 
   req.on("close", () => {
@@ -133,6 +140,7 @@ snapshotRouter.get("/snapshot/:runId/xcresult/:filename", (req: Request, res: Re
 
   if (!RUN_ID_RE.test(runId) || !FILENAME_RE.test(filename)) {
     res.status(400).json({ error: "Invalid runId or filename" });
+
     return;
   }
 
@@ -142,15 +150,18 @@ snapshotRouter.get("/snapshot/:runId/xcresult/:filename", (req: Request, res: Re
   
   if (!resolved.startsWith(path.resolve(artifactsDir) + path.sep)) {
     res.status(400).json({ error: "Invalid path" });
+
     return;
   }
 
   if (!fs.existsSync(resolved)) {
     res.status(404).json({ error: "xcresult not found" });
+
     return;
   }
 
   const stat = fs.statSync(resolved);
+
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Length", stat.size);
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

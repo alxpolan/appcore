@@ -3,7 +3,6 @@ import { ASOMemory } from "./memory";
 import { ASOBrain } from "./brain";
 import { ASOEvaluator } from "./evaluator";
 import { ASOExecutor } from "./executor";
-//import { initScheduler, generateWeeklyReport } from "./scheduler";
 
 export { ASOMemory } from "./memory";
 export { ASOBrain } from "./brain";
@@ -22,9 +21,11 @@ export async function runOnce(
   const brain = new ASOBrain(memory);
   const executor = new ASOExecutor();
   const evaluator = new ASOEvaluator(memory);
+
   logger.info(`[Autonomous] runOnce for app ${appId} (userId: ${userId})`);
 
   const experiments = await brain.analyze(appId, userId);
+
   logger.info(`[Autonomous] Created ${experiments.length} experiments`);
   const deployed: string[] = [];
 
@@ -69,5 +70,6 @@ export async function runOnce(
   logger.info(
     `[Autonomous] runOnce complete: ${JSON.stringify(report, null, 2)}`,
   );
+
   return report;
 }

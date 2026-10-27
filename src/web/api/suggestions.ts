@@ -5,6 +5,7 @@ import { requireAuth, verifyAppOwnershipByBundleId } from "../auth";
 import type { Request, Response } from "express";
 
 export const suggestionsRouter = Router();
+
 suggestionsRouter.use(requireAuth);
 
 async function verifySuggestionAccess(req: Request, res: Response, suggestionId: string) {
@@ -21,6 +22,7 @@ async function verifySuggestionAccess(req: Request, res: Response, suggestionId:
     const app = await verifyAppOwnershipByBundleId(req, res, suggestion.appBundleId);
     if (!app) return null;
   }
+
   return suggestion;
 }
 
@@ -96,6 +98,7 @@ async function updateSuggestionStatus(req: Request, res: Response, status: "APPR
       where: { id },
       data: { status },
     });
+
     res.json({ ok: true, suggestion });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -113,6 +116,7 @@ suggestionsRouter.post("/:id/apply", async (req, res) => {
     const settings = await getEffectiveSettings(req.user!.userId);
 
     const asc = ascClientFromSettings(settings);
+
     if (!asc) {
       return res.status(400).json({ error: "App Store Connect credentials not configured." });
     }
@@ -149,10 +153,12 @@ suggestionsRouter.post("/:id/apply", async (req, res) => {
 suggestionsRouter.post("/bulk-approve", async (req, res) => {
   try {
     const { locale, bundleId } = req.body;
+
     if (!bundleId) {
       res.status(400).json({ error: "bundleId is required" });
       return;
     }
+
     const ownedApp = await verifyAppOwnershipByBundleId(req, res, bundleId);
     if (!ownedApp) return;
 
@@ -163,6 +169,7 @@ suggestionsRouter.post("/bulk-approve", async (req, res) => {
       where,
       data: { status: "APPROVED" },
     });
+
     res.json({ ok: true, count: result.count });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -185,6 +192,7 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
     if (!ownedApp) return;
 
     const asc = ascClientFromSettings(settings);
+
     if (!asc) {
       res.status(400).json({ error: "App Store Connect credentials not configured." });
       return;
@@ -195,6 +203,7 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
       confidenceScore: { gte: minConfidence },
       appBundleId: bundleId,
     };
+
     if (locale) where.locale = locale;
 
     const suggestions = await prisma.aSOSuggestion.findMany({
@@ -214,6 +223,7 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
     const byLocale = new Map<string, typeof suggestions>();
     for (const s of suggestions) {
       const group = byLocale.get(s.locale) ?? [];
+
       group.push(s);
       byLocale.set(s.locale, group);
     }
@@ -253,6 +263,7 @@ suggestionsRouter.post("/auto-apply", async (req, res) => {
           const wasApplied = result.applied.some((a: string) =>
             a.toLowerCase().includes(suggestion.type.toLowerCase()),
           );
+
           await prisma.aSOSuggestion.update({
             where: { id: suggestion.id },
             data: {

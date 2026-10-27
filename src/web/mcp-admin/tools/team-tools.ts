@@ -77,6 +77,7 @@ export function registerTeamTools(server: McpServer, adminUserId: string | null)
       });
 
       if (!team) return fail("Team not found.");
+
       return ok(redactSecrets(team));
     },
   );
@@ -115,6 +116,7 @@ export function registerTeamTools(server: McpServer, adminUserId: string | null)
       logger.info(
         `Admin MCP: team ${teamId} member ${userId} set to ${role} by ${adminUserId ?? "static-token"}`,
       );
+
       return ok({ ok: true, member });
     },
   );
@@ -134,10 +136,12 @@ export function registerTeamTools(server: McpServer, adminUserId: string | null)
         where: { teamId_userId: { teamId, userId } },
         select: { id: true },
       });
+
       if (!member) return fail("User is not a member of that team.");
 
       await prisma.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
       logger.info(`Admin MCP: removed ${userId} from team ${teamId} by ${adminUserId ?? "static-token"}`);
+
       return ok({ ok: true });
     },
   );

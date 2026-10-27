@@ -239,6 +239,7 @@ export async function setAppDefaultFromRevision(
   if (revision.job.appId !== appId) throw new Error("Revision does not belong to this app");
 
   const style = normalizeStudioStyle(revision.style);
+
   style.titleLines = [];
 
   const styles = storedShotStyles(revision.styles);
@@ -410,6 +411,7 @@ export async function updateStudioPreset(
 
   if (patch.style) {
     const merged = normalizeStudioStyle({ ...asPresetInfo(row), ...patch.style });
+
     data.bgColor1 = merged.bgColor1;
     data.bgColor2 = merged.bgColor2;
     data.textColor = merged.textColor;

@@ -374,12 +374,15 @@ export async function renderStudioRevision(args: {
       const currentTitle =
         revisionTitles[locale]?.[basename] ??
         resolveStudioTitle({ basename, locale, sublines, descriptions, fallback: fallbackTitle });
+
       const title = normalizeStudioTitle(save.titles[basename] ?? currentTitle);
       const style = normalizeStudioStyle({ ...globalStyle, ...save.styles?.[basename] });
+
       style.titleLines = titleLinesForTitle(save.titleLines?.[basename] ?? style.titleLines, title);
       const hasRaw = sourceLocale
         ? fs.existsSync(path.join(studioJobDir(args.jobId), "raw", sourceLocale, basename))
         : false;
+
       localeTitles[basename] = title;
 
       if (!hasRaw) {
@@ -417,6 +420,7 @@ export async function renderStudioRevision(args: {
 
   const totalPlanned = planned.length;
   let donePlanned = 0;
+
   args.onProgress?.({ done: 0, total: totalPlanned, locale: null, basenames: [] });
 
   const queue = new PQueue({ concurrency: workerClient.frameitSlotCount() });
@@ -470,6 +474,7 @@ export async function renderStudioRevision(args: {
 
   for (const locale of requestedLocales) {
     const current = effective.framedByLocale[locale] ?? [];
+
     framedByLocale[locale] = current.map((url) => {
       if (skippedSet.has(`${locale}/${studioBasename(url)}`)) return url;
 
@@ -520,6 +525,7 @@ export async function duplicateStudioJob(jobId: string, pusher?: string | null):
   const style =
     (await studioRevisionStyle(jobId, effective.revisionId)) ??
     normalizeStudioStyle(job.screenshotStyle ?? job.app.defaultScreenshotStyle);
+
   const titles = await studioRevisionTitles(jobId, effective.revisionId);
   const styles = effective.revisionId
     ? await studioRevisionStyles(jobId, effective.revisionId)

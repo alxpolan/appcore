@@ -36,6 +36,7 @@ describe("google ads: campaign mappings", () => {
 
   it("returns null mappings when nothing is stored", () => {
     const result = attachCampaignMappings(campaigns, []);
+
     assert.deepEqual(
       result.map((c) => c.mapping),
       [null, null],
@@ -46,6 +47,7 @@ describe("google ads: campaign mappings", () => {
     const result = attachCampaignMappings(campaigns, [
       { googleCampaignId: "999", appId: "app1", appName: "Calc", ctToken: "zzz" },
     ]);
+
     assert.equal(result.length, 2);
     assert.deepEqual(
       result.map((c) => c.mapping),
@@ -99,6 +101,7 @@ describe("google ads: aggregate apple metrics by campaign", () => {
       ],
       keys,
     );
+
     assert.deepEqual(
       [...result.entries()],
       [
@@ -116,6 +119,7 @@ describe("google ads: aggregate apple metrics by campaign", () => {
       ],
       keys,
     );
+
     assert.equal(result.size, 0);
   });
 
@@ -132,6 +136,7 @@ describe("google ads: aggregate apple metrics by campaign", () => {
       ],
       keys,
     );
+
     assert.deepEqual(result.get("111"), { downloads: 19, trials: 3, purchases: 1, proceedsUsd: 4 });
   });
 });
@@ -163,6 +168,7 @@ describe("google ads: merge campaign day metrics", () => {
       { bundleId: "b", campaign: "tok2", reportDate: new Date("2026-10-04T00:00:00Z"), territory: "XW", downloads: 3, trials: 0, purchases: 0, proceedsUsd: 0 },
       { bundleId: "b", campaign: "tok1", downloads: 99, trials: 0, purchases: 0, proceedsUsd: 0 },
     ]);
+
     assert.deepEqual([...result.entries()], [
       ["2026-10-03", 19],
       ["2026-10-04", 3],

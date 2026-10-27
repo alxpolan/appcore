@@ -10,7 +10,6 @@ export interface WebCampaignDayRow {
 
 export interface GroupedWebDayRow {
   dateStr: string;
-  /** ISO 3166-1 alpha-2 territory, or "ZZ" for unknown storefronts. */
   territory: string;
   downloads: number;
   trials: number;
@@ -43,24 +42,22 @@ export function parseWebTimeseries(body: any): WebCampaignDayRow[] {
       for (const [k, v] of Object.entries(p)) {
         if (k === "date") continue;
         const n = Number(v);
+
         if (Number.isFinite(n)) {
           value = n;
           break;
         }
       }
       const row = byDate.get(dateStr) ?? { dateStr, trials: 0, purchases: 0, proceedsUsd: 0, downloads: 0 };
+
       row[field] += value;
       byDate.set(dateStr, row);
     }
   }
+
   return [...byDate.values()].sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 }
 
-/**
- * Parses a storefront-grouped response into summed (day, territory) rows.
- * Only the field matching the response's measure key is filled, so the
- * per-metric responses merge cleanly by (day, territory).
- */
 export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
   const results: any[] = body?.results ?? [];
   const byKey = new Map<string, GroupedWebDayRow>();
@@ -75,6 +72,7 @@ export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
       for (const [k, v] of Object.entries(p)) {
         if (k === "date") continue;
         const n = Number(v);
+
         if (Number.isFinite(n)) {
           value = n;
           break;
@@ -82,10 +80,12 @@ export function parseGroupedWebTimeseries(body: any): GroupedWebDayRow[] {
       }
       const key = `${dateStr}\n${territory}`;
       const row = byKey.get(key) ?? { dateStr, territory, downloads: 0, trials: 0, proceedsUsd: 0 };
+
       row[field] += value;
       byKey.set(key, row);
     }
   }
+
   return [...byKey.values()].sort(
     (a, b) => a.dateStr.localeCompare(b.dateStr) || a.territory.localeCompare(b.territory),
   );
@@ -97,11 +97,6 @@ export interface SplitValueRow {
   value: number;
 }
 
-/**
- * Per-day unattributed remainder: total minus the grouped territory split
- * minus legacy rows the split doesn't cover, so split + legacy + remainder
- * always add up to the total. Works for downloads, trials and proceeds.
- */
 export function splitRemainderPerDay(args: {
   totalsByDate: Map<string, number>;
   split: SplitValueRow[];
@@ -127,10 +122,10 @@ export function splitRemainderPerDay(args: {
       Math.max(0, cents(total) - cents(splitByDay.get(dateStr) ?? 0) - cents(legacyUncoveredByDay.get(dateStr) ?? 0)),
     );
   }
+
   return remainder;
 }
 
-/** Storefront keys in a grouped response that have no territory mapping (for sync logs). */
 export function collectUnknownStorefrontKeys(body: any): string[] {
   const results: any[] = body?.results ?? [];
   const unknown = new Set<string>();
@@ -138,5 +133,6 @@ export function collectUnknownStorefrontKeys(body: any): string[] {
     const key = r?.group?.key != null ? String(r.group.key) : "";
     if (key && !storefrontToTerritory(key)) unknown.add(key);
   }
+
   return [...unknown].sort();
 }

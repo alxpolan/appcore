@@ -5,6 +5,7 @@ const MCP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function rejectUnauthorized(req: Request, res: Response) {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.setHeader(
     "WWW-Authenticate",
     `Bearer realm="${base}", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
@@ -14,14 +15,18 @@ function rejectUnauthorized(req: Request, res: Response) {
 
 export async function mcpAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
+
   if (!header?.startsWith("Bearer ")) {
     rejectUnauthorized(req, res);
+
     return;
   }
 
   const key = header.slice(7).trim();
+
   if (!key) {
     rejectUnauthorized(req, res);
+
     return;
   }
 
@@ -33,6 +38,7 @@ export async function mcpAuth(req: Request, res: Response, next: NextFunction) {
     if (oauthToken && Date.now() - oauthToken.createdAt.getTime() > MCP_TOKEN_TTL_MS) {
       await prisma.oAuthToken.delete({ where: { accessToken: key } }).catch(() => {});
       rejectUnauthorized(req, res);
+
       return;
     }
 
@@ -51,6 +57,7 @@ export async function mcpAuth(req: Request, res: Response, next: NextFunction) {
       if (tokenSettings?.mcpEnabled) {
         (req as any).mcpUserId = oauthToken.userId;
         next();
+
         return;
       }
     }

@@ -10,6 +10,7 @@ import { appleAdsCampaignsRouter } from "./apple-ads-campaigns";
 import { appleAdsInsightsRouter } from "./apple-ads-insights";
 
 export const appleAdsRouter = Router();
+
 appleAdsRouter.use(requireAuth);
 appleAdsRouter.use(adsResponseCache());
 
@@ -28,6 +29,7 @@ appleAdsRouter.get("/status", loadTeamSettings, async (req, res) => {
     },
     orderBy: { name: "asc" },
   });
+
   const visible =
     req.user!.role === "ADMIN"
       ? apps
@@ -96,6 +98,7 @@ appleAdsRouter.post("/connect", async (req, res) => {
     }
 
     const connectedAt = new Date();
+
     await prisma.teamSettings.upsert({
       where: { teamId },
       create: {
@@ -133,6 +136,7 @@ appleAdsRouter.get("/orgs", loadTeamSettings, async (req, res) => {
 
   try {
     const orgs = await listAppleAdsOrgs(appleAdsKeyCreds(s));
+
     res.json({ orgs });
   } catch (err: any) {
     logger.error("[apple-ads] orgs fetch error", { err: String(err?.message ?? err) });

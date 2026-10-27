@@ -62,6 +62,7 @@ export async function getAppleAdsContext(userId: string): Promise<AppleAdsMcpCon
   const teamId = await getMcpUserTeamId(userId);
   if (!teamId) return { error: "No team found for this user." };
   const settings = await prisma.teamSettings.findUnique({ where: { teamId } });
+
   if (
     !settings?.appleAdsConnectedAt ||
     !settings.appleAdsClientId ||
@@ -121,6 +122,7 @@ export async function getMcpRevenueApps(userId: string, teamId: string) {
     where: { teamId, revenueCatConnectedAt: { not: null } },
     select: { id: true, bundleId: true, displayName: true, name: true },
   });
+
   const allowedAppIds = await getMcpAllowedAppIds(userId, teamId);
 
   return allowedAppIds ? apps.filter((app) => allowedAppIds.includes(app.id)) : apps;

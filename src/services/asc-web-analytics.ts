@@ -16,14 +16,14 @@ const MEASURES = [
   "subscription-events-paidstarts",
   "proceeds",
 ];
-// Separate request: downloads must not break the proven measures above.
-// "units" = App Units (downloads), verified against the live API.
+
 const DOWNLOADS_MEASURES = ["units"];
 const GROUPED_MEASURES = {
   downloads: "totalDownloads",
   trials: "subscription-events-offerstarts-freetrial",
   proceedsUsd: "proceeds",
 } as const;
+
 type GroupedMetric = keyof typeof GROUPED_MEASURES;
 const GROUPED_METRICS = Object.keys(GROUPED_MEASURES) as GroupedMetric[];
 const CHUNK_DAYS = 90;
@@ -60,11 +60,14 @@ async function postTimeseries(cookies: string, adamId: string, payload: Record<s
     if (err?.response?.status === 401 || err?.response?.status === 403) {
       throw new WebSessionExpiredError(`ASC web session rejected (${err.response.status})`);
     }
+
     throw err;
   }
+
   if (typeof res.data === "string") {
     throw new WebSessionExpiredError("ASC web session returned a login page instead of JSON");
   }
+
   return res.data;
 }
 
@@ -83,10 +86,10 @@ export async function fetchWebCampaignSeries(
     dimensionFilters: [{ dimensionKey: "campaignId", optionKeys: [ctToken] }],
     frequency: "day",
   });
+
   return parseWebTimeseries(data);
 }
 
-/** Per-storefront split for one measure; unknown storefront keys are reported for mapping. */
 export async function fetchWebCampaignGroupedSeries(
   cookies: string,
   adamId: string,
@@ -103,18 +106,23 @@ export async function fetchWebCampaignGroupedSeries(
     frequency: "day",
     group: { metric: measure, dimension: "storefront", limit: 0, rank: "DESCENDING" },
   });
+
   return { rows: parseGroupedWebTimeseries(data), unknownKeys: collectUnknownStorefrontKeys(data) };
 }
 
 export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: number }> {
   const cookies = env.ASC_ANALYTICS_COOKIES;
+
   if (!cookies) {
     logger.info("[asc-web-analytics] ASC_ANALYTICS_COOKIES not configured — skipping");
+
     return { tokens: 0, rows: 0 };
   }
+
   const mappings = await prisma.googleAdsCampaignToken.findMany({
     include: { app: { select: { bundleId: true, trackId: true } } },
   });
+
   const byApp = new Map<string, { bundleId: string; trackId: string; tokens: string[] }>();
   for (const m of mappings) {
     if (!m.app?.trackId) continue;
@@ -123,6 +131,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
       trackId: String(m.app.trackId),
       tokens: [],
     };
+
     if (!e.tokens.includes(m.ctToken)) e.tokens.push(m.ctToken);
     byApp.set(m.app.bundleId, e);
   }
@@ -130,6 +139,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
   let tokens = 0;
   let rows = 0;
   const today = new Date();
+
   today.setUTCHours(0, 0, 0, 0);
   for (const { bundleId, trackId, tokens: ctTokens } of byApp.values()) {
     for (const ctToken of ctTokens) {
@@ -137,13 +147,16 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
         where: { bundleId, campaign: ctToken, territory: WEB_METRICS_TERRITORY },
         select: { reportDate: true },
       });
+
       const daysBack = existing ? 14 : 365;
       const chunks: [string, string][] = [];
       for (let end = new Date(today); end > new Date(today.getTime() - daysBack * 86_400_000); ) {
         const start = new Date(Math.max(end.getTime() - CHUNK_DAYS * 86_400_000, today.getTime() - daysBack * 86_400_000));
+
         chunks.push([fmtDay(start), fmtDay(end)]);
         end = new Date(start.getTime() - 86_400_000);
       }
+
       tokens++;
       for (const [start, end] of chunks) {
         const days = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end);
@@ -152,18 +165,17 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
           trials: new Map(days.map((d) => [d.dateStr, Math.round(d.trials)])),
           proceedsUsd: new Map(days.map((d) => [d.dateStr, d.proceedsUsd])),
         };
+
         let unitsOk = false;
         try {
           const dlDays = await fetchWebCampaignSeries(cookies, trackId, ctToken, start, end, DOWNLOADS_MEASURES);
+
           totalsByMetric.downloads = new Map(dlDays.map((d) => [d.dateStr, Math.round(d.downloads)]));
           unitsOk = true;
         } catch (err) {
           logger.warn(`[asc-web-analytics] ${bundleId} ${ctToken}: downloads fetch failed (${(err as Error)?.message})`);
         }
-        // Territory splits; XW keeps only the unattributed remainder per
-        // metric so split + remainder add up to the total. A metric's stored
-        // values are only rewritten when its grouped request succeeded,
-        // otherwise the previous values stay (stale but never double-counted).
+
         const splitOk: Record<GroupedMetric, boolean> = { downloads: false, trials: false, proceedsUsd: false };
         const splitByKey = new Map<string, GroupedWebDayRow>();
         for (const metric of GROUPED_METRICS) {
@@ -176,11 +188,13 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
               end,
               GROUPED_MEASURES[metric],
             );
+
             if (grouped.unknownKeys.length > 0) {
               logger.warn(
                 `[asc-web-analytics] ${bundleId} ${ctToken}: unknown storefronts ${grouped.unknownKeys.join(",")}`,
               );
             }
+
             for (const r of grouped.rows) {
               const key = `${r.dateStr}\n${r.territory}`;
               const e = splitByKey.get(key) ?? {
@@ -190,11 +204,13 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
                 trials: 0,
                 proceedsUsd: 0,
               };
+
               e.downloads += r.downloads;
               e.trials += r.trials;
               e.proceedsUsd += r.proceedsUsd;
               splitByKey.set(key, e);
             }
+
             splitOk[metric] = true;
           } catch (err) {
             logger.warn(
@@ -202,11 +218,14 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
             );
           }
         }
+
         const splitColumns = GROUPED_METRICS.filter((m) => splitOk[m]);
         const totalsOk: Record<GroupedMetric, boolean> = { downloads: unitsOk, trials: true, proceedsUsd: true };
         const remainderMetrics = GROUPED_METRICS.filter((m) => splitOk[m] && totalsOk[m]);
+
         if (splitColumns.length > 0) {
           const toStore = [...splitByKey.values()].filter((r) => splitColumns.some((c) => r[c] > 0));
+
           if (toStore.length > 0) {
             rows += await storeCampaignMetricsSegment(
               bundleId,
@@ -223,11 +242,13 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
             );
           }
         }
+
         const remainderByMetric: Record<GroupedMetric, Map<string, number>> = {
           downloads: new Map(),
           trials: new Map(),
           proceedsUsd: new Map(),
         };
+
         if (remainderMetrics.length > 0) {
           const legacy = await prisma.appStoreCampaignMetrics.findMany({
             where: {
@@ -238,6 +259,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
             },
             select: { reportDate: true, territory: true, downloads: true, trials: true, proceedsUsd: true },
           });
+
           for (const metric of remainderMetrics) {
             remainderByMetric[metric] = splitRemainderPerDay({
               totalsByDate: totalsByMetric[metric],
@@ -250,6 +272,7 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
             });
           }
         }
+
         const storeRows: CampaignMetricsRow[] = days.map((d) => ({
           dateStr: d.dateStr,
           campaign: ctToken,
@@ -261,8 +284,10 @@ export async function syncWebCampaignMetrics(): Promise<{ tokens: number; rows: 
         }));
         rows += await storeCampaignMetricsSegment(bundleId, storeRows, ["purchases", ...remainderMetrics]);
       }
+
       logger.info(`[asc-web-analytics] ${bundleId} ${ctToken}: web metrics synced`);
     }
   }
+
   return { tokens, rows };
 }

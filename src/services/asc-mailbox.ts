@@ -24,6 +24,7 @@ export function extractInviteLink(html: string, text: string): string | null {
     const acceptAnchor = $("a")
       .filter((_, el) => /accept/i.test($(el).text()))
       .first();
+
     const href = acceptAnchor.attr("href");
     if (href && href.startsWith("http")) return href;
   }
@@ -38,6 +39,7 @@ export function extractInviteLink(html: string, text: string): string | null {
 
 function findNonAssetLink(source: string): string | null {
   const matches = source.match(/https:\/\/appstoreconnect\.apple\.com\/[^\s"'<>]+/gi) ?? [];
+
   return matches.find((url) => !ASSET_LINK.test(url)) ?? null;
 }
 
@@ -65,6 +67,7 @@ function newClient(): ImapFlow {
 export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
   if (!isConfigured()) {
     logger.warn("[asc-mailbox] Not configured (ASC_MAILBOX_IMAP_* missing) — skipping");
+
     return [];
   }
 
@@ -86,8 +89,10 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
         logger.error(`[asc-mailbox] Could not open folder "${folder.path}" — skipping it`, { err });
         continue;
       }
+
       try {
         const uids = (await client.search({ all: true }, { uid: true })) || [];
+
         scanned.push(`${folder.path}: ${uids.length}`);
         if (uids.length === 0) continue;
 
@@ -121,6 +126,7 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
               uid,
             });
           });
+
           if (folder.path !== PROCESSED_FOLDER) {
             await client.messageMove(uid, PROCESSED_FOLDER, { uid: true }).catch((err) => {
               logger.error(`[asc-mailbox] Failed to move message to ${PROCESSED_FOLDER}`, {
@@ -142,5 +148,6 @@ export async function fetchNewInvites(): Promise<AscInviteEmail[]> {
   logger.info(
     `[asc-mailbox] Scanned ${scanned.length} folder(s) (${scanned.join(", ")}) — ${found.length} invite candidate(s)`,
   );
+
   return found;
 }

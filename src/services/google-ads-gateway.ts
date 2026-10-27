@@ -8,8 +8,8 @@ function stringifyDetail(value: unknown): string {
     const json = JSON.stringify(value);
     if (json && json !== "{}" && json !== "[]") return json.slice(0, 2000);
   } catch {
-    /* fall through */
   }
+
   return String(value);
 }
 

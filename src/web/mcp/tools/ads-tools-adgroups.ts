@@ -88,6 +88,7 @@ export function registerAppleAdsAdGroupTools(server: McpServer, userId: string) 
           cpaGoal,
           status,
         });
+
         const keywordCount = await createAppleAdsKeywordsBulk(ctx.creds, campaignId, adGroup.id, currency.toUpperCase(), keywords ?? []);
         const negatives = await createAppleAdsNegativeKeywordsBulk(ctx.creds, campaignId, adGroup.id, negativeKeywords ?? []);
 

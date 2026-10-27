@@ -27,6 +27,7 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
 
     const range = resolveGoogleAdsRange(req.query);
     const end = new Date(`${range.endDate}T00:00:00Z`);
+
     end.setUTCDate(end.getUTCDate() + 1);
     const rows = await prisma.appStoreCampaignMetrics.findMany({
       where: {
@@ -47,6 +48,7 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
         proceedsUsd: r.proceedsUsd,
       })),
     );
+
     const totals = days.reduce(
       (acc, d) => ({
         downloads: acc.downloads + d.downloads,
@@ -56,10 +58,9 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       }),
       { downloads: 0, purchases: 0, trials: 0, proceedsUsd: 0 },
     );
-    // Central app-level trial reference (same population Apple Ads uses per
-    // product): what a paid purchase is worth on this app, so campaigns
-    // without conversions yet can still value their trials.
+
     const priceStart = new Date();
+
     priceStart.setUTCDate(priceStart.getUTCDate() - 90);
     priceStart.setUTCHours(0, 0, 0, 0);
     const priceSample = await prisma.revenueCatTransaction.aggregate({
@@ -71,6 +72,7 @@ googleAdsAppleRevenueRouter.get("/campaigns/:campaignId/apple-revenue", loadTeam
       },
       _avg: { proceedsUsd: true },
     });
+
     const avgTrialValueUsd = Math.round((priceSample._avg.proceedsUsd ?? 0) * 100) / 100;
 
     res.json({
@@ -113,6 +115,7 @@ googleAdsAppleRevenueRouter.patch("/campaigns/:campaignId/apple-mapping", async 
       create: { teamId, googleCampaignId: req.params.campaignId as string, appId, ctToken: ctToken.trim() },
       update: { appId, ctToken: ctToken.trim() },
     });
+
     res.json({ mapping: { appId: mapping.appId, ctToken: mapping.ctToken } });
   } catch (err: any) {
     logger.error("[google-ads] apple mapping save error", { err: String(err?.message ?? err) });

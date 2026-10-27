@@ -9,6 +9,7 @@ export function isCapacitorProject(repoDir: string): boolean {
   const pkg = readPackageJson(repoDir);
   const deps = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) };
   if (deps["@capacitor/core"] || deps["@capacitor/ios"]) return true;
+
   return CONFIG_FILES.some((f) => fs.existsSync(path.join(repoDir, f)));
 }
 

@@ -3,6 +3,7 @@ import { env, prisma, logger } from "../../config";
 
 function rejectUnauthorized(req: Request, res: Response) {
   const base = `${req.protocol}://${req.get("host")}`;
+
   res.setHeader(
     "WWW-Authenticate",
     `Bearer realm="${base}", resource_metadata="${base}/.well-known/oauth-protected-resource-admin"`,
@@ -12,14 +13,18 @@ function rejectUnauthorized(req: Request, res: Response) {
 
 export async function adminMcpAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
+
   if (!header?.startsWith("Bearer ")) {
     rejectUnauthorized(req, res);
+
     return;
   }
 
   const key = header.slice(7).trim();
+
   if (!key) {
     rejectUnauthorized(req, res);
+
     return;
   }
 
@@ -33,6 +38,7 @@ export async function adminMcpAuth(req: Request, res: Response, next: NextFuncti
       
       (req as any).adminMcpUserId = admin?.id ?? null;
       next();
+
       return;
     }
 
@@ -49,6 +55,7 @@ export async function adminMcpAuth(req: Request, res: Response, next: NextFuncti
       if (user?.role === "ADMIN") {
         (req as any).adminMcpUserId = user.id;
         next();
+
         return;
       }
     }

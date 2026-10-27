@@ -53,6 +53,7 @@ async function runConcurrent<T>(items: T[], concurrency: number, worker: (item: 
     Array.from({ length: workerCount }, async () => {
       while (nextIndex < items.length) {
         const index = nextIndex;
+
         nextIndex += 1;
         await worker(items[index]);
       }
@@ -78,6 +79,7 @@ export async function generateScreenshotSublines(
       },
     },
   });
+
   if (!app) throw new Error(`App ${appId} not found`);
 
   const preferredMetadata = pickPreferredMetadata(latestVersionMetadata);
@@ -170,6 +172,7 @@ export async function generateScreenshotSublines(
       `[SublineGen] Generated sublines for ${Object.keys(sublines).length} locale(s), ` +
         `${Object.keys(descriptions).length} screenshot(s)`,
     );
+
     return sublines;
   } catch (err: any) {
     logger.error(`[SublineGen] AI call failed: ${err.message}`);

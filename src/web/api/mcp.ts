@@ -5,6 +5,7 @@ import { prisma } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamRole, loadTeamSettings, requireWriteRole } from "../auth";
 
 export const mcpRouter = Router();
+
 mcpRouter.use(requireAuth, loadTeamRole, requireWriteRole);
 
 mcpRouter.get("/config", loadTeamSettings, async (req, res) => {

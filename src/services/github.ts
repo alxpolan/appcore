@@ -44,6 +44,7 @@ export function getGitHubOAuthUrl(state: string): string {
     scope: "repo",
     state,
   });
+
   return `https://github.com/login/oauth/authorize?${params}`;
 }
 
@@ -59,6 +60,7 @@ export async function exchangeGitHubCode(code: string): Promise<string> {
   );
 
   if (data.error) throw new Error(`GitHub OAuth error: ${data.error_description ?? data.error}`);
+
   return data.access_token as string;
 }
 
@@ -66,6 +68,7 @@ export async function getGitHubUser(accessToken: string): Promise<GitHubUser> {
   const { data } = await axios.get<GitHubUser>(`${GITHUB_API}/user`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+
   return data;
 }
 
@@ -77,10 +80,12 @@ export async function listUserRepos(accessToken: string): Promise<GitHubRepo[]> 
       headers: { Authorization: `Bearer ${accessToken}` },
       params: { per_page: 100, page, sort: "updated", direction: "desc" },
     });
+
     repos.push(...data);
     if (data.length < 100) break;
     page++;
   }
+
   return repos;
 }
 
@@ -100,12 +105,12 @@ export async function listRepoBranches(accessToken: string, repoFullName: string
   });
 
   const names: string[] = [];
-  // Repos with many branches paginate; without this only the first 100 would be offered.
   for (let page = 1; page <= 5; page++) {
     const { data } = await axios.get<{ name: string }[]>(
       `${GITHUB_API}/repos/${repoFullName}/branches?per_page=100&page=${page}`,
       { headers },
     );
+
     names.push(...data.map((b) => b.name));
     if (data.length < 100) break;
   }
@@ -130,6 +135,7 @@ export async function listRepoDirs(accessToken: string, repoFullName: string): P
 
     for (const dir of subdirs) {
       results.push(dir.path);
+
       if (depth < MAX_DIR_DEPTH) {
         await walk(dir.path, depth + 1);
       }
@@ -138,6 +144,7 @@ export async function listRepoDirs(accessToken: string, repoFullName: string): P
 
   await walk("", 1);
   results.sort();
+
   return results;
 }
 
@@ -149,6 +156,7 @@ export async function detectFramework(accessToken: string, repoFullName: string)
     const { data } = await axios.get<{ type: string; name: string }[]>(`${GITHUB_API}/repos/${repoFullName}/contents`, {
       headers,
     });
+
     const names = new Set(data.map((e) => e.name));
 
     if (["capacitor.config.ts", "capacitor.config.js", "capacitor.config.json"].some((f) => names.has(f))) {
@@ -165,16 +173,17 @@ export async function detectFramework(accessToken: string, repoFullName: string)
           pkgFile.content && pkgFile.encoding === "base64"
             ? Buffer.from(pkgFile.content, "base64").toString("utf8")
             : "";
+
         const pkg = JSON.parse(raw || "{}");
         const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
         if (deps["@capacitor/core"] || deps["@capacitor/ios"]) return "capacitor";
       } catch {
-        /* fall through to native */
       }
     }
   } catch (err: any) {
     logger.warn(`detectFramework failed for ${repoFullName}: ${err.message}`);
   }
+
   return "native";
 }
 
@@ -197,7 +206,9 @@ export async function createWebhook(accessToken: string, repoFullName: string, s
     },
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
+
   logger.info(`Created GitHub webhook ${data.id} on ${repoFullName}`);
+
   return data.id as number;
 }
 
@@ -218,6 +229,7 @@ export async function deleteWebhook(accessToken: string, repoFullName: string, w
 
 export function verifyWebhookSignature(payload: string | Buffer, signature: string, secret: string): boolean {
   const expected = "sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex");
+
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
@@ -233,11 +245,13 @@ export async function linkRepoToApp(
     where: { userId },
     orderBy: { createdAt: "asc" },
   });
+
   const settings = membership
     ? await prisma.teamSettings.findUnique({
         where: { teamId: membership.teamId },
       })
     : null;
+
   if (!settings?.githubAccessToken) throw new Error("GitHub not connected. Connect in Settings first.");
 
   const token = decryptNullable(settings.githubAccessToken)!;
@@ -276,11 +290,13 @@ export async function unlinkRepoFromApp(userId: string, appId: string): Promise<
     where: { userId },
     orderBy: { createdAt: "asc" },
   });
+
   const settings = membership
     ? await prisma.teamSettings.findUnique({
         where: { teamId: membership.teamId },
       })
     : null;
+
   const app = await prisma.app.findUnique({ where: { id: appId } });
   if (!app) throw new Error("App not found");
 

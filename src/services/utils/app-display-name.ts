@@ -19,9 +19,11 @@ export async function guessCleanAppName(rawTitle: string): Promise<string | null
 
     const clean = response.content.trim().replace(/^["']|["']$/g, "");
     if (!clean || clean.length > 60) return null;
+
     return clean;
   } catch (err) {
-    logger.warn("Failed to guess clean app name", { err: String(err), rawTitle });
+    logger.warn("Failed to guess clean app name", { err: String(err) });
+
     return null;
   }
 }
@@ -31,6 +33,6 @@ export async function fillDisplayNameFromTitle(appId: string, rawTitle: string):
   if (!clean || clean === rawTitle) return;
 
   await prisma.app
-    .updateMany({ where: { id: appId, displayName: null }, data: { displayName: clean } })
+    .updateMany({ where: { appId, displayName: null }, data: { displayName: clean } })
     .catch((err) => logger.warn(`Failed to save guessed display name for app ${appId}`, { err: String(err) }));
 }

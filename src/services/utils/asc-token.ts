@@ -14,6 +14,7 @@ export function generateASCToken(params: ASCTokenParams): string {
     params.issuerId === INDIVIDUAL_KEY_ISSUER
       ? { sub: "user", iat: now, exp: now + 20 * 60, aud: "appstoreconnect-v1" }
       : { iss: params.issuerId, iat: now, exp: now + 20 * 60, aud: "appstoreconnect-v1" };
+
   return jwt.sign(claims, params.privateKey, {
     algorithm: "ES256",
     header: { alg: "ES256", kid: params.keyId, typ: "JWT" },

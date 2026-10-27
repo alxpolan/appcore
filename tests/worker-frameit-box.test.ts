@@ -56,6 +56,7 @@ describe("studio complex: failed batches name their shots", () => {
   it("includes locale and basenames in worker errors", async () => {
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "studio-complex-"));
     const srcDir = path.join(tmpDir, "raw", "en-US");
+
     await fs.promises.mkdir(srcDir, { recursive: true });
     await fs.promises.writeFile(path.join(srcDir, "01_home.png"), "raw-bytes");
 

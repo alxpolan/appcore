@@ -44,8 +44,10 @@ export async function handler([job]: Job<TranslateLocalizationData>[]): Promise<
 
   try {
     const asc = await ascClientForTeam(teamId);
+
     if (!asc) {
       logger.warn(`[BOSS] ASC credentials missing for team ${teamId}, aborting translation`);
+
       return;
     }
 
@@ -60,10 +62,12 @@ export async function handler([job]: Job<TranslateLocalizationData>[]): Promise<
     }
 
     const persistedUpdates: Record<string, string> = {};
+
     if (appInfoLocalizationId && Object.keys(appInfoUpdates).length > 0) {
       await asc.updateAppInfoLocalization(appInfoLocalizationId, appInfoUpdates);
       Object.assign(persistedUpdates, appInfoUpdates);
     }
+
     if (versionLocalizationId && Object.keys(versionUpdates).length > 0) {
       await asc.updateVersionLocalization(versionLocalizationId, versionUpdates);
       Object.assign(persistedUpdates, versionUpdates);

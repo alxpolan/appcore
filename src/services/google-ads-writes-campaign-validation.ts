@@ -130,6 +130,7 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
     if (value == null) return undefined;
 
     const percent = Number(value);
+
     if (!Number.isFinite(percent) || percent < -90 || percent > 900) {
       throw new Error(`${label} must be a percent between -90 and 900`);
     }
@@ -235,11 +236,13 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
         k?.bidAmount == null
           ? undefined
           : asPositiveNumber(k.bidAmount, `${label} keyword ${i + 1} bidAmount`);
+
       if (manualBids && bidAmount == null) throw new Error(`${label} keyword ${i + 1}: bidAmount is required for MANUAL_CPC`);
 
       return { text, matchType: asMatchType(k?.matchType, `${label} keyword ${i + 1} matchType`), bidAmount };
     });
   };
+
   const negativesOf = (list: any, label: string): GoogleAdsCreateNegativeInput[] => {
     if (list == null) return [];
     if (!Array.isArray(list)) throw new Error(`${label} negativeKeywords must be an array`);
@@ -251,6 +254,7 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
       return { text, matchType: asMatchType(k?.matchType, `${label} negative keyword ${i + 1} matchType`) };
     });
   };
+
   const idsOf = (list: any, label: string): (string | number)[] => {
     if (list == null) return [];
     if (!Array.isArray(list)) throw new Error(`${label} must be an array of numeric ids`);
@@ -258,6 +262,7 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
     return list.map((v: any, i: number) => {
       const id = String(v ?? "").trim();
       if (!/^\d+$/.test(id)) throw new Error(`${label} [${i + 1}] must be a numeric id`);
+
       return id;
     });
   };
@@ -283,6 +288,7 @@ export function validateGoogleAdsCreateCampaignInput(body: any): GoogleAdsCreate
       const ads = (g?.ads ?? []).map((a: any, i: number) => validateRsaInput(a, `${label} ad ${i + 1}`));
       const defaultBidAmount =
         g?.defaultBidAmount == null ? undefined : asPositiveNumber(g.defaultBidAmount, `${label} defaultBidAmount`);
+
       if (manualBids && defaultBidAmount == null) throw new Error(`${label}: defaultBidAmount is required for MANUAL_CPC`);
 
       return {

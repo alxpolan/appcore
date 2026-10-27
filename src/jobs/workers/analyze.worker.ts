@@ -22,6 +22,7 @@ export async function handler([job]: Job<AnalyzeData>[]): Promise<void> {
       analysis.subtitleSuggestions.length +
       analysis.keywordSuggestions.length +
       analysis.descriptionSuggestions.length;
+
     totalSuggestions += count;
     logger.info(`[BOSS] ${bundleId} ${locale}: ${count} suggestions`);
   }

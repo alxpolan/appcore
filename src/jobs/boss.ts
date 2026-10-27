@@ -8,23 +8,10 @@ import { QUEUE_NAME as SCRAPE_QUEUE, handler as scrapeHandler } from "./workers/
 import type { ScrapeData } from "./workers/scrape.worker";
 import { QUEUE_NAME as SYNC_ANALYTICS_QUEUE, handler as syncAnalyticsHandler } from "./workers/sync-analytics.worker";
 import type { SyncAnalyticsData } from "./workers/sync-analytics.worker";
-import {
-  QUEUE_NAME as EXTRACT_KEYWORDS_QUEUE,
-  handler as extractKeywordsHandler,
-} from "./workers/extract-keywords.worker";
-import type { ExtractKeywordsData } from "./workers/extract-keywords.worker";
-import {
-  QUEUE_NAME as DISCOVER_KEYWORDS_QUEUE,
-  handler as discoverKeywordsHandler,
-} from "./workers/discover-keywords.worker";
-import type { DiscoverKeywordsData } from "./workers/discover-keywords.worker";
-import {
-  QUEUE_NAME as DISCOVER_COMPETITORS_QUEUE,
-  handler as discoverCompetitorsHandler,
-} from "./workers/discover-competitors.worker";
-import type { DiscoverCompetitorsData } from "./workers/discover-competitors.worker";
-import { QUEUE_NAME as ANALYZE_QUEUE, handler as analyzeHandler } from "./workers/analyze.worker";
-import type { AnalyzeData } from "./workers/analyze.worker";
+import { QUEUE_NAME as EXTRACT_KEYWORDS_QUEUE } from "./workers/extract-keywords.worker";
+import { QUEUE_NAME as DISCOVER_KEYWORDS_QUEUE } from "./workers/discover-keywords.worker";
+import { QUEUE_NAME as DISCOVER_COMPETITORS_QUEUE } from "./workers/discover-competitors.worker";
+import { QUEUE_NAME as ANALYZE_QUEUE } from "./workers/analyze.worker";
 import { QUEUE_NAME as SYNC_METADATA_QUEUE, handler as syncMetadataHandler } from "./workers/sync-metadata.worker";
 import {
   QUEUE_NAME as COMPETITOR_INTEL_QUEUE,
@@ -89,11 +76,11 @@ export class BossScheduler {
       SYNC_REVENUECAT_QUEUE,
       `${SYNC_REVENUECAT_QUEUE}/dispatch`,
     ];
+
     for (const q of allQueues) {
       await this.boss.createQueue(q);
     }
 
-    // ── track-keywords ──────────────────────────────────────────────────────
     await this.boss.work(`${TRACK_KEYWORDS_QUEUE}/dispatch`, async () => {
       const teams = await loadTeamApps();
       for (const team of teams) {
@@ -104,6 +91,7 @@ export class BossScheduler {
             bundleId: app.bundleId,
             country: app.country,
           };
+
           await this.boss.send(TRACK_KEYWORDS_QUEUE, data);
           logger.info(`[BOSS] Enqueued ${TRACK_KEYWORDS_QUEUE} for ${app.bundleId}`);
         }
@@ -112,7 +100,6 @@ export class BossScheduler {
     await this.boss.work(TRACK_KEYWORDS_QUEUE, trackKeywordsHandler);
     await this.boss.schedule(`${TRACK_KEYWORDS_QUEUE}/dispatch`, "0 */12 * * *", {}, { tz: "Europe/Berlin" });
 
-    // ── scrape ──────────────────────────────────────────────────────────────
     await this.boss.work(`${SCRAPE_QUEUE}/dispatch`, async () => {
       const teams = await loadTeamApps();
       for (const team of teams) {
@@ -121,6 +108,7 @@ export class BossScheduler {
             bundleId: app.bundleId,
             country: app.country,
           };
+
           await this.boss.send(SCRAPE_QUEUE, data);
           logger.info(`[BOSS] Enqueued ${SCRAPE_QUEUE} for ${app.bundleId}`);
         }
@@ -134,7 +122,6 @@ export class BossScheduler {
       { tz: "Europe/Berlin" },
     );
 
-    // ── sync-analytics ──────────────────────────────────────────────────────
     await this.boss.work(`${SYNC_ANALYTICS_QUEUE}/dispatch`, async () => {
       const teams = await loadTeamApps();
       for (const team of teams) {
@@ -145,6 +132,7 @@ export class BossScheduler {
             bundleId: app.bundleId,
             ascAppId: app.trackId.toString(),
           };
+
           await this.boss.send(SYNC_ANALYTICS_QUEUE, data);
           logger.info(`[BOSS] Enqueued ${SYNC_ANALYTICS_QUEUE} for ${app.bundleId}`);
         }
@@ -158,120 +146,26 @@ export class BossScheduler {
       { tz: "Europe/Berlin" },
     );
 
-    // ── extract-keywords ─────────────────────────────────────────────────────
-    /*await this.boss.work(`${EXTRACT_KEYWORDS_QUEUE}/dispatch`, async () => {
-      const teams = await loadTeamApps();
-      for (const team of teams) {
-        for (const app of team.apps) {
-          const data: ExtractKeywordsData = {
-            teamId: team.id,
-            bundleId: app.bundleId,
-            country: app.country,
-          };
-          await this.boss.send(EXTRACT_KEYWORDS_QUEUE, data);
-          logger.info(`[BOSS] Enqueued ${EXTRACT_KEYWORDS_QUEUE} for ${app.bundleId}`);
-        }
-      }
-    });
-    await this.boss.work(EXTRACT_KEYWORDS_QUEUE, extractKeywordsHandler);
-    await this.boss.schedule(
-      `${EXTRACT_KEYWORDS_QUEUE}/dispatch`,
-      "0 6 * * 1",
-      {},
-      { tz: "Europe/Berlin" },
-    );*/
-
-    // ── discover-keywords ────────────────────────────────────────────────────
-    /*await this.boss.work(`${DISCOVER_KEYWORDS_QUEUE}/dispatch`, async () => {
-      const teams = await loadTeamApps();
-      for (const team of teams) {
-        for (const app of team.apps) {
-          const data: DiscoverKeywordsData = {
-            teamId: team.id,
-            bundleId: app.bundleId,
-          };
-          await this.boss.send(DISCOVER_KEYWORDS_QUEUE, data);
-          logger.info(`[BOSS] Enqueued ${DISCOVER_KEYWORDS_QUEUE} for ${app.bundleId}`);
-        }
-      }
-    });
-    await this.boss.work(DISCOVER_KEYWORDS_QUEUE, discoverKeywordsHandler);
-    await this.boss.schedule(
-      `${DISCOVER_KEYWORDS_QUEUE}/dispatch`,
-      "0 3,11,19 * * *",
-      {},
-      { tz: "Europe/Berlin" },
-    );*/
-
-    // ── discover-competitors ─────────────────────────────────────────────────
-    /*await this.boss.work(`${DISCOVER_COMPETITORS_QUEUE}/dispatch`, async () => {
-      const teams = await loadTeamApps();
-      for (const team of teams) {
-        for (const app of team.apps) {
-          const data: DiscoverCompetitorsData = {
-            bundleId: app.bundleId,
-            country: app.country,
-          };
-          await this.boss.send(DISCOVER_COMPETITORS_QUEUE, data);
-          logger.info(`[BOSS] Enqueued ${DISCOVER_COMPETITORS_QUEUE} for ${app.bundleId}`);
-        }
-      }
-    });
-    await this.boss.work(DISCOVER_COMPETITORS_QUEUE, discoverCompetitorsHandler);
-    await this.boss.schedule(
-      `${DISCOVER_COMPETITORS_QUEUE}/dispatch`,
-      "0 5 * * *",
-      {},
-      { tz: "Europe/Berlin" },
-    );*/
-
-    // ── analyze ──────────────────────────────────────────────────────────────
-    /*await this.boss.work(`${ANALYZE_QUEUE}/dispatch`, async () => {
-      const teams = await loadTeamApps();
-      for (const team of teams) {
-        for (const app of team.apps) {
-          const data: AnalyzeData = {
-            teamId: team.id,
-            bundleId: app.bundleId,
-          };
-          await this.boss.send(ANALYZE_QUEUE, data);
-          logger.info(`[BOSS] Enqueued ${ANALYZE_QUEUE} for ${app.bundleId}`);
-        }
-      }
-    });
-    await this.boss.work(ANALYZE_QUEUE, analyzeHandler);
-    await this.boss.schedule(
-      `${ANALYZE_QUEUE}/dispatch`,
-      "0 8 * * *",
-      {},
-      { tz: "Europe/Berlin" },
-    );*/
-
-    // ── sync-metadata (manual only) ─────────────────────────────────────────
     await this.boss.work(SYNC_METADATA_QUEUE, syncMetadataHandler);
-
-    // ── competitor-intel (manual only) ───────────────────────────────────────
     await this.boss.work(COMPETITOR_INTEL_QUEUE, competitorIntelHandler);
-
-    // ── translate-localization (manual only) ─────────────────────────────────
     await this.boss.work(TRANSLATE_LOCALIZATION_QUEUE, translateLocalizationHandler);
-
-    // ── asc-mailbox (auto-accept App Store Connect team invites) ─────────────
     await this.boss.work(ASC_MAILBOX_QUEUE, ascMailboxHandler);
+
     if (env.ASC_MAILBOX_IMAP_HOST) {
       await this.boss.schedule(ASC_MAILBOX_QUEUE, "*/2 * * * *", {}, { tz: "Europe/Berlin" });
     } else {
       logger.info(`[BOSS] ${ASC_MAILBOX_QUEUE} not scheduled — ASC_MAILBOX_IMAP_HOST not configured`);
     }
 
-    // ── sync-revenuecat ──────────────────────────────────────────────────────
     await this.boss.work(`${SYNC_REVENUECAT_QUEUE}/dispatch`, async () => {
       const apps = await prisma.app.findMany({
         where: { isOwnApp: true, revenueCatConnectedAt: { not: null } },
         select: { bundleId: true },
       });
+
       for (const app of apps) {
         const data: SyncRevenueCatData = { bundleId: app.bundleId };
+
         await this.boss.send(SYNC_REVENUECAT_QUEUE, data);
         logger.info(`[BOSS] Enqueued ${SYNC_REVENUECAT_QUEUE} for ${app.bundleId}`);
       }
@@ -279,10 +173,9 @@ export class BossScheduler {
     await this.boss.work(SYNC_REVENUECAT_QUEUE, syncRevenueCatHandler);
     await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "0 3 * * *", {}, { tz: "Europe/Berlin" });
 
-    // ── sync-asc-web-analytics (private timeseries: campaign trials/purchases/proceeds) ──
-    // pg-boss v12 does not auto-create queues on work() — a missing queue crashes boot.
     await this.boss.createQueue(SYNC_ASC_WEB_ANALYTICS_QUEUE);
     await this.boss.work(SYNC_ASC_WEB_ANALYTICS_QUEUE, syncAscWebAnalyticsHandler);
+
     if (env.ASC_ANALYTICS_COOKIES) {
       await this.boss.schedule(SYNC_ASC_WEB_ANALYTICS_QUEUE, "0 5,17 * * *", {}, { tz: "Europe/Berlin" });
     } else {

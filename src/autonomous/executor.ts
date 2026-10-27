@@ -17,10 +17,12 @@ export class ASOExecutor {
     }
 
     const app = experiment.app;
+
     logger.info(`[ASOExecutor] Deploying experiment ${experimentId} for app "${app.name}" (${app.bundleId})`);
 
     const settings = await getEffectiveSettings(userId);
     const asc = ascClientFromSettings(settings);
+
     if (!asc) {
       throw new Error(
         "App Store Connect credentials not configured. Set ascIssuerId / ascKeyId / ascPrivateKey in Settings.",
@@ -36,6 +38,7 @@ export class ASOExecutor {
           .split(",")
           .map((k: string) => k.trim())
           .filter(Boolean);
+
         if (experiment.toValue) kws.push(experiment.toValue);
         newMetadata = { keywords: kws.join(",") };
         break;
@@ -46,6 +49,7 @@ export class ASOExecutor {
           .map((k: string) => k.trim())
           .filter(Boolean)
           .filter((k: string) => k.toLowerCase() !== (experiment.fromValue ?? "").toLowerCase());
+
         newMetadata = { keywords: kws.join(",") };
         break;
       }
@@ -57,6 +61,7 @@ export class ASOExecutor {
           .map((k: string) =>
             k.toLowerCase() === (experiment.fromValue ?? "").toLowerCase() ? (experiment.toValue ?? k) : k,
           );
+
         newMetadata = { keywords: kws.join(",") };
         break;
       }
@@ -83,6 +88,7 @@ export class ASOExecutor {
           where: { keywordId: keyword.id, appId: app.id },
           orderBy: { trackedAt: "desc" },
         });
+
         rankBefore = latestRanking?.rank ?? null;
       }
     }

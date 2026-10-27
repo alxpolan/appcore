@@ -29,7 +29,7 @@ export async function handler([job]: Job<TrackKeywordsData>[]): Promise<void> {
       },
     },
   });
-  
+
   for (const kw of keywords) {
     previousRankings.set(
       `${kw.term}@${kw.country}`,
@@ -42,13 +42,16 @@ export async function handler([job]: Job<TrackKeywordsData>[]): Promise<void> {
     country,
     settings,
   ).trackAllKeywords();
+
   logger.info(`[BOSS] Tracked ${rankings.size} keywords for app ${bundleId}`);
 
   if (notificationService.isConfigured()) {
     for (const [key, newRank] of rankings) {
       const oldRank = previousRankings.get(key) ?? null;
+
       if (oldRank !== newRank && (oldRank !== null || newRank !== null)) {
         const [term, appCountry] = key.split("@");
+
         await keywordRankChange(term, oldRank, newRank, appCountry);
       }
     }

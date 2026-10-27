@@ -48,12 +48,14 @@ class InterceptorManager {
 
   use(fn: RequestInterceptor): number {
     this.handlers.push(fn);
+
     return this.handlers.length - 1;
   }
 
   async run(config: ResolvedRequestConfig): Promise<ResolvedRequestConfig> {
     let cfg = config;
     for (const h of this.handlers) cfg = await h(cfg);
+
     return cfg;
   }
 }
@@ -63,12 +65,14 @@ class ResponseInterceptorManager {
 
   use(fulfilled: ResponseFulfilled<any>, rejected: ResponseRejected): number {
     this.handlers.push({ fulfilled, rejected });
+
     return this.handlers.length - 1;
   }
 
   async runFulfilled<T>(response: HttpResponse<T>): Promise<HttpResponse<T>> {
     let res: HttpResponse<T> = response;
     for (const h of this.handlers) res = await h.fulfilled(res);
+
     return res;
   }
 
@@ -87,11 +91,13 @@ class ResponseInterceptorManager {
 
 function buildUrl(baseURL: string | undefined, url: string, params?: Record<string, unknown>): string {
   let full: string;
+
   if (/^https?:\/\//i.test(url)) {
     full = url;
   } else if (baseURL) {
     const base = baseURL.replace(/\/+$/, "");
     const path = url.startsWith("/") ? url : `/${url}`;
+
     full = base + path;
   } else {
     full = url;
@@ -101,6 +107,7 @@ function buildUrl(baseURL: string | undefined, url: string, params?: Record<stri
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined || v === null) continue;
+
       if (Array.isArray(v)) {
         for (const item of v) sp.append(k, String(item));
       } else {
@@ -110,44 +117,50 @@ function buildUrl(baseURL: string | undefined, url: string, params?: Record<stri
     const q = sp.toString();
     if (q) full += (full.includes("?") ? "&" : "?") + q;
   }
+
   return full;
 }
 
 function findHeader(headers: Record<string, string>, name: string): string | undefined {
   const target = name.toLowerCase();
   for (const k of Object.keys(headers)) if (k.toLowerCase() === target) return headers[k];
+
   return undefined;
 }
 
 function prepareBody(data: unknown, headers: Record<string, string>): FetchBody | undefined {
   if (data === undefined || data === null) return undefined;
+
   if (data instanceof URLSearchParams) {
     if (!findHeader(headers, "content-type")) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
+
     return data;
   }
+
   if (Buffer.isBuffer(data)) return data as unknown as FetchBody;
   if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return data as FetchBody;
   if (typeof data === "string") return data;
+
   if (!findHeader(headers, "content-type")) {
     headers["Content-Type"] = "application/json";
   }
+
   return JSON.stringify(data);
 }
 
-// Agents own a connection pool, so they must be reused across requests rather than
-// created per call. Keyed by timeout pair; the promise is cached so concurrent
-// callers share one agent instead of racing to build duplicates.
 const agentCache = new Map<string, Promise<unknown>>();
 
 function getAgent(headersTimeout: number, bodyTimeout: number): Promise<unknown> {
   const key = `${headersTimeout}:${bodyTimeout}`;
   let agent = agentCache.get(key);
+
   if (!agent) {
     agent = import("undici").then(({ Agent }) => new Agent({ headersTimeout, bodyTimeout }));
     agentCache.set(key, agent);
   }
+
   return agent;
 }
 
@@ -163,14 +176,17 @@ async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
 
   let signal = config.signal;
   let timeoutId: NodeJS.Timeout | undefined;
+
   if (config.timeout && config.timeout > 0) {
     const ctrl = new AbortController();
+
     timeoutId = setTimeout(() => ctrl.abort(), config.timeout);
     if (signal) signal.addEventListener("abort", () => ctrl.abort());
     signal = ctrl.signal;
   }
 
   let fetchInit: Record<string, unknown> = { method, headers, body: body as FetchBody | undefined, signal };
+
   if (config.headersTimeout !== undefined) {
     (fetchInit as any).dispatcher = await getAgent(config.headersTimeout, config.timeout ?? 0);
   }
@@ -181,18 +197,22 @@ async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
   } catch (err) {
     if (timeoutId) clearTimeout(timeoutId);
     const e = err as Error & { name?: string };
+
     if (e?.name === "AbortError" && config.timeout && config.timeout > 0) {
       const httpErr = new Error(`timeout of ${config.timeout}ms exceeded`) as HttpError;
+
       httpErr.code = "ECONNABORTED";
       httpErr.config = config;
       httpErr.isHttpError = true;
       throw httpErr;
     }
+
     throw err;
   }
   if (timeoutId) clearTimeout(timeoutId);
 
   const respHeaders: Record<string, string> = {};
+
   res.headers.forEach((v, k) => {
     respHeaders[k] = v;
   });
@@ -204,19 +224,23 @@ async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
     data = res.body ? Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]) : null;
   } else if (responseType === "arraybuffer") {
     const ab = await res.arrayBuffer();
+
     data = Buffer.from(ab);
   } else if (responseType === "text") {
     data = await res.text();
   } else {
     const text = await res.text();
+
     if (!text) {
       data = null;
     } else {
       const ct = (respHeaders["content-type"] ?? "").toLowerCase();
+
       if (ct.includes("application/json") || ct.includes("+json")) {
         data = JSON.parse(text);
       } else {
         const trimmed = text.trimStart();
+
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
           try {
             data = JSON.parse(text);
@@ -239,8 +263,10 @@ async function dispatch<T>(config: RequestConfig): Promise<HttpResponse<T>> {
   };
 
   const validate = config.validateStatus ?? ((s: number) => s >= 200 && s < 300);
+
   if (validate && !validate(res.status)) {
     const err = new Error(`Request failed with status code ${res.status}`) as HttpError;
+
     err.response = response;
     err.config = config;
     err.isHttpError = true;
@@ -267,9 +293,11 @@ export class HttpClient {
       ...config,
       headers: { ...(this.defaults.headers ?? {}), ...(config.headers ?? {}) },
     };
+
     const final = await this.interceptors.request.run(merged);
     try {
       const response = await dispatch<T>(final);
+
       return this.interceptors.response.runFulfilled(response);
     } catch (err) {
       return this.interceptors.response.runRejected(err);
@@ -303,6 +331,7 @@ interface DefaultClient extends HttpClient {
 }
 
 const defaultClient = new HttpClient() as DefaultClient;
+
 defaultClient.create = (config: RequestConfig = {}) => new HttpClient(config);
 
 export default defaultClient;

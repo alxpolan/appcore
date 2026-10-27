@@ -17,6 +17,7 @@ export function createAdminMcpHandler() {
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
       logger.error("Admin MCP handler error", err);
+
       if (!res.headersSent) {
         res.status(500).json({ error: "Admin MCP: Internal server error" });
       }

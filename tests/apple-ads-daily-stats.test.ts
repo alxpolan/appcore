@@ -13,6 +13,7 @@ describe("apple ads: daily stats aggregation", () => {
       ]),
       row("2", [{ date: "2026-10-01", localSpend: { amount: "3" }, impressions: 70, taps: 7, totalInstalls: 3 }]),
     ];
+
     assert.deepEqual(aggregateDailyStats(rows), [
       { date: "2026-10-01", spend: 5, impressions: 120, taps: 12, installs: 4 },
       { date: "2026-10-02", spend: 1.5, impressions: 100, taps: 10, installs: 2 },
@@ -24,6 +25,7 @@ describe("apple ads: daily stats aggregation", () => {
       row("1", [{ date: "2026-10-01", localSpend: { amount: "2" }, impressions: 50, taps: 5, totalInstalls: 1 }]),
       row("2", [{ date: "2026-10-01", localSpend: { amount: "3" }, impressions: 70, taps: 7, totalInstalls: 3 }]),
     ];
+
     assert.deepEqual(aggregateDailyStats(rows, "2"), [
       { date: "2026-10-01", spend: 3, impressions: 70, taps: 7, installs: 3 },
     ]);
@@ -38,6 +40,7 @@ describe("apple ads: daily stats aggregation", () => {
       ]),
       { metadata: { campaignId: "1" } },
     ];
+
     assert.deepEqual(aggregateDailyStats(rows), [
       { date: "2026-10-01", spend: 0, impressions: 0, taps: 0, installs: 0 },
     ]);

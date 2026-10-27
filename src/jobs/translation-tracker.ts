@@ -2,10 +2,12 @@ const active = new Map<string, Set<string>>();
 
 export function add(versionId: string, locale: string): void {
   let set = active.get(versionId);
+
   if (!set) {
     set = new Set();
     active.set(versionId, set);
   }
+
   set.add(locale);
 }
 

@@ -18,6 +18,7 @@ import {
 } from "../../services/utils/custom-product-pages";
 
 export const productPagesRouter = Router();
+
 productPagesRouter.use(requireAuth);
 
 const MAX_SCREENSHOT_BYTES = 15 * 1024 * 1024;
@@ -25,13 +26,14 @@ const MAX_SCREENSHOT_BYTES = 15 * 1024 * 1024;
 async function ascClientForUser(userId: string): Promise<AppStoreConnectClient> {
   const asc = await ascClientForUserOrNull(userId);
   if (!asc) throw new Error("App Store Connect credentials missing.");
+
   return asc;
 }
 
-/** Route params are always single strings for these routes; narrows @types/express v5's `string | string[]`. */
 function pathParam(req: Request, name: string): string {
   const value = req.params[name];
   if (typeof value !== "string" || value.length === 0) throw new Error(`Missing route param: ${name}`);
+
   return value;
 }
 
@@ -41,11 +43,13 @@ function handle(label: string, fn: (req: Request, res: Response) => Promise<void
       await fn(req, res);
     } catch (err: any) {
       const ascErrors = err?.response?.data?.errors;
+
       logger.error(`ProductPages ${label} failed`, ascErrors ?? err);
       const detail =
         ascErrors?.map((e: any) => e.detail ?? e.title).filter(Boolean).join("; ") ||
         err?.message ||
         "An error occurred. Please try again.";
+
       res.status(500).json({ error: detail, _debug: { label, ascErrors: ascErrors ?? null } });
     }
   };
@@ -87,10 +91,12 @@ function toLocalization(l: ASCCustomProductPageLocalization) {
 
 async function resolveAscAppId(req: Request, res: Response, asc: AppStoreConnectClient): Promise<string | null> {
   const app = await asc.getApp(req.bundleApp!.bundleId);
+
   if (!app) {
     res.status(404).json({ error: "App not found in App Store Connect" });
     return null;
   }
+
   return app.id;
 }
 
@@ -111,9 +117,11 @@ productPagesRouter.get(
         } catch (err) {
           logger.warn(`ProductPages: failed to list versions for page ${p.id}`, err);
         }
+
         return { ...toPage(p), versions: versions.map(toVersion) };
       }),
     );
+
     res.json({ pages: withVersions });
   }),
 );
@@ -123,12 +131,15 @@ productPagesRouter.post(
   bundleAccess("body"),
   handle("createPage", async (req, res) => {
     const { name } = req.body as { name?: string };
+
     if (!name || !name.trim()) {
       res.status(400).json({ error: "name is required" });
       return;
     }
+
     const asc = await ascClientForUser(req.user!.userId);
     const app = await asc.getApp(req.bundleApp!.bundleId);
+
     if (!app) {
       res.status(404).json({ error: "App not found in App Store Connect" });
       return;
@@ -139,11 +150,15 @@ productPagesRouter.post(
       name.trim(),
       app.attributes.primaryLocale ?? "en-US",
     );
+
     let versions = await asc.listCustomProductPageVersions(page.id).catch(() => []);
+
     if (versions.length === 0) {
       const created = await asc.createCustomProductPageVersion(page.id);
+
       versions = [created];
     }
+
     res.status(201).json({ ...toPage(page), versions: versions.sort(byVersionDesc).map(toVersion) });
   }),
 );
@@ -154,26 +169,33 @@ productPagesRouter.patch(
   handle("updatePage", async (req, res) => {
     const { name, visible } = req.body as { name?: string; visible?: boolean };
     const updates: { name?: string; visible?: boolean } = {};
+
     if (name !== undefined) {
       if (!name.trim()) {
         res.status(400).json({ error: "name must not be empty" });
         return;
       }
+
       updates.name = name.trim();
     }
+
     if (visible !== undefined) {
       if (typeof visible !== "boolean") {
         res.status(400).json({ error: "visible must be a boolean" });
         return;
       }
+
       updates.visible = visible;
     }
+
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: "nothing to update" });
       return;
     }
+
     const asc = await ascClientForUser(req.user!.userId);
     const page = await asc.updateCustomProductPage(pathParam(req, "pageId"), updates);
+
     res.json(toPage(page));
   }),
 );
@@ -183,6 +205,7 @@ productPagesRouter.delete(
   bundleAccess("query"),
   handle("deletePage", async (req, res) => {
     const asc = await ascClientForUser(req.user!.userId);
+
     await asc.deleteCustomProductPage(pathParam(req, "pageId"));
     res.json({ ok: true });
   }),
@@ -194,6 +217,7 @@ productPagesRouter.get(
   handle("listVersions", async (req, res) => {
     const asc = await ascClientForUser(req.user!.userId);
     const versions = (await asc.listCustomProductPageVersions(pathParam(req, "pageId"))).sort(byVersionDesc);
+
     res.json({ versions: versions.map(toVersion) });
   }),
 );
@@ -212,14 +236,17 @@ productPagesRouter.post(
         deepLink !== undefined
           ? await asc.updateCustomProductPageVersion(editable.id, deepLink)
           : editable;
+
       res.json({ version: toVersion(version), created: false });
       return;
     }
+
     const created = await asc.createCustomProductPageVersion(pathParam(req, "pageId"));
     const version =
       deepLink !== undefined && deepLink !== ""
         ? await asc.updateCustomProductPageVersion(created.id, deepLink)
         : created;
+
     res.status(201).json({ version: toVersion(version), created: true });
   }),
 );
@@ -229,12 +256,15 @@ productPagesRouter.patch(
   bundleAccess("body"),
   handle("updateVersion", async (req, res) => {
     const { deepLink } = req.body as { deepLink?: string };
+
     if (typeof deepLink !== "string") {
       res.status(400).json({ error: "deepLink is required" });
       return;
     }
+
     const asc = await ascClientForUser(req.user!.userId);
     const version = await asc.updateCustomProductPageVersion(pathParam(req, "versionId"), deepLink);
+
     res.json(toVersion(version));
   }),
 );
@@ -245,6 +275,7 @@ productPagesRouter.get(
   handle("listLocalizations", async (req, res) => {
     const asc = await ascClientForUser(req.user!.userId);
     const localizations = await asc.listCustomProductPageLocalizations(pathParam(req, "versionId"));
+
     localizations.sort((a, b) => a.attributes.locale.localeCompare(b.attributes.locale));
     res.json({ localizations: localizations.map(toLocalization) });
   }),
@@ -255,18 +286,22 @@ productPagesRouter.post(
   bundleAccess("body"),
   handle("createLocalization", async (req, res) => {
     const { locale } = req.body as { locale?: string };
+
     if (!locale || !locale.trim()) {
       res.status(400).json({ error: "locale is required" });
       return;
     }
+
     const asc = await ascClientForUser(req.user!.userId);
     try {
       const created = await asc.createCustomProductPageLocalization(pathParam(req, "versionId"), locale.trim());
+
       res.status(201).json(toLocalization(created));
     } catch (err: any) {
       if (String(err?.message ?? "").includes("409")) {
         const existing = await asc.listCustomProductPageLocalizations(pathParam(req, "versionId"));
         const match = existing.find((l) => l.attributes.locale === locale.trim());
+
         if (match) {
           res.json(toLocalization(match));
           return;
@@ -282,15 +317,18 @@ productPagesRouter.patch(
   bundleAccess("body"),
   handle("updateLocalization", async (req, res) => {
     const { promotionalText } = req.body as { promotionalText?: string };
+
     if (typeof promotionalText !== "string") {
       res.status(400).json({ error: "promotionalText is required" });
       return;
     }
+
     const asc = await ascClientForUser(req.user!.userId);
     const updated = await asc.updateCustomProductPageLocalization(
       pathParam(req, "localizationId"),
       promotionalText,
     );
+
     res.json(toLocalization(updated));
   }),
 );
@@ -300,6 +338,7 @@ productPagesRouter.delete(
   bundleAccess("query"),
   handle("deleteLocalization", async (req, res) => {
     const asc = await ascClientForUser(req.user!.userId);
+
     await asc.deleteCustomProductPageLocalization(pathParam(req, "localizationId"));
     res.json({ ok: true });
   }),
@@ -319,6 +358,7 @@ productPagesRouter.get(
       width: number;
       height: number;
     }> = [];
+
     for (const set of sets) {
       const items = await asc.listScreenshotsInSet(set.id);
       for (const item of items) {
@@ -352,11 +392,14 @@ productPagesRouter.post(
       fileData?: string;
       displayType?: string;
     };
+
     if (!fileName || !fileData) {
       res.status(400).json({ error: "fileName and fileData are required" });
       return;
     }
+
     const fileBytes = Buffer.from(fileData, "base64");
+
     if (fileBytes.length === 0 || fileBytes.length > MAX_SCREENSHOT_BYTES) {
       res.status(400).json({ error: `Screenshot must be a non-empty image up to 15 MB` });
       return;
@@ -365,6 +408,7 @@ productPagesRouter.post(
     let detected: string | null = null;
     try {
       const meta = await sharp(fileBytes).metadata();
+
       detected = detectDisplayTypeFromDimensions(meta.width, meta.height);
     } catch {
       res.status(400).json({ error: "fileData is not a valid image" });
@@ -372,6 +416,7 @@ productPagesRouter.post(
     }
 
     const resolvedType = displayType?.trim() || detected;
+
     if (!resolvedType) {
       res.status(400).json({
         error:
@@ -384,6 +429,7 @@ productPagesRouter.post(
     const localizationId = pathParam(req, "localizationId");
     const sets = await asc.listCustomProductPageScreenshotSets(localizationId);
     let set = sets.find((s) => s.attributes.screenshotDisplayType === resolvedType) ?? null;
+
     if (!set) {
       set = await asc.createCustomProductPageScreenshotSet(localizationId, resolvedType);
     }
@@ -392,6 +438,7 @@ productPagesRouter.post(
     const reserved = await asc.reserveScreenshot(set.id, fileName, fileBytes.length);
     for (const op of reserved.attributes.uploadOperations) {
       const chunk = fileBytes.subarray(op.offset, op.offset + op.length);
+
       await axios.put(op.url, chunk, {
         headers: Object.fromEntries(op.requestHeaders.map((h) => [h.name, h.value])),
       });
@@ -407,6 +454,7 @@ productPagesRouter.delete(
   bundleAccess("query"),
   handle("deleteScreenshot", async (req, res) => {
     const asc = await ascClientForUser(req.user!.userId);
+
     await asc.deleteScreenshot(pathParam(req, "screenshotId"));
     res.json({ ok: true });
   }),
@@ -420,11 +468,14 @@ productPagesRouter.post(
     const appId = await resolveAscAppId(req, res, asc);
     if (!appId) return;
     const version = await asc.getCustomProductPageVersion(pathParam(req, "versionId"));
+
     if (!isEditableCppVersionState(version.attributes.state)) {
       res.status(400).json({ error: `Version is ${version.attributes.state}, nothing to submit` });
       return;
     }
+
     const submissionId = await asc.submitCustomProductPageVersionForReview(appId, pathParam(req, "versionId"));
+
     res.json({ ok: true, submissionId });
   }),
 );

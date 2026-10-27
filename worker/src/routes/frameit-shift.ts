@@ -74,10 +74,12 @@ async function extractTitleLayer(
     .extract({ left: 0, top: bandY, width: work.w, height: space })
     .raw()
     .toBuffer({ resolveWithObject: true });
+
   const pure = await sharp(gradient)
     .extract({ left: 0, top: bandY, width: work.w, height: space })
     .raw()
     .toBuffer({ resolveWithObject: true });
+
   const [cr, cg, cb] = parseHexColor(textColor);
   const out = Buffer.alloc(work.w * space * 4);
 
@@ -103,6 +105,7 @@ async function extractTitleLayer(
     }
 
     const alpha = Math.abs(den) < 8 ? 0 : Math.max(0, Math.min(1, num / den));
+
     out[i * 4] = cr;
     out[i * 4 + 1] = cg;
     out[i * 4 + 2] = cb;
@@ -350,6 +353,7 @@ async function renderBoxTitle(
     if (!clip) continue;
 
     const visible = await sharp(ink.buf).extract(clip).toBuffer();
+
     placed.push({ input: visible, left: x + clip.left, top: y + clip.top });
   }
 
@@ -376,6 +380,7 @@ export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<B
     const rest = await sharp(framed)
       .extract({ left: 0, top: restY, width: work.w, height: restH })
       .toBuffer();
+
     layers.push({ input: rest, left: 0, top: restY });
   }
 
@@ -405,6 +410,7 @@ export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<B
     const titleBand = await sharp(framed)
       .extract({ left: 0, top: bandY, width: work.w, height: space })
       .toBuffer();
+
     layers.push({ input: titleBand, left: 0, top: bandY });
   }
 
@@ -442,6 +448,7 @@ export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<B
     const rest = await sharp(framed)
       .extract({ left: 0, top: restY, width: work.w, height: restH })
       .toBuffer();
+
     layers.push({ input: rest, left: 0, top: restY });
   }
 

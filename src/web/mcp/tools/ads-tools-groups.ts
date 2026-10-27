@@ -81,6 +81,7 @@ export function registerAppleAdsGroupTools(server: McpServer, userId: string) {
           where: { appId: resolved.app.id },
           _max: { sortOrder: true },
         });
+
         const group = await prisma.appleAdsCampaignGroup.create({
           data: { appId: resolved.app.id, name: clean, sortOrder: (max._max.sortOrder ?? -1) + 1 },
           select: { id: true, name: true, sortOrder: true },
@@ -116,6 +117,7 @@ export function registerAppleAdsGroupTools(server: McpServer, userId: string) {
           where: { id: groupId, appId: resolved.app.id },
           select: { id: true, name: true },
         });
+
         if (!group) return textResult(`Group not found: ${groupId}.`);
         const updated = await prisma.appleAdsCampaignGroup.update({
           where: { id: group.id },
@@ -151,6 +153,7 @@ export function registerAppleAdsGroupTools(server: McpServer, userId: string) {
           where: { id: groupId, appId: resolved.app.id },
           select: { id: true, name: true },
         });
+
         if (!group) return textResult(`Group not found: ${groupId}.`);
         await prisma.appleAdsCampaignGroup.delete({ where: { id: group.id } });
 
@@ -195,6 +198,7 @@ export function registerAppleAdsGroupTools(server: McpServer, userId: string) {
             where: { id: groupId, appId: resolved.app.id },
             select: { id: true, name: true },
           });
+
           if (!group) return textResult(`Group not found: ${groupId}.`);
           await prisma.appleAdsCampaignGroupMember.upsert({
             where: { appId_externalCampaignId: { appId: resolved.app.id, externalCampaignId: String(campaignId) } },

@@ -204,6 +204,7 @@ describe("studio style: title resolution", () => {
     "en-US": { home: "Track everything" },
     "de-DE": { home: "Tracke alles" },
   };
+
   const descriptions = { home: "Home screen" };
 
   it("prefers the requested locale subline", () => {

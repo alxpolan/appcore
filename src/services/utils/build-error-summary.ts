@@ -28,9 +28,11 @@ export async function summarizeBuildError(logs: string[], errors: string[]): Pro
       temperature: 0,
       maxTokens: 300,
     });
+
     return response.content.trim() || null;
   } catch (err) {
     logger.warn("Failed to summarize build error via AI", { error: err instanceof Error ? err.message : err });
+
     return null;
   }
 }

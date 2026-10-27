@@ -23,10 +23,12 @@ export function createSnapshotJob(runId: string): {
   finish: (result: SnapshotJobResult) => void;
 } {
   const state: SnapshotJobState = { logs: [], result: null, emitter: new EventEmitter() };
+
   state.emitter.setMaxListeners(50);
   activeJobs.set(runId, state);
 
   const cleanup = setTimeout(() => activeJobs.delete(runId), 10 * 60 * 1000);
+
   cleanup.unref?.();
 
   return {

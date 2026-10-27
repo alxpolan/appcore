@@ -40,6 +40,7 @@ appleAdsInsightsRouter.get("/campaigns/:campaignId/countries", loadTeamSettings,
     ]);
 
     const countries = mergeCountryRevenue(apple, revenue.byCampaign[req.params.campaignId as string]?.byCountry);
+
     res.json({ countries, revenueAvailable: accessibleApps.length > 0, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     countryBreakdownError(res, err, "[apple-ads] campaign country breakdown fetch error");
@@ -78,6 +79,7 @@ appleAdsInsightsRouter.get(
         revenue.byCampaign[req.params.campaignId as string]?.byKeyword[req.params.keywordId as string];
 
       const countries = mergeCountryRevenue(apple, keywordBucket?.byCountry);
+
       res.json({ countries, revenueAvailable: accessibleApps.length > 0, startDate: range.startDate, endDate: range.endDate });
     } catch (err: any) {
       countryBreakdownError(res, err, "[apple-ads] keyword country breakdown fetch error");
@@ -189,6 +191,7 @@ appleAdsInsightsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings
 
     const addedTexts = validated.keywords.map((k) => k.text);
     const addScope = validated.adGroupId ? `ad group ${validated.adGroupId}` : "campaign level";
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -218,6 +221,7 @@ appleAdsInsightsRouter.post("/campaigns/:campaignId/negatives", loadTeamSettings
       body: err?.response?.data,
     });
     const status = err?.response?.status;
+
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
 });
@@ -261,6 +265,7 @@ appleAdsInsightsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettin
     const deleted = await deleteAppleAdsNegativeKeywordsBulk(creds, req.params.campaignId as string, scopeAdGroupId, ids);
     const scope = scopeAdGroupId ? `ad group ${scopeAdGroupId}` : "campaign level";
     const texts = removedTexts.map((t) => `"${t}"`).join(", ");
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -290,6 +295,7 @@ appleAdsInsightsRouter.delete("/campaigns/:campaignId/negatives", loadTeamSettin
       body: err?.response?.data,
     });
     const status = err?.response?.status;
+
     res.status(status && status >= 400 && status < 500 ? 400 : 500).json({ error: appleWriteErrorMessage(err) });
   }
 });
@@ -306,6 +312,7 @@ appleAdsInsightsRouter.get("/campaign-revenue", loadTeamSettings, async (req, re
   try {
     const accessibleApps = await accessibleRevenueApps(req);
     const mappedOrgIds = (await listTeamAppleAdsOrgs(req.user!.teamId)).map((o) => o.orgId);
+
     res.json(await getAppleAdsCampaignRevenue(accessibleApps, mappedOrgIds, resolveAppleAdsRange(req.query)));
   } catch (err: any) {
     logger.error("[apple-ads] campaign revenue error", { err: String(err?.message ?? err) });

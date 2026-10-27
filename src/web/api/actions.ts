@@ -11,11 +11,13 @@ import { QUEUE_NAME as SYNC_METADATA_QUEUE } from "../../jobs/workers/sync-metad
 import { QUEUE_NAME as COMPETITOR_INTEL_QUEUE } from "../../jobs/workers/competitor-intel.worker";
 
 export const actionsRouter = Router();
+
 actionsRouter.use(...requireBundleAccess("body"));
 
 actionsRouter.post("/scrape", async (req, res) => {
   try {
     const app = req.bundleApp!;
+
     await bossScheduler.sendJob(SCRAPE_QUEUE, {
       bundleId: app.bundleId,
       country: app.country,
@@ -52,7 +54,9 @@ actionsRouter.post("/sync", async (req, res) => {
       });
       return;
     }
+
     const app = req.bundleApp!;
+
     await bossScheduler.sendJob(SYNC_METADATA_QUEUE, {
       teamId,
       bundleId: app.bundleId,

@@ -51,6 +51,7 @@ export async function runBuildJob(
   });
 
   let versionString: string | undefined;
+
   if (app?.teamId) {
     try {
       const { ascClientForTeam } = await import("./asc-client");
@@ -58,9 +59,12 @@ export async function runBuildJob(
 
       if (asc) {
         const ascApp = await asc.getApp(params.bundleId).catch(() => null);
+
         if (ascApp) {
           const editable = await asc.getEditableVersion(ascApp.id).catch(() => null);
+
           versionString = editable?.attributes.versionString ?? undefined;
+
           if (versionString) {
             logger.info(`[build:${appId}] Will set version to ${versionString} (from ASC editable version)`);
           }
@@ -73,6 +77,7 @@ export async function runBuildJob(
 
   const signingProfiles = parseProvisioningProfiles(app);
   const hasSigning = !!(app?.signingCertP12 && app?.signingCertPassword && signingProfiles.length > 0);
+
   if (!hasSigning) {
     logger.warn(
       `[build:${appId}] No signing credentials configured — binary build will likely fail at code-signing step`,
@@ -87,6 +92,7 @@ export async function runBuildJob(
   });
 
   const repoFullName = app?.githubRepoFullName ?? null;
+
   if (params.commitSha && repoFullName) {
     await postCommitStatus(
       params.accessToken,
@@ -116,6 +122,7 @@ export async function runBuildJob(
     for (const line of result.logs ?? []) {
       logger.info(`[build:${appId}] ${line}`);
     }
+
     for (const err of result.errors ?? []) {
       logger.error(`[build:${appId}] ERROR: ${err}`);
     }
@@ -125,6 +132,7 @@ export async function runBuildJob(
     if (result.ok && result.ipaBuilt && result.ipaBase64) {
       const buildsDir = path.join(BUILDS_BASE_DIR, params.bundleId);
       const historyDir = path.join(buildsDir, "history");
+
       await fs.promises.mkdir(historyDir, { recursive: true });
 
       const destIpa = path.join(buildsDir, "latest.ipa");
@@ -136,6 +144,7 @@ export async function runBuildJob(
 
       if (result.appStoreInfoBase64) {
         const infoBuffer = Buffer.from(result.appStoreInfoBase64, "base64");
+
         await fs.promises.writeFile(path.join(buildsDir, "latest.appstoreinfo.plist"), infoBuffer);
         await fs.promises.writeFile(historyIpa.replace(/\.ipa$/, ".appstoreinfo.plist"), infoBuffer);
       }
@@ -196,6 +205,7 @@ export async function runBuildJob(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
     logger.error(`[build:${appId}] Binary build error: ${msg}`);
     const errorSummary = await summarizeBuildError([], [msg]);
 

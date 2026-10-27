@@ -20,6 +20,7 @@ export async function handler([job]: Job<DiscoverCompetitorsData>[]): Promise<vo
 
   if (keywords.length === 0) {
     logger.info(`[BOSS] No keywords available for competitor discovery (${bundleId})`);
+
     return;
   }
 

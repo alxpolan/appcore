@@ -8,13 +8,10 @@ export interface AppleAdsAttribution {
 function numericId(value: unknown): string | null {
   if (value == null) return null;
   const s = String(value).trim();
+
   return /^\d+$/.test(s) ? s : null;
 }
 
-// RevenueCat's Apple Search Ads integration writes these as reserved
-// subscriber attributes ($appleAds*), not as a separate "apple_attribution"
-// object on the customer resource (that field was assumed, not verified, by
-// an earlier pass — it doesn't actually appear in the live API response).
 export function appleAdsCampaignAttribution(
   appleAttribution: unknown,
   attributes: unknown,

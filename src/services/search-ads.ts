@@ -38,6 +38,7 @@ export class AppleSearchAdsClient {
 
     this.client.interceptors.request.use(async (config) => {
       const token = await this.authenticate();
+
       config.headers.Authorization = `Bearer ${token}`;
 
       if (env.APPLE_ADS_ORG_ID) {

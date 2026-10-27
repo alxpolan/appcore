@@ -37,7 +37,7 @@ export interface OllamaResponse {
 const DEFAULT_OPENAI_MODEL = "gpt-5.2";
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const DEFAULT_OLLAMA_MODEL = "llama3.1:8b";
-const DEFAULT_OLLAMA_BASE_URL = env.FASTLANE_WORKER_URL?.replace("3200", "11434") ?? "http://localhost:11434"; // too lazy
+const DEFAULT_OLLAMA_BASE_URL = env.FASTLANE_WORKER_URL?.replace("3200", "11434") ?? "http://localhost:11434";
 const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_MAX_TOKENS = 4000;
 
@@ -76,18 +76,23 @@ export class AIClient {
     if (options?.provider === "openai" && this.openai) {
       return this.callOpenAI(systemPrompt, userPrompt, options);
     }
+
     if (options?.provider === "anthropic" && this.anthropic) {
       return this.callAnthropic(systemPrompt, userPrompt, options);
     }
+
     if (this.preferredProvider === "anthropic" && this.anthropic) {
       return this.callAnthropic(systemPrompt, userPrompt, options);
     }
+
     if (this.openai) {
       return this.callOpenAI(systemPrompt, userPrompt, options);
     }
+
     if (this.anthropic) {
       return this.callAnthropic(systemPrompt, userPrompt, options);
     }
+
     throw new Error("No AI provider available");
   }
 
@@ -186,6 +191,7 @@ export async function queryOllama(
 export async function isOllamaAvailable(baseUrl?: string): Promise<boolean> {
   try {
     const res = await fetch(`${ollamaUrl(baseUrl)}/api/tags`, { method: "GET" });
+
     return res.ok;
   } catch {
     return false;
@@ -196,6 +202,7 @@ export async function listOllamaModels(baseUrl?: string): Promise<string[]> {
   const res = await fetch(`${ollamaUrl(baseUrl)}/api/tags`, { method: "GET" });
   if (!res.ok) throw new Error(`Ollama tags request failed: ${res.status} ${res.statusText}`);
   const data = (await res.json()) as OllamaTagsResponse;
+
   return (data.models ?? []).map((m) => m.name);
 }
 
@@ -206,6 +213,7 @@ export async function ensureOllamaModel(model: string, baseUrl?: string): Promis
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: model }),
   });
+
   if (res.ok) return;
 
   const pullRes = await fetch(`${url}/api/pull`, {
@@ -213,6 +221,7 @@ export async function ensureOllamaModel(model: string, baseUrl?: string): Promis
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: model, stream: false }),
   });
+
   if (!pullRes.ok) {
     throw new Error(`Failed to pull Ollama model "${model}": ${pullRes.status} ${pullRes.statusText}`);
   }

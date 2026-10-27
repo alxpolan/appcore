@@ -14,10 +14,12 @@ import { googleAdsNegativesRouter } from "./google-ads-negatives";
 export { googleAdsOAuthCallbackRouter };
 
 export const googleAdsRouter = Router();
+
 googleAdsRouter.use(adsResponseCache());
 
 googleAdsRouter.get("/status", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
+
   res.json({
     connected: !googleAdsKeyMissing(s),
     customerId: s?.googleAdsCustomerId ?? null,
@@ -71,6 +73,7 @@ googleAdsRouter.post("/connect", async (req, res) => {
     }
 
     const connectedAt = new Date();
+
     await prisma.teamSettings.upsert({
       where: { teamId },
       create: {

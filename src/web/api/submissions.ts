@@ -169,11 +169,12 @@ submissionsRouter.get("/status", requireAuth, async (_req, res) => {
 submissionsRouter.get("/build-info", ...requireBundleAccess("query"), async (req, res) => {
   try {
     const bundleId = req.bundleApp!.bundleId;
+
     if (!/^[a-zA-Z0-9]+(\.[a-zA-Z0-9-]+)*$/.test(bundleId)) {
       res.status(400).json({ error: "Invalid bundleId" });
       return;
     }
-    
+
     const jsonPath = path.join(BUILDS_BASE_DIR, bundleId, "latest.json");
     const resolved = path.resolve(jsonPath);
 
@@ -181,10 +182,12 @@ submissionsRouter.get("/build-info", ...requireBundleAccess("query"), async (req
       res.status(400).json({ error: "Invalid bundleId" });
       return;
     }
+
     if (!fs.existsSync(jsonPath)) {
       res.json({ build: null });
       return;
     }
+
     const build = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
 
     let iconUrl: string | null = null;
@@ -194,12 +197,13 @@ submissionsRouter.get("/build-info", ...requireBundleAccess("query"), async (req
         `https://itunes.apple.com/lookup?bundleId=${encodeURIComponent(bundleId)}&limit=1`,
         { timeout: 5000 },
       );
+
       const result = data.results?.[0];
+
       if (result?.artworkUrl100) {
         iconUrl = (result.artworkUrl100 as string).replace("100x100bb", "200x200bb");
       }
     } catch {
-      // icon is optional
     }
 
     res.json({ build: { ...build, iconUrl } });

@@ -6,6 +6,7 @@ import { bossScheduler } from "../../jobs/boss";
 import { QUEUE_NAME as ASC_MAILBOX_QUEUE } from "../../jobs/workers/asc-mailbox.worker";
 
 export const settingsRouter = Router();
+
 settingsRouter.use(requireAuth);
 
 settingsRouter.get("/", loadTeamSettings, async (req, res) => {

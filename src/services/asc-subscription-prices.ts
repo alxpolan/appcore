@@ -22,11 +22,6 @@ export interface EqualizedPricePoint {
   currency: string | null;
 }
 
-// Price points carry proceeds in their own territory's currency, so a German
-// price point's "proceeds" is in EUR, not USD. Equalizations map one price
-// point to its equivalent in every other territory (same Apple price tier,
-// converted at Apple's FX+tax rates) - the USA entry in that set is the only
-// place to read the USD-denominated proceeds for a given price.
 export async function fetchSubscriptionPriceEqualizations(
   asc: AppStoreConnectClient,
   pricePointId: string,
@@ -39,12 +34,15 @@ export async function fetchSubscriptionPriceEqualizations(
       limit: 8000,
     },
   });
+
   const included: any[] = resp.included ?? [];
   const terrMap = new Map<string, any>(
     included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
   );
+
   return (resp.data ?? []).map((pp: any) => {
     const terrId = pp.relationships?.territory?.data?.id ?? null;
+
     return {
       id: pp.id,
       customerPrice: pp.attributes?.customerPrice ?? null,
@@ -57,6 +55,7 @@ export async function fetchSubscriptionPriceEqualizations(
 
 async function fetchUsdProceeds(asc: AppStoreConnectClient, pricePointId: string): Promise<string | null> {
   const equalizations = await fetchSubscriptionPriceEqualizations(asc, pricePointId);
+
   return equalizations.find((p) => p.territory === USD_TERRITORY)?.proceeds ?? null;
 }
 
@@ -70,18 +69,22 @@ export async function fetchSubscriptionPrices(asc: AppStoreConnectClient, subscr
       limit: 200,
     },
   });
+
   const included: any[] = resp.included ?? [];
   const terrMap = new Map<string, any>(
     included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
   );
+
   const ppMap = new Map<string, any>(
     included.filter((i: any) => i.type === "subscriptionPricePoints").map((pp: any) => [pp.id, pp]),
   );
+
   const prices = (resp.data ?? []).map((p: any) => {
     const terrId = p.relationships?.territory?.data?.id ?? null;
     const ppId = p.relationships?.subscriptionPricePoint?.data?.id ?? null;
     const terr = terrId ? terrMap.get(terrId) : null;
     const pp = ppId ? ppMap.get(ppId) : null;
+
     return {
       id: p.id,
       territory: terrId,

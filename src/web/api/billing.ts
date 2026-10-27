@@ -34,6 +34,7 @@ function intervalFromVariantId(variantId: string | null | undefined): "monthly" 
 
 function serializeSubscription(sub: Awaited<ReturnType<typeof prisma.subscription.findUnique>>) {
   if (!sub) return null;
+
   return {
     status: sub.status,
     interval: sub.interval ?? intervalFromVariantId(sub.lemonVariantId),
@@ -81,10 +82,12 @@ billingRouter.get("/", requireAuth, async (req, res) => {
 billingRouter.post("/checkout", requireAuth, async (req, res) => {
   try {
     if (!(await requireTeamAdmin(req, res))) return;
+
     if (!isConfigured()) {
       res.status(500).json({ error: "Billing is not configured" });
       return;
     }
+
     const teamId = req.user!.teamId;
     const interval = req.body?.interval as "monthly" | "yearly" | undefined;
     const variantId = interval === "yearly" ? env.LEMONSQUEEZY_VARIANT_YEARLY : env.LEMONSQUEEZY_VARIANT_MONTHLY;
@@ -98,6 +101,7 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
       where: { id: teamId },
       include: { members: { where: { role: "OWNER" }, include: { user: true }, take: 1 } },
     });
+
     const owner = team?.members[0]?.user;
 
     const payload = {
@@ -139,6 +143,7 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
       res.status(502).json({ error: "Checkout url missing" });
       return;
     }
+
     res.json({ url });
   } catch (err) {
     logger.error("checkout failed", { err });
@@ -151,10 +156,12 @@ billingRouter.post("/portal", requireAuth, async (req, res) => {
     if (!(await requireTeamAdmin(req, res))) return;
     const teamId = req.user!.teamId;
     const sub = await prisma.subscription.findUnique({ where: { teamId } });
+
     if (!sub?.customerPortalUrl) {
       res.status(404).json({ error: "No active subscription" });
       return;
     }
+
     res.json({ url: sub.customerPortalUrl });
   } catch (err) {
     logger.error("portal failed", { err });
@@ -189,6 +196,7 @@ export async function handleLemonSqueezyWebhook(rawBody: Buffer, signature: stri
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
   const sigBuf = Buffer.from(signature, "utf8");
   const expBuf = Buffer.from(expected, "utf8");
+
   if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     throw new Error("Invalid signature");
   }
@@ -219,6 +227,7 @@ export async function handleLemonSqueezyWebhook(rawBody: Buffer, signature: stri
   };
 
   const existing = await prisma.subscription.findUnique({ where: { lemonSubscriptionId } });
+
   if (existing) {
     await prisma.subscription.update({ where: { lemonSubscriptionId }, data });
   } else {

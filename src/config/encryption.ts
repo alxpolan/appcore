@@ -6,11 +6,13 @@ const ENC_PREFIX = "enc:";
 function getKey(): Buffer | null {
   const hex = process.env.ENCRYPTION_KEY;
   if (!hex) return null;
+
   if (hex.length !== 64) {
     throw new Error(
       "ENCRYPTION_KEY must be a 64-character hex string (32 bytes)",
     );
   }
+
   return Buffer.from(hex, "hex");
 }
 
@@ -24,6 +26,7 @@ export function encrypt(plaintext: string): string {
     cipher.update(plaintext, "utf8"),
     cipher.final(),
   ]);
+
   const authTag = cipher.getAuthTag();
 
   return `${ENC_PREFIX}${iv.toString("hex")}:${authTag.toString("hex")}:${ciphertext.toString("hex")}`;
@@ -44,6 +47,7 @@ export function decrypt(value: string): string {
   const ciphertext = Buffer.from(ciphertextHex, "hex");
 
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+
   decipher.setAuthTag(authTag);
 
   return decipher.update(ciphertext).toString("utf8") + decipher.final("utf8");
@@ -53,5 +57,6 @@ export function decryptNullable(
   value: string | null | undefined,
 ): string | null {
   if (!value) return null;
+
   return decrypt(value);
 }

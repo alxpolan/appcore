@@ -25,10 +25,12 @@ function validateNegativesBody(body: any): {
     if (!Array.isArray(body.keywords) || body.keywords.length === 0) {
       throw new Error("keywords must be a non-empty array");
     }
+
     const keywords = body.keywords.map((k: any, i: number) => {
       const text = String(k?.text ?? "").trim();
       if (!text) throw new Error(`keyword ${i + 1}: text is required`);
       const matchType = String(k?.matchType ?? "").toUpperCase();
+
       if (!["EXACT", "PHRASE", "BROAD"].includes(matchType)) {
         throw new Error(`keyword ${i + 1}: matchType must be one of EXACT, PHRASE, BROAD`);
       }
@@ -115,6 +117,7 @@ googleAdsNegativesRouter.post("/campaigns/:campaignId/negatives", loadTeamSettin
 
     const addedTexts = validated.keywords.map((k) => k.text);
     const addScope = validated.adGroupId ? `ad group ${validated.adGroupId}` : "campaign level";
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -180,6 +183,7 @@ googleAdsNegativesRouter.delete("/campaigns/:campaignId/negatives", loadTeamSett
     const deleted = await deleteGoogleAdsNegativeKeywords(creds, req.params.campaignId as string, scopeAdGroupId, ids);
     const scope = scopeAdGroupId ? `ad group ${scopeAdGroupId}` : "campaign level";
     const texts = removedTexts.map((t) => `"${t}"`).join(", ");
+
     await logActivity({
       ...webActor(req),
       source: "web",

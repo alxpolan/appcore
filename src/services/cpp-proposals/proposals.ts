@@ -73,6 +73,7 @@ export async function attachScreenshotJobs(proposals: CppProposal[]): Promise<Cp
           select: { id: true, commitSha: true, status: true, framedByLocale: true },
         })
       : [];
+
   const byId = new Map(jobs.map((job) => [job.id, job]));
 
   return proposals.map((proposal) => ({

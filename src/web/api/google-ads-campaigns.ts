@@ -49,6 +49,7 @@ googleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) =>
       where: { teamId: req.user!.teamId!, ...(appId ? { appId } : {}) },
       include: { app: { select: { bundleId: true } } },
     });
+
     const visible = appId
       ? filterCampaignsByApp(campaigns, stored.map((m) => m.googleCampaignId))
       : campaigns;
@@ -57,15 +58,19 @@ googleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) =>
     const appleKeys: AppleMetricsKey[] = [];
     for (const m of stored) {
       if (!visibleIds.has(m.googleCampaignId)) continue;
+
       if (
         req.user!.role !== "ADMIN" &&
         !(await memberAllowedApp(req.user!.userId, req.user!.teamId!, m.appId))
       ) {
         continue;
       }
+
       appleKeys.push({ googleCampaignId: m.googleCampaignId, bundleId: m.app.bundleId, ctToken: m.ctToken });
     }
+
     const end = new Date(`${range.endDate}T00:00:00Z`);
+
     end.setUTCDate(end.getUTCDate() + 1);
     const rows = appleKeys.length
       ? await prisma.appStoreCampaignMetrics.findMany({
@@ -87,6 +92,7 @@ googleAdsCampaignsRouter.get("/campaigns", loadTeamSettings, async (req, res) =>
       : [];
 
     const appleByCampaign = aggregateAppleMetricsByCampaign(rows, appleKeys);
+
     res.json({ campaigns: visible.map((c) => ({ ...c, apple: appleByCampaign.get(c.id) ?? null })) });
   } catch (err: any) {
     logger.error("[google-ads] campaigns fetch error", { err: String(err?.message ?? err) });
@@ -113,6 +119,7 @@ googleAdsCampaignsRouter.get("/daily", loadTeamSettings, async (req, res) => {
         where: { teamId: req.user!.teamId!, appId },
         select: { googleCampaignId: true },
       });
+
       campaignIds = stored.map((m) => m.googleCampaignId);
     }
 
@@ -121,8 +128,10 @@ googleAdsCampaignsRouter.get("/daily", loadTeamSettings, async (req, res) => {
       where: { teamId: req.user!.teamId!, ...(appId ? { appId } : {}) },
       include: { app: { select: { bundleId: true } } },
     });
+
     if (installKeys.length > 0) {
       const end = new Date(`${range.endDate}T00:00:00Z`);
+
       end.setUTCDate(end.getUTCDate() + 1);
       const metricsRows = await prisma.appStoreCampaignMetrics.findMany({
         where: {
@@ -140,9 +149,11 @@ googleAdsCampaignsRouter.get("/daily", loadTeamSettings, async (req, res) => {
           proceedsUsd: true,
         },
       });
+
       const installsByDay = sumMergedDownloadsPerDay(metricsRows);
       for (const d of days) d.installs = installsByDay.get(d.date) ?? 0;
     }
+
     res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     logger.error("[google-ads] daily stats fetch error", { err: String(err?.message ?? err) });
@@ -176,6 +187,7 @@ googleAdsCampaignsRouter.get("/campaign-mappings", loadTeamSettings, async (req,
       ) {
         continue;
       }
+
       mappings.push({
         googleCampaignId: m.googleCampaignId,
         appId: m.appId,
@@ -213,6 +225,7 @@ googleAdsCampaignsRouter.post("/campaigns", loadTeamSettings, async (req, res) =
     const created = await createGoogleAdsCampaignFull(googleAdsCreds(s), input);
 
     const keywordCount = created.adGroups.reduce((n, g) => n + g.keywords.length, 0);
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -292,6 +305,7 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/daily-spend", loadTeamSetti
   try {
     const range = resolveGoogleAdsRange(req.query);
     const days = await getGoogleAdsCampaignDailySpend(googleAdsCreds(s), req.params.campaignId as string, range);
+
     res.json({ days, startDate: range.startDate, endDate: range.endDate });
   } catch (err: any) {
     logger.error("[google-ads] campaign daily spend fetch error", { err: String(err?.message ?? err) });
@@ -315,18 +329,21 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
       req.params.campaignId as string,
       range,
     );
-    // Apple revenue per country (per-territory rows; the XW remainder is
-    // unattributed and not shown per country).
+
     const mapping = await prisma.googleAdsCampaignToken.findUnique({
       where: { teamId_googleCampaignId: { teamId: req.user!.teamId!, googleCampaignId: req.params.campaignId as string } },
       include: { app: { select: { bundleId: true } } },
     });
+
     const revenueAllowed =
       !!mapping &&
       (req.user!.role === "ADMIN" || (await memberAllowedApp(req.user!.userId, req.user!.teamId!, mapping.appId)));
+
     const revenueByTerritory = new Map<string, { installs: number; trials: number; proceedsUsd: number }>();
+
     if (revenueAllowed && mapping) {
       const end = new Date(`${range.endDate}T00:00:00Z`);
+
       end.setUTCDate(end.getUTCDate() + 1);
       const rows = await prisma.appStoreCampaignMetrics.findMany({
         where: {
@@ -337,8 +354,10 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
         },
         select: { territory: true, downloads: true, trials: true, proceedsUsd: true },
       });
+
       for (const r of rows) {
         const e = revenueByTerritory.get(r.territory) ?? { installs: 0, trials: 0, proceedsUsd: 0 };
+
         e.installs += r.downloads;
         e.trials += r.trials;
         e.proceedsUsd += r.proceedsUsd;
@@ -349,6 +368,7 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/countries", loadTeamSetting
     res.json({
       countries: countries.map((c) => {
         const e = revenueByTerritory.get(c.countryOrRegion);
+
         return {
           ...c,
           installs: revenueAllowed ? (e?.installs ?? 0) : null,
@@ -394,6 +414,7 @@ googleAdsCampaignsRouter.patch("/campaigns/:campaignId/status", loadTeamSettings
     const verb = status === "ENABLED" ? "Published" : "Paused";
     const target = prev?.name ? `"${prev.name}" (${updated.id})` : `campaign ${updated.id}`;
     const transition = prev?.status ? `: ${prev.status} → ${status}` : "";
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -425,6 +446,7 @@ googleAdsCampaignsRouter.get("/campaigns/:campaignId/bidding", loadTeamSettings,
     }
 
     const bidding = await getGoogleAdsCampaignBidding(googleAdsCreds(s), req.params.campaignId as string);
+
     res.json({ bidding });
   } catch (err: any) {
     logger.error("[google-ads] campaign bidding fetch error", { err: String(err?.message ?? err) });
@@ -466,6 +488,7 @@ googleAdsCampaignsRouter.patch("/campaigns/:campaignId/bidding", loadTeamSetting
 
     const campaignId = req.params.campaignId as string;
     const before = await bestEffort(() => getGoogleAdsCampaignBidding(googleAdsCreds(s), campaignId));
+
     await updateGoogleAdsCampaign(googleAdsCreds(s), campaignId, {
       biddingStrategy: body.biddingStrategy,
       cpcBidCeiling: body.cpcBidCeiling,
@@ -473,6 +496,7 @@ googleAdsCampaignsRouter.patch("/campaigns/:campaignId/bidding", loadTeamSetting
       targetRoas: body.targetRoas,
     });
     const bidding = await getGoogleAdsCampaignBidding(googleAdsCreds(s), campaignId);
+
     await logActivity({
       ...webActor(req),
       source: "web",
@@ -508,6 +532,7 @@ googleAdsCampaignsRouter.delete("/campaigns/:campaignId", loadTeamSettings, asyn
     const prev = before?.find((c) => String(c.id) === String(req.params.campaignId));
 
     const deleted = await deleteGoogleAdsCampaign(creds, req.params.campaignId as string);
+
     await logActivity({
       ...webActor(req),
       source: "web",

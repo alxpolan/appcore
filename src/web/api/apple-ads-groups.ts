@@ -12,6 +12,7 @@ appleAdsGroupsRouter.get("/campaign-groups", bundleAccess("query", "bundleId"), 
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true, name: true, sortOrder: true },
     });
+
     res.json({ groups });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -28,10 +29,12 @@ appleAdsGroupsRouter.post("/campaign-groups", bundleAccess("body", "bundleId"), 
       where: { appId: ownApp.id },
       _max: { sortOrder: true },
     });
+
     const group = await prisma.appleAdsCampaignGroup.create({
       data: { appId: ownApp.id, name, sortOrder: (max._max.sortOrder ?? -1) + 1 },
       select: { id: true, name: true, sortOrder: true },
     });
+
     res.json({ group });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -81,6 +84,7 @@ appleAdsGroupsRouter.patch("/campaign-groups/:id", async (req, res) => {
       data,
       select: { id: true, name: true, sortOrder: true },
     });
+
     res.json({ group: updated });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -109,6 +113,7 @@ appleAdsGroupsRouter.put("/campaigns/:campaignId/group", bundleAccess("body", "b
         where: { id: groupId, appId: ownApp.id },
         select: { id: true },
       });
+
       if (!group) return res.status(404).json({ error: "Group not found" });
 
       await prisma.appleAdsCampaignGroupMember.upsert({

@@ -30,6 +30,7 @@ export class KeywordTracker {
 
     if (!this.searchAds) {
       logger.debug("Search Ads not configured, skipping popularity fetch");
+
       return this.searchAdsPopularity;
     }
 
@@ -39,11 +40,15 @@ export class KeywordTracker {
         where: { bundleId: this.bundleId },
         select: { trackId: true },
       });
+
       const ascAppId = ownApp?.trackId?.toString() ?? "";
+
       if (!ascAppId) {
         logger.debug("No trackId for app, skipping Search Ads popularity fetch");
+
         return this.searchAdsPopularity;
       }
+
       const keywords = await this.searchAds.getTargetingKeywords(ascAppId, 200);
 
       for (const kw of keywords) {
@@ -75,6 +80,7 @@ export class KeywordTracker {
     );
 
     logger.info(`Added/verified ${normalized.length} keywords for tracking`);
+
     return normalized.length;
   }
 
@@ -82,12 +88,15 @@ export class KeywordTracker {
     const keyword = await prisma.keyword.findUnique({
       where: { term_country: { term: keywordTerm, country } },
     });
+
     if (!keyword) {
       logger.warn(`Keyword "${keywordTerm}" not found in database`);
+
       return null;
     }
 
     const normalizedLanguage = normalizeLanguage(keyword.language, country);
+
     if (normalizedLanguage !== keyword.language) {
       await prisma.keyword.update({
         where: { id: keyword.id },
@@ -124,6 +133,7 @@ export class KeywordTracker {
 
     if (!ownApp) {
       logger.warn("Own app not in database yet");
+
       return null;
     }
 
@@ -153,6 +163,7 @@ export class KeywordTracker {
     }
 
     logger.info(`Keyword "${keywordTerm}": our rank = ${rank ?? "not ranked"}`);
+
     return rank;
   }
 
@@ -170,6 +181,7 @@ export class KeywordTracker {
 
       for (const keyword of keywords) {
         const rank = await this.trackKeywordRanking(keyword.term, keyword.country);
+
         rankings.set(`${keyword.term}@${keyword.country}`, rank);
 
         await new Promise((r) => setTimeout(r, 1500));
@@ -188,11 +200,13 @@ export class KeywordTracker {
     days = 30,
   ): Promise<Array<{ date: Date; rank: number | null; appName: string }>> {
     const since = new Date();
+
     since.setDate(since.getDate() - days);
 
     const keyword = await prisma.keyword.findFirst({
       where: { term: keywordTerm },
     });
+
     if (!keyword) return [];
 
     const rankings = await prisma.keywordRanking.findMany({
@@ -223,6 +237,7 @@ export class KeywordTracker {
     const ownApp = await prisma.app.findUnique({
       where: { bundleId: this.bundleId },
     });
+
     if (!ownApp) return [];
 
     const keywords = await prisma.keyword.findMany({

@@ -3,6 +3,7 @@ import { prisma } from "../../config";
 import { requireAuth } from "../auth";
 
 export const activityRouter = Router();
+
 activityRouter.use(requireAuth);
 
 function parseDetails(details: string | null): unknown {
@@ -14,7 +15,6 @@ function parseDetails(details: string | null): unknown {
   }
 }
 
-// GET /api/activity?source=mcp&q=campaign&action=ads.&from=..&to=..&limit=50&offset=0
 activityRouter.get("/", async (req, res) => {
   const teamId = req.user!.teamId;
   const { source, action, q, from, to, entityType, entityId } = req.query;
@@ -26,8 +26,10 @@ activityRouter.get("/", async (req, res) => {
   if (typeof entityType === "string" && entityType.trim() !== "") where.entityType = entityType.trim();
   if (typeof entityId === "string" && entityId.trim() !== "") where.entityId = entityId.trim();
   if (typeof action === "string" && action.trim() !== "") where.action = { contains: action.trim() };
+
   if (typeof q === "string" && q.trim() !== "") {
     const needle = q.trim();
+
     where.OR = [
       { summary: { contains: needle } },
       { action: { contains: needle } },
@@ -35,10 +37,12 @@ activityRouter.get("/", async (req, res) => {
       { entityId: { contains: needle } },
     ];
   }
+
   if (typeof from === "string" && from !== "") {
     const date = new Date(from);
     if (!Number.isNaN(date.getTime())) where.createdAt = { ...(where.createdAt ?? {}), gte: date };
   }
+
   if (typeof to === "string" && to !== "") {
     const date = new Date(to);
     if (!Number.isNaN(date.getTime())) where.createdAt = { ...(where.createdAt ?? {}), lte: date };
@@ -66,5 +70,6 @@ activityRouter.get("/", async (req, res) => {
       },
     }),
   ]);
+
   res.json({ entries: entries.map((e) => ({ ...e, details: parseDetails(e.details) })), total });
 });

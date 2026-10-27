@@ -5,6 +5,7 @@ import { launchMailboxContext, persistSessionCookies } from "../src/services/asc
 
 async function main() {
   const profileDir = env.ASC_MAILBOX_PROFILE_DIR;
+
   fs.mkdirSync(profileDir, { recursive: true });
 
   const context = await launchMailboxContext(false);

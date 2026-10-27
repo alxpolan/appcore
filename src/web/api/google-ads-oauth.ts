@@ -44,6 +44,7 @@ googleAdsOAuthStartRouter.post("/oauth/start", async (req, res) => {
       userId: req.user!.userId!,
       customerId: normalizedCustomerId,
     });
+
     res.json({ url: buildGoogleAdsAuthUrl(state) });
   } catch (err: any) {
     logger.error("[google-ads] oauth start error", { err: String(err?.message ?? err) });
@@ -88,6 +89,7 @@ googleAdsOAuthCallbackRouter.get("/oauth/callback", async (req, res) => {
       clientSecret: env.GOOGLE_ADS_OAUTH_CLIENT_SECRET!,
       refreshToken,
     };
+
     try {
       const accessible = await googleAdsGateway(creds).listAccessibleCustomers();
 
@@ -99,6 +101,7 @@ googleAdsOAuthCallbackRouter.get("/oauth/callback", async (req, res) => {
     }
 
     const connectedAt = new Date();
+
     await prisma.teamSettings.upsert({
       where: { teamId: parsed.teamId },
       create: {

@@ -21,7 +21,6 @@ interface BuildRequest {
   signingCertP12?: string;
   signingCertPassword?: string;
   signingProvisioningProfile?: string;
-  /** One profile per bundle ID; takes precedence over the singular field above. */
   signingProvisioningProfiles?: string[];
   signingTeamId?: string;
   versionString?: string;
@@ -67,11 +66,13 @@ buildRouter.post("/build", async (req: Request, res: Response) => {
     res.status(400).json({
       error: "Missing required fields: repoUrl, accessToken, bundleId",
     });
+
     return;
   }
 
   if (branch && !/^[a-zA-Z0-9/_.-]+$/.test(branch)) {
     res.status(400).json({ error: "Invalid branch name" });
+
     return;
   }
 
@@ -95,9 +96,11 @@ buildRouter.post("/build", async (req: Request, res: Response) => {
 
     let resolvedScheme = gymScheme;
     const configFile = findConfigFile(workDir);
+
     if (configFile) {
       try {
         const cfg = JSON.parse(fs.readFileSync(configFile, "utf8"))?._config ?? {};
+
         if (cfg.scheme) {
           resolvedScheme = cfg.scheme;
           logs.push(`[config] Using scheme from config.json: ${resolvedScheme}`);
@@ -138,7 +141,6 @@ buildRouter.post("/build", async (req: Request, res: Response) => {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
-      // ignore
     }
   }
 });

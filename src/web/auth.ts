@@ -49,6 +49,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export async function loadTeamRole(req: Request, _res: Response, next: NextFunction) {
   if (req.user!.role === "ADMIN") {
     req.teamRole = "OWNER";
+
     return next();
   }
 
@@ -59,6 +60,7 @@ export async function loadTeamRole(req: Request, _res: Response, next: NextFunct
       },
       select: { role: true },
     });
+
     req.teamRole = (member?.role as TeamRoleName | undefined) ?? null;
   } catch {
     req.teamRole = null;
@@ -71,18 +73,23 @@ const WRITE_ROLES = new Set<TeamRoleName>(["OWNER", "ADMIN", "MEMBER"]);
 export function requireWriteRole(req: Request, res: Response, next: NextFunction) {
   if (!MUTATING_METHODS.has(req.method)) return next();
   if (req.user?.role === "ADMIN") return next();
+
   if (!req.teamRole || !WRITE_ROLES.has(req.teamRole)) {
     res.status(403).json({ error: "You do not have permission to perform this action" });
+
     return;
   }
+
   next();
 }
 
 export function demoGuard(req: Request, res: Response, next: NextFunction) {
   if (req.user?.isDemo && MUTATING_METHODS.has(req.method)) {
     res.json({ ok: true });
+
     return;
   }
+
   next();
 }
 
@@ -100,18 +107,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   if (!rawToken) {
     res.status(401).json({ error: "Unauthorized" });
+
     return;
   }
+
   let decoded: JwtPayload;
   try {
     decoded = verifyToken(rawToken);
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
+
     return;
   }
 
   if (!decoded.userId || !decoded.email || !decoded.role || !decoded.teamId) {
     res.status(401).json({ error: "Invalid token claims" });
+
     return;
   }
 
@@ -123,11 +134,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     if (!dbUser) {
       res.status(401).json({ error: "Unauthorized" });
+
       return;
     }
 
     if (decoded.tokenVersion !== dbUser.tokenVersion) {
       res.status(401).json({ error: "Token has been invalidated" });
+
       return;
     }
 
@@ -157,6 +170,7 @@ export function bundleAccess(source: "params" | "query" | "body" = "query", para
 
     if (!bundleId) {
       res.status(400).json({ error: `${paramName} required` });
+
       return;
     }
 
@@ -171,8 +185,10 @@ export function bundleAccess(source: "params" | "query" | "body" = "query", para
 export function appAccess(source: "params" | "query" | "body" = "query", paramName = "appId") {
   return async (req: Request, res: Response, next: NextFunction) => {
     const appId = req[source]?.[paramName] as string | undefined;
+
     if (!appId) {
       res.status(400).json({ error: `${paramName} required` });
+
       return;
     }
 
@@ -199,43 +215,59 @@ export async function memberAllowedApp(userId: string, teamId: string, appId: st
   if (!member) return false;
   if (member.role === "OWNER" || member.role === "ADMIN") return true;
   if (member.appAccess.length === 0) return true;
+
   return member.appAccess.some((a) => a.appId === appId);
 }
 
 export async function verifyAppOwnership(req: Request, res: Response, appId: string) {
   const app = await prisma.app.findUnique({ where: { id: appId } });
+
   if (!app) {
     res.status(404).json({ error: "App not found" });
+
     return null;
   }
 
   if (req.user!.role === "ADMIN") return app;
+
   if (!app.teamId || app.teamId !== req.user!.teamId) {
     res.status(403).json({ error: "Not authorized" });
+
     return null;
   }
+
   if (!(await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id))) {
     res.status(403).json({ error: "Not authorized" });
+
     return null;
   }
+
   return app;
 }
 
 export async function verifyAppOwnershipByBundleId(req: Request, res: Response, bundleId: string) {
   const app = await prisma.app.findUnique({ where: { bundleId } });
+
   if (!app) {
     res.status(404).json({ error: "App not found" });
+
     return null;
   }
+
   if (req.user!.role === "ADMIN") return app;
+
   if (!app.teamId || app.teamId !== req.user!.teamId) {
     res.status(403).json({ error: "Not authorized" });
+
     return null;
   }
+
   if (!(await memberAllowedApp(req.user!.userId, req.user!.teamId, app.id))) {
     res.status(403).json({ error: "Not authorized" });
+
     return null;
   }
+
   return app;
 }
 
@@ -251,8 +283,10 @@ export async function requireTeamAdmin(req: Request, res: Response): Promise<boo
 
   if (!member || (member.role !== "OWNER" && member.role !== "ADMIN")) {
     res.status(403).json({ error: "Team admin role required" });
+
     return false;
   }
+
   return true;
 }
 
@@ -263,8 +297,10 @@ export async function loadVersionInBundle(res: Response, versionId: string, bund
 
   if (!version) {
     res.status(404).json({ error: "Version not found" });
+
     return null;
   }
+
   return version;
 }
 
@@ -277,12 +313,15 @@ export async function loadVersionLocalizationInBundle(
     kind === "appInfo"
       ? { appInfoLocalizationId: ascLocalizationId, version: { bundleId } }
       : { versionLocalizationId: ascLocalizationId, version: { bundleId } };
+
   const localization = await prisma.appStoreVersionLocalization.findFirst({ where });
 
   if (!localization) {
     res.status(404).json({ error: "Localization not found" });
+
     return null;
   }
+
   return localization;
 }
 
@@ -293,12 +332,15 @@ export async function verifyTeamMemberBelongsToTeam(req: Request, res: Response,
 
   if (!member) {
     res.status(404).json({ error: "Member not found" });
+
     return null;
   }
 
   if (req.user!.role !== "ADMIN" && member.teamId !== req.user!.teamId) {
     res.status(403).json({ error: "Not authorized" });
+
     return null;
   }
+
   return member;
 }

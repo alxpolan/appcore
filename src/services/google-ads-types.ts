@@ -85,7 +85,6 @@ export interface GoogleAdsMutationOperation {
     | "asset"
     | "campaign_asset";
   operation: "create" | "update" | "remove";
-  /** Remove operations carry the bare resource name string, matching the API's `remove` field. */
   resource: Record<string, any> | string;
 }
 
