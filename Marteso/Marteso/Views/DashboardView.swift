@@ -2,12 +2,14 @@ import SwiftUI
 import Charts
 
 struct DashboardView: View {
-    let bundleId: String?
+    @Binding var bundleId: String?
+    let apps: [AppItem]
 
     @State private var dashboard: DashboardData?
     @State private var downloads: DownloadsData?
     @State private var isLoading = true
     @State private var error: String?
+    @State private var showAllApps = false
 
     var body: some View {
         NavigationStack {
@@ -21,9 +23,22 @@ struct DashboardView: View {
                 }
             }
             .navigationTitle("Dashboard")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    appPicker
+                }
+            }
             .refreshable { await loadData() }
         }
-        .task(id: bundleId) { await loadData() }
+        .task(id: [bundleId, showAllApps ? "all" : "single"]) { await loadData() }
+    }
+
+    private var selectedApp: AppItem? {
+        if let bundleId {
+            return apps.first { $0.bundleId == bundleId }
+        }
+
+        return nil
     }
 
     @ViewBuilder
@@ -34,11 +49,11 @@ struct DashboardView: View {
                     appInfoCard(app)
                 }
 
-                statsGrid(data.stats)
-
                 if let downloads, !downloads.byDay.isEmpty {
                     downloadsChart(downloads.byDay)
                 }
+
+                quickLinks
 
                 if !data.recentSuggestions.isEmpty {
                     recentSuggestionsSection(data.recentSuggestions)
@@ -48,18 +63,60 @@ struct DashboardView: View {
         }
     }
 
+    private var appPicker: some View {
+        Menu {
+            Button {
+                showAllApps = true
+            } label: {
+                HStack {
+                    Text("All Apps")
+                    if showAllApps {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            ForEach(apps) { app in
+                Button {
+                    showAllApps = false
+                    bundleId = app.bundleId
+                } label: {
+                    HStack {
+                        Text(app.displayNameOrName)
+                        if !showAllApps && app.bundleId == bundleId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if !showAllApps {
+                    AppIconView(url: selectedApp?.iconUrl, size: 28)
+                }
+                Text(showAllApps ? "All Apps" : (selectedApp?.displayNameOrName ?? "Select app"))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Image(systemName: "chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: .capsule)
+        }
+    }
+
     @ViewBuilder
     private func appInfoCard(_ app: AppInfo) -> some View {
         HStack(spacing: 16) {
             AppIconView(url: app.iconUrl, size: 64)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(app.name)
+                Text(app.displayNameOrName)
                     .font(.title3)
                     .fontWeight(.bold)
-                Text(app.bundleId)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 if let rating = app.rating {
                     HStack(spacing: 6) {
@@ -80,19 +137,6 @@ struct DashboardView: View {
         }
         .padding()
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
-    }
-
-    @ViewBuilder
-    private func statsGrid(_ stats: Stats) -> some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible()),
-            GridItem(.flexible())
-        ], spacing: 12) {
-            StatCard(title: "Keywords", value: "\(stats.keywords)", icon: "key.fill", color: .blue)
-            StatCard(title: "Rankings", value: "\(stats.rankings)", icon: "chart.bar.fill", color: .green)
-            StatCard(title: "Pending", value: "\(stats.pendingSuggestions)", icon: "lightbulb.fill", color: .orange)
-            StatCard(title: "Applied", value: "\(stats.appliedSuggestions)", icon: "checkmark.seal.fill", color: .purple)
-        }
     }
 
     private struct DownloadChartDay: Identifiable {
@@ -189,6 +233,36 @@ struct DashboardView: View {
         }
         .padding()
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
+    }
+
+    private var quickLinks: some View {
+        HStack(spacing: 12) {
+            NavigationLink(destination: AdsView(bundleId: bundleId)) {
+                quickLinkCard(title: "Ads", icon: "megaphone.fill", color: .orange)
+            }
+            NavigationLink(destination: BuildsView(bundleId: bundleId, apps: apps)) {
+                quickLinkCard(title: "Builds", icon: "hammer.fill", color: .blue)
+            }
+            NavigationLink(destination: ScreenshotsView(bundleId: bundleId, apps: apps)) {
+                quickLinkCard(title: "Shots", icon: "photo.stack.fill", color: .purple)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func quickLinkCard(title: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 
     @ViewBuilder
@@ -329,18 +403,28 @@ struct DashboardView: View {
     }
 
     private func loadData() async {
-        guard bundleId != nil else { isLoading = false; return }
+        guard bundleId != nil || (showAllApps && !apps.isEmpty) else { isLoading = false; return }
         isLoading = true
         error = nil
         do {
-            async let dashResult = APIService.shared.getDashboard(bundleId: bundleId)
-            async let downloadResult = APIService.shared.getDownloads(bundleId: bundleId, days: 14)
-            let (dash, dl) = try await (dashResult, downloadResult)
-            dashboard = dash
-            downloads = dl
+            if showAllApps && !apps.isEmpty {
+                let (dash, dl) = try await loadAggregate()
+                dashboard = dash
+                downloads = dl
+            } else {
+                async let dashResult = APIService.shared.getDashboard(bundleId: bundleId)
+                async let downloadResult = APIService.shared.getDownloads(bundleId: bundleId, days: 14)
+                let (dash, dl) = try await (dashResult, downloadResult)
+                dashboard = dash
+                downloads = dl
+            }
         } catch {
             self.error = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func loadAggregate() async throws -> (DashboardData, DownloadsData) {
+        try await APIService.shared.getAllDashboard(days: 14)
     }
 }

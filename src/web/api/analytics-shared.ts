@@ -82,6 +82,223 @@ export function revenueCatGapWhere(bundleId: string, gapStart: Date) {
   };
 }
 
+export interface AnalyticsDayRow {
+  reportDate: Date;
+  country: string;
+  downloads: number;
+  updates: number;
+  proceeds: number;
+  impressions: number;
+  pageViews: number;
+  taps: number;
+  sessions: number;
+}
+
+export interface AnalyticsProceedsRow {
+  reportDate: Date;
+  proceedsUsd: number;
+}
+
+export interface AnalyticsSourceRow {
+  reportDate: Date;
+  sourceType: string;
+  _sum: { counts: number | null };
+}
+
+export interface AnalyticsInstallDeletionRow {
+  reportDate: Date;
+  event: string;
+  counts: number;
+}
+
+export interface AnalyticsRevenueCatRow {
+  occurredAt: Date;
+  proceedsUsd: number;
+}
+
+export interface DownloadsBreakdownInput {
+  rows: AnalyticsDayRow[];
+  purchaseRows: AnalyticsProceedsRow[];
+  sourceRows: AnalyticsSourceRow[];
+  installDeletionRows: AnalyticsInstallDeletionRow[];
+  rcRows: AnalyticsRevenueCatRow[];
+}
+
+export function buildDownloadsBreakdown(input: DownloadsBreakdownInput) {
+  const { rows, purchaseRows, sourceRows, installDeletionRows, rcRows } = input;
+
+  type DayEntry = {
+    date: string;
+    downloads: number;
+    updates: number;
+    proceeds: number;
+    impressions: number;
+    pageViews: number;
+    taps: number;
+    sessions: number;
+    installs: number;
+    deletions: number;
+  };
+
+  type CountryEntry = {
+    downloads: number;
+    impressions: number;
+    pageViews: number;
+    taps: number;
+  };
+
+  const byDayMap: Record<string, DayEntry> = {};
+  const byCountryMap: Record<string, CountryEntry> = {};
+
+  for (const r of rows) {
+    const key = r.reportDate.toISOString().slice(0, 10);
+    const day = (byDayMap[key] ??= {
+      date: key,
+      downloads: 0,
+      updates: 0,
+      proceeds: 0,
+      impressions: 0,
+      pageViews: 0,
+      taps: 0,
+      sessions: 0,
+      installs: 0,
+      deletions: 0,
+    });
+
+    day.downloads += r.downloads;
+    day.updates += r.updates;
+    day.proceeds += r.proceeds;
+    day.impressions += r.impressions;
+    day.pageViews += r.pageViews;
+    day.taps += r.taps;
+    day.sessions += r.sessions;
+
+    const c = (byCountryMap[r.country] ??= {
+      downloads: 0,
+      impressions: 0,
+      pageViews: 0,
+      taps: 0,
+    });
+
+    c.downloads += r.downloads;
+    c.impressions += r.impressions;
+    c.pageViews += r.pageViews;
+    c.taps += r.taps;
+  }
+
+  for (const p of purchaseRows) {
+    const key = p.reportDate.toISOString().slice(0, 10);
+    const day = (byDayMap[key] ??= {
+      date: key,
+      downloads: 0,
+      updates: 0,
+      proceeds: 0,
+      impressions: 0,
+      pageViews: 0,
+      taps: 0,
+      sessions: 0,
+      installs: 0,
+      deletions: 0,
+    });
+
+    day.proceeds += p.proceedsUsd;
+  }
+
+  for (const r of rcRows) {
+    const key = r.occurredAt.toISOString().slice(0, 10);
+    const day = (byDayMap[key] ??= {
+      date: key,
+      downloads: 0,
+      updates: 0,
+      proceeds: 0,
+      impressions: 0,
+      pageViews: 0,
+      taps: 0,
+      sessions: 0,
+      installs: 0,
+      deletions: 0,
+    });
+
+    day.proceeds += r.proceedsUsd;
+  }
+
+  for (const r of installDeletionRows) {
+    const key = r.reportDate.toISOString().slice(0, 10);
+    const day = (byDayMap[key] ??= {
+      date: key,
+      downloads: 0,
+      updates: 0,
+      proceeds: 0,
+      impressions: 0,
+      pageViews: 0,
+      taps: 0,
+      sessions: 0,
+      installs: 0,
+      deletions: 0,
+    });
+
+    const event = r.event.toLowerCase();
+
+    if (event.startsWith("delet")) day.deletions += r.counts;
+    else if (event.startsWith("install")) day.installs += r.counts;
+  }
+
+  const byCountry = Object.entries(byCountryMap)
+    .map(([country, v]) => ({ country, ...v }))
+    .sort((a, b) => b.downloads - a.downloads);
+
+  const topCountryCodes = byCountry.slice(0, 5).map((c) => c.country);
+  const byCountryDayMap: Record<string, Record<string, number>> = {};
+  let otherCountryTotal = 0;
+  for (const r of rows) {
+    const key = r.reportDate.toISOString().slice(0, 10);
+    const label = topCountryCodes.includes(r.country) ? r.country : "Other";
+    if (label === "Other") otherCountryTotal += r.downloads;
+    const day = (byCountryDayMap[key] ??= {});
+
+    day[label] = (day[label] ?? 0) + r.downloads;
+  }
+  const countrySeries = otherCountryTotal > 0 ? [...topCountryCodes, "Other"] : topCountryCodes;
+  const byCountryDay = Object.entries(byCountryDayMap)
+    .map(([date, values]) => {
+      const filled: Record<string, number> = {};
+      for (const c of countrySeries) filled[c] = values[c] ?? 0;
+
+      return { date, ...filled };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const bySourceDayMap: Record<string, Record<string, number>> = {};
+  const sourceTotals: Record<string, number> = {};
+  for (const r of sourceRows) {
+    const key = r.reportDate.toISOString().slice(0, 10);
+    const label = downloadSourceLabel(r.sourceType);
+    const count = r._sum.counts ?? 0;
+    const day = (bySourceDayMap[key] ??= {});
+
+    day[label] = (day[label] ?? 0) + count;
+    sourceTotals[label] = (sourceTotals[label] ?? 0) + count;
+  }
+  const presentSourceTypes = [...DOWNLOAD_SOURCE_TYPES, "Other"].filter((t) => (sourceTotals[t] ?? 0) > 0);
+  const bySourceDay = Object.entries(bySourceDayMap)
+    .map(([date, values]) => {
+      const filled: Record<string, number> = {};
+      for (const t of presentSourceTypes) filled[t] = values[t] ?? 0;
+
+      return { date, ...filled };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return {
+    byDay: Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date)),
+    byCountry,
+    countrySeries,
+    byCountryDay,
+    sourceTypes: presentSourceTypes,
+    bySourceDay,
+  };
+}
+
 export interface RevenueCatDetail {
   id: string;
   customerId: string;

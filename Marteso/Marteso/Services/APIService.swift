@@ -71,11 +71,16 @@ final class APIService {
         return try await get(path)
     }
 
+    func getAllDashboard(days: Int = 14) async throws -> (DashboardData, DownloadsData) {
+        let response: DashboardAllResponse = try await get("/api/dashboard/all?days=\(days)")
+        return (response.dashboard, response.downloads)
+    }
+
     // MARK: - Apps
 
     func getApps(bundleId: String? = nil) async throws -> [AppItem] {
-        var path = "/api/apps"
-        if let bundleId { path += "?bundleId=\(bundleId)" }
+        var path = "/api/apps?ownOnly=true"
+        if let bundleId { path += "&bundleId=\(bundleId)" }
         return try await get(path)
     }
 

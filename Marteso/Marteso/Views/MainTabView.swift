@@ -8,7 +8,7 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Dashboard", systemImage: "square.grid.2x2.fill", value: 0) {
-                DashboardView(bundleId: selectedBundleId)
+                DashboardView(bundleId: $selectedBundleId, apps: apps)
             }
 
             Tab("Analytics", systemImage: "chart.bar.fill", value: 1) {
@@ -68,7 +68,7 @@ struct MoreView: View {
                             HStack(spacing: 12) {
                                 AppIconView(url: app.iconUrl, size: 40)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.name)
+                                    Text(app.displayNameOrName)
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                         .foregroundStyle(.primary)

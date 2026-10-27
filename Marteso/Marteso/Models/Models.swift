@@ -50,7 +50,10 @@ struct AppItem: Codable, Identifiable {
     let id: String
     let bundleId: String
     let name: String
+    let displayName: String?
     let isOwnApp: Bool
+
+    var displayNameOrName: String { displayName ?? name }
     let rating: Double?
     let ratingsCount: Int?
     let iconUrl: String?
@@ -71,7 +74,10 @@ struct AscApp: Codable, Identifiable {
 
 struct AppInfo: Codable {
     let name: String
+    let displayName: String?
     let bundleId: String
+
+    var displayNameOrName: String { displayName ?? name }
     let title: String?
     let subtitle: String?
     let keywords: String?
@@ -126,6 +132,11 @@ struct DashboardData: Codable {
     let config: DashboardConfig
     let lastJob: LastJob?
     let recentSuggestions: [RecentSuggestion]
+}
+
+struct DashboardAllResponse: Codable {
+    let dashboard: DashboardData
+    let downloads: DownloadsData
 }
 
 struct TopCompetitor: Codable {
