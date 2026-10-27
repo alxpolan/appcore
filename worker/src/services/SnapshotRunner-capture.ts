@@ -255,12 +255,17 @@ export class SnapshotRunner extends SnapshotRunnerBase {
 
     try {
       const skipArgs = this.skipTesting.map((t) => `-skip-testing:"${t.replace(/[^a-zA-Z0-9 _./\-]/g, "")}"`).join(" ");
-      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO ${skipArgs} TEST_RUNNER_XCUITESTS_LANGUAGE=${lang} TEST_RUNNER_XCUITESTS_LOCALE=${localeId} build test`;
+      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO ${skipArgs} build test`;
 
       const { stdout } = await execAsync(`${xcodebuildCmd} 2>&1`, {
         cwd: workDir,
         timeout: XCODEBUILD_TIMEOUT_MS,
-        env: { ...process.env, ...(envVars ?? {}) },
+        env: {
+          ...process.env,
+          ...(envVars ?? {}),
+          TEST_RUNNER_XCUITESTS_LANGUAGE: lang,
+          TEST_RUNNER_XCUITESTS_LOCALE: localeId,
+        },
         maxBuffer: 20 * 1024 * 1024,
       });
 
