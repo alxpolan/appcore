@@ -13,7 +13,7 @@ import {
   normalizeStudioTitle,
   resolveStudioTitle,
 } from "../screenshot-studio/style";
-import { STUDIO_RENDER_CHUNK_SIZE, splitIntoChunks } from "../screenshot-studio/render";
+import { groupPlannedByDevice } from "../screenshot-studio/render";
 import {
   CPP_RENDERABLE_STATUSES,
   failCppProposal,
@@ -239,7 +239,7 @@ export async function renderCppProposal(
 
       if (!sourceLocale) continue;
 
-      for (const chunk of splitIntoChunks(localePlanned, STUDIO_RENDER_CHUNK_SIZE)) {
+      for (const chunk of groupPlannedByDevice(localePlanned)) {
         const titles = new Map(chunk.map((item) => [item.basename.replace(/\.[^.]+$/, ""), item.title]));
         const basenames = chunk.map((item) => item.basename);
 

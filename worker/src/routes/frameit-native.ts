@@ -72,6 +72,7 @@ async function renderTitleLayer(
   maxWidth: number,
   maxHeight: number,
   tmpDir: string,
+  baseFontSize: number = TITLE_BASE_SIZE,
 ): Promise<TitleLayer | null> {
   const trimmed = text.trim();
 
@@ -83,7 +84,7 @@ async function renderTitleLayer(
     textColor,
     maxWidth,
     maxHeight,
-    baseFontSize: TITLE_BASE_SIZE,
+    baseFontSize,
     tmpDir,
   });
 
@@ -132,10 +133,12 @@ export interface RenderBaseFrameParams {
   device: FrameitDevice;
   bezel: Buffer;
   tmpDir: string;
+  titleBaseFontSize?: number;
 }
 
 export async function renderBaseFrame(params: RenderBaseFrameParams): Promise<Buffer> {
-  const { screenshot, work, layout, title, textColor, fontPath, background, device, bezel, tmpDir } = params;
+  const { screenshot, work, layout, title, textColor, fontPath, background, device, bezel, tmpDir, titleBaseFontSize } =
+    params;
 
   const pad = frameitPad(work);
   const space = frameitSpace(work);
@@ -160,7 +163,7 @@ export async function renderBaseFrame(params: RenderBaseFrameParams): Promise<Bu
 
   if (devicePlaced) layers.push(devicePlaced);
 
-  const titleLayer = await renderTitleLayer(title, fontPath, textColor, frameWidth, space, tmpDir);
+  const titleLayer = await renderTitleLayer(title, fontPath, textColor, frameWidth, space, tmpDir, titleBaseFontSize);
 
   if (titleLayer) {
     const left = Math.round(work.w / 2 - titleLayer.w / 2);

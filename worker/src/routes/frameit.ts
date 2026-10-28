@@ -4,9 +4,9 @@ import path from "path";
 import os from "os";
 import sharp from "sharp";
 import { pickFrameitFont, STUDIO_FRAMEIT_FONTS } from "./frameit-fonts";
-import { recompositeShiftedFrame } from "./frameit-shift";
+import { fitTitleToBox, recompositeShiftedFrame, TITLE_BASE_SIZE } from "./frameit-shift";
 import { loadBezelImage, resolveDevice, type FrameitDevice } from "./frameit-devices";
-import { renderBaseFrame, renderDeviceLayer } from "./frameit-native";
+import { frameitPad, frameitSpace, renderBaseFrame, renderDeviceLayer } from "./frameit-native";
 
 export const frameitRouter = Router();
 
@@ -229,6 +229,46 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return loaded;
     };
 
+    const uniformBasesByDevice = new Map<string, string[]>();
+
+    for (const img of images) {
+      const basename = img.filename.replace(/\.[^.]+$/, "");
+
+      if (boxChanged.has(basename)) continue;
+
+      const device = deviceByBase.get(basename)!;
+      const list = uniformBasesByDevice.get(device.bezelFile) ?? [];
+
+      list.push(basename);
+      uniformBasesByDevice.set(device.bezelFile, list);
+    }
+
+    const titleBaseFontSizeByBase = new Map<string, number>();
+
+    for (const bases of uniformBasesByDevice.values()) {
+      const work = workDimsByBase.get(bases[0])!;
+      const maxWidth = work.w - frameitPad(work) * 2;
+      const maxHeight = frameitSpace(work);
+
+      const fitted = await Promise.all(
+        bases.map((base) =>
+          fitTitleToBox({
+            text: titleByBase.get(base) ?? " ",
+            fontPath: fontSourcePath,
+            textColor,
+            maxWidth,
+            maxHeight,
+            baseFontSize: TITLE_BASE_SIZE,
+            tmpDir,
+          }),
+        ),
+      );
+
+      const sharedFontSize = Math.min(...fitted.map((f) => f.fontSize));
+
+      for (const base of bases) titleBaseFontSizeByBase.set(base, sharedFontSize);
+    }
+
     const framedByBase = new Map<string, Buffer>();
 
     for (const img of images) {
@@ -250,6 +290,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         device,
         bezel,
         tmpDir,
+        titleBaseFontSize: titleBaseFontSizeByBase.get(basename),
       });
 
       framedByBase.set(basename, framed);

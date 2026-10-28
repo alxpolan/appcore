@@ -130,6 +130,20 @@ export function splitIntoChunks<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+export function groupPlannedByDevice<T extends { basename: string }>(items: T[]): T[][] {
+  const groups = new Map<string, T[]>();
+
+  for (const item of items) {
+    const label = studioDeviceLabel(item.basename);
+    const list = groups.get(label) ?? [];
+
+    list.push(item);
+    groups.set(label, list);
+  }
+
+  return [...groups.values()];
+}
+
 function studioJobDir(jobId: string): string {
   return path.join(process.cwd(), "screenshots", jobId);
 }
@@ -425,7 +439,7 @@ export async function renderStudioRevision(args: {
 
     if (!sourceLocale) throw new Error(`No source screenshots stored for ${locale}`);
 
-    for (const chunk of splitIntoChunks(localePlanned, STUDIO_RENDER_CHUNK_SIZE)) {
+    for (const chunk of groupPlannedByDevice(localePlanned)) {
       const titles = new Map(chunk.map((item) => [item.basename.replace(/\.[^.]+$/, ""), item.title]));
       const basenames = chunk.map((item) => item.basename);
 

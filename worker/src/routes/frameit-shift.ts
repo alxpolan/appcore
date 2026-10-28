@@ -234,6 +234,52 @@ async function wrapWords(
   return lines;
 }
 
+async function wrapWordsBalanced(
+  words: string[],
+  fontPath: string,
+  textColor: string,
+  fontSize: number,
+  maxWidth: number,
+  tmpDir: string,
+): Promise<string[]> {
+  const greedy = await wrapWords(words, fontPath, textColor, fontSize, maxWidth, tmpDir);
+
+  if (greedy.length <= 1) return greedy;
+
+  const fullInk = await renderLine(words.join(" "), fontPath, textColor, fontSize, tmpDir);
+  const idealWidth = (fullInk?.w ?? 0) / greedy.length;
+  const lines: string[] = [];
+  let current: string[] = [];
+
+  for (const word of words) {
+    const candidate = [...current, word].join(" ");
+    const ink = await renderLine(candidate, fontPath, textColor, fontSize, tmpDir);
+    const width = ink?.w ?? 0;
+    const isFinalLine = lines.length === greedy.length - 1;
+    const threshold = isFinalLine ? maxWidth : idealWidth;
+
+    if (width <= threshold || current.length === 0) {
+      current.push(word);
+      continue;
+    }
+
+    lines.push(current.join(" "));
+    current = [word];
+  }
+
+  if (current.length > 0) lines.push(current.join(" "));
+
+  if (lines.length !== greedy.length) return greedy;
+
+  for (const line of lines) {
+    const ink = await renderLine(line, fontPath, textColor, fontSize, tmpDir);
+
+    if (ink && ink.w > maxWidth) return greedy;
+  }
+
+  return lines;
+}
+
 const MAX_AUTO_LINES = 4;
 const MIN_FONT_RATIO = 0.45;
 
@@ -258,7 +304,7 @@ export async function fitTitleToBox(args: {
 
   const minFontSize = Math.max(24, Math.round(args.baseFontSize * MIN_FONT_RATIO));
   let fontSize = args.baseFontSize;
-  let lines = await wrapWords(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
+  let lines = await wrapWordsBalanced(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
 
   while (true) {
     const blockHeight = lines.length * fontSize * TITLE_LINE_HEIGHT;
@@ -270,7 +316,7 @@ export async function fitTitleToBox(args: {
     if (fontSize <= minFontSize) return { lines, fontSize, fits: false };
 
     fontSize = Math.max(minFontSize, Math.round(fontSize * 0.92));
-    lines = await wrapWords(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
+    lines = await wrapWordsBalanced(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
   }
 }
 
