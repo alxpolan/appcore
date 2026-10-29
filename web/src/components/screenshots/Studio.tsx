@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, Pencil, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import { cardCls, pageTitle, textMuted, textSecondary } from "../../styles";
+import { cardCls, inputCls, pageTitle, textMuted, textSecondary } from "../../styles";
 import { getLocaleName } from "../../utils/localeUtils";
 import { DEVICES } from "../../utils/screenshotUtils";
 import StudioLayers from "./StudioLayers";
@@ -52,6 +52,11 @@ export default function Studio({ addToast }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
+  const [renamingSet, setRenamingSet] = useState(false);
+  const [setName, setSetName] = useState("");
+  const [savingSetName, setSavingSetName] = useState(false);
+  const draftAppliedRef = useRef<string | null>(null);
+  const draftSavedRef = useRef(false);
 
   const baselineKey = data
     ? `${data.job.id}:${data.activeRevisionId ?? "orig"}:${data.revisions.length}:${data.presets.length}`
@@ -69,7 +74,24 @@ export default function Studio({ addToast }: Props) {
       draftTitles[locale.locale] = Object.fromEntries(locale.items.map((item) => [item.basename, item.title]));
     }
 
-    setTitles(draftTitles);
+    if (data.draft && draftAppliedRef.current !== data.job.id) {
+      draftAppliedRef.current = data.job.id;
+      draftSavedRef.current = true;
+      setStyle(data.draft.style);
+      setShotOverrides(data.draft.styles);
+
+      const merged: TitleDrafts = { ...draftTitles };
+
+      for (const [locale, localeTitles] of Object.entries(data.draft.titles)) {
+        merged[locale] = { ...(draftTitles[locale] ?? {}), ...localeTitles };
+      }
+
+      setTitles(merged);
+      addToast("Restored unsaved changes", "info");
+    } else {
+      setTitles(draftTitles);
+    }
+
     setRevName("");
 
     if (!activeLocale || !data.locales.some((l) => l.locale === activeLocale)) {
@@ -134,6 +156,36 @@ export default function Studio({ addToast }: Props) {
 
     return false;
   }, [data, style, titles, shotOverrides]);
+
+  useEffect(() => {
+    if (!jobId || !data || !style || saving || !dirty) return;
+
+    const timer = setTimeout(() => {
+      studioApi
+        .saveDraft(jobId, { style, styles: shotOverrides, titles })
+        .then(
+          () => {
+            draftSavedRef.current = true;
+          },
+          () => {},
+        );
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [jobId, data, style, shotOverrides, titles, saving, dirty]);
+
+  useEffect(() => {
+    if (!jobId || dirty || saving || !draftSavedRef.current) return;
+
+    studioApi
+      .deleteDraft(jobId)
+      .then(
+        () => {
+          draftSavedRef.current = false;
+        },
+        () => {},
+      );
+  }, [jobId, dirty, saving]);
 
   const showPrev = () => {
     if (orderedItems.length < 2) return;
@@ -317,6 +369,23 @@ export default function Studio({ addToast }: Props) {
     }
   };
 
+  const handleRenameSet = async () => {
+    if (!jobId || savingSetName) return;
+
+    setSavingSetName(true);
+
+    try {
+      await studioApi.renameJob(jobId, setName);
+      addToast("Set renamed", "success");
+      setRenamingSet(false);
+      refetch();
+    } catch (err: any) {
+      addToast(`Rename failed: ${err.message}`, "error");
+    } finally {
+      setSavingSetName(false);
+    }
+  };
+
   const handleApplyPreset = (preset: StudioPresetInfo) => {
     if (!style) return;
 
@@ -425,14 +494,67 @@ export default function Studio({ addToast }: Props) {
             Screenshots
           </Link>
           <h1 className={pageTitle}>Screenshot Studio</h1>
-          <p className={`text-[13px] ${textSecondary} mt-1`}>
-            {data.job.commitMessage || data.job.commitSha.slice(0, 7)}
-            <span className="font-mono text-[11px]">
-              {" "}
-              · {data.job.commitSha.slice(0, 7)}
-              {data.job.branch ? ` · ${data.job.branch}` : ""}
-            </span>
-          </p>
+          <div className="flex items-center gap-1.5 mt-1">
+            {renamingSet ? (
+              <>
+                <input
+                  type="text"
+                  value={setName}
+                  maxLength={80}
+                  autoFocus
+                  placeholder={data.job.commitSha.slice(0, 7)}
+                  onChange={(e) => setSetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameSet();
+                    if (e.key === "Escape") setRenamingSet(false);
+                  }}
+                  className={`${inputCls} !w-64 !py-[5px] !text-[13px]`}
+                />
+                <button
+                  type="button"
+                  onClick={handleRenameSet}
+                  disabled={savingSetName}
+                  title="Save name"
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50`}
+                >
+                  {savingSetName ? <div className="spinner !w-3.5 !h-3.5" /> : <Check className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenamingSet(false)}
+                  disabled={savingSetName}
+                  title="Cancel"
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <>
+                <p className={`text-[13px] ${textSecondary}`}>
+                  {data.job.commitMessage || data.job.commitSha.slice(0, 7)}
+                  <span className="font-mono text-[11px]">
+                    {" "}
+                    · {data.job.commitSha.slice(0, 7)}
+                    {data.job.branch ? ` · ${data.job.branch}` : ""}
+                  </span>
+                </p>
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSetName(data.job.commitMessage ?? "");
+                      setRenamingSet(true);
+                    }}
+                    title="Rename set"
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/10 transition-colors`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { clipLineToBox } from "../worker/src/routes/frameit-shift";
+import { chooseBalancedLines, clipLineToBox } from "../worker/src/routes/frameit-shift";
 import { frameComplexBatch } from "../src/services/screenshot-studio/complex";
 import { workerClient } from "../src/services/worker-client";
 import { DEFAULT_STUDIO_STYLE } from "../src/services/screenshot-studio/style";
@@ -37,6 +37,64 @@ describe("worker shift: line clip stays inside the ink", () => {
 
   it("drops lines fully outside the box", () => {
     assert.equal(clipLineToBox(500, 100, 0, 40, 1000, 0, 100, 320), null);
+  });
+});
+
+describe("worker shift: balanced caption wrap", () => {
+  const widthOf = (widths: Map<string, number>) => (line: string) => widths.get(line) ?? null;
+
+  it("keeps an already balanced split instead of isolating the first word", () => {
+    const widths = new Map([
+      ["Compta", 320],
+      ["Compta files", 620],
+      ["files sense errar", 680],
+      ["sense errar", 560],
+    ]);
+    const candidates = [
+      ["Compta", "files sense errar"],
+      ["Compta files", "sense errar"],
+    ];
+
+    const greedy = ["Compta files", "sense errar"];
+    const picked = chooseBalancedLines(candidates, widthOf(widths), 700, greedy);
+
+    assert.deepEqual(picked, ["Compta files", "sense errar"]);
+  });
+
+  it("moves words down when the first line is packed and the last word stands alone", () => {
+    const widths = new Map([
+      ["Fes-ho a la teva", 690],
+      ["mida", 180],
+      ["Fes-ho a", 420],
+      ["la teva mida", 560],
+    ]);
+    const candidates = [
+      ["Fes-ho a la teva", "mida"],
+      ["Fes-ho a", "la teva mida"],
+    ];
+
+    const greedy = ["Fes-ho a la teva", "mida"];
+    const picked = chooseBalancedLines(candidates, widthOf(widths), 700, greedy);
+
+    assert.deepEqual(picked, ["Fes-ho a", "la teva mida"]);
+  });
+
+  it("prefers more words on the second line when widths tie", () => {
+    const widths = new Map([
+      ["ab", 200],
+      ["cd ef", 400],
+      ["ab cd", 400],
+      ["ef", 200],
+    ]);
+    const candidates = [
+      ["ab cd", "ef"],
+      ["ab", "cd ef"],
+    ];
+
+    const greedy = ["ab cd", "ef"];
+    const picked = chooseBalancedLines(candidates, widthOf(widths), 500, greedy);
+
+    assert.deepEqual(picked, ["ab", "cd ef"]);
   });
 });
 

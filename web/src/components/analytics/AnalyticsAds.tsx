@@ -256,6 +256,34 @@ export default function AnalyticsAds({ addToast }: Props) {
     }
   };
 
+  const valueFor = (c: AppleAdsCampaign): number | string => {
+    switch (sortBy) {
+      case "name":
+        return c.name.toLowerCase();
+      case "dailyBudget":
+        return c.dailyBudget ?? -1;
+      case "spend":
+        return c.spend;
+      case "impressions":
+        return c.impressions;
+      case "taps":
+        return c.taps;
+      case "installs":
+        return c.installs;
+      case "transactions":
+        return revenueData?.byCampaign[c.id]?.transactions.length ?? -1;
+      case "proceeds":
+        return revenueData?.byCampaign[c.id]?.proceedsUsd ?? -1;
+    }
+  };
+
+  const compareValues = (va: number | string, vb: number | string): number => {
+    const cmp =
+      typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) : va - vb;
+
+    return sortDir === "asc" ? cmp : -cmp;
+  };
+
   const sortedCampaigns = useMemo(() => {
     const withOverrides = campaigns.map((c) => ({
       ...c,
@@ -263,33 +291,24 @@ export default function AnalyticsAds({ addToast }: Props) {
       ...(c.id in statusOverride ? { status: statusOverride[c.id] } : {}),
     }));
 
-    const valueFor = (c: AppleAdsCampaign): number | string => {
-      switch (sortBy) {
-        case "name":
-          return c.name.toLowerCase();
-        case "dailyBudget":
-          return c.dailyBudget ?? -1;
-        case "spend":
-          return c.spend;
-        case "impressions":
-          return c.impressions;
-        case "taps":
-          return c.taps;
-        case "installs":
-          return c.installs;
-        case "transactions":
-          return revenueData?.byCampaign[c.id]?.transactions.length ?? -1;
-        case "proceeds":
-          return revenueData?.byCampaign[c.id]?.proceedsUsd ?? -1;
-      }
-    };
-    return [...withOverrides].sort((a, b) => {
-      const va = valueFor(a);
-      const vb = valueFor(b);
-      const cmp = typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) : va - vb;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+    return [...withOverrides].sort((a, b) => compareValues(valueFor(a), valueFor(b)));
   }, [campaigns, groupOverride, statusOverride, sortBy, sortDir, revenueData]);
+
+  const sortedGroups = useMemo(() => {
+    const groupValue = (g: AppleAdsCampaignGroup): number | string => {
+      if (sortBy === "name") return g.name.toLowerCase();
+
+      return sortedCampaigns
+        .filter((c) => c.groupId === g.id)
+        .reduce((total, c) => {
+          const v = valueFor(c);
+
+          return total + (typeof v === "number" ? Math.max(0, v) : 0);
+        }, 0);
+    };
+
+    return [...groups].sort((a, b) => compareValues(groupValue(a), groupValue(b)));
+  }, [groups, sortedCampaigns, sortBy, sortDir, revenueData]);
 
   const ungrouped = sortedCampaigns.filter((c) => !c.groupId || !groups.some((g) => g.id === c.groupId));
   const hasGroups = groups.length > 0;
@@ -899,7 +918,7 @@ export default function AnalyticsAds({ addToast }: Props) {
                     )}
                     {hasGroups ? (
                       <>
-                        {groups.map((g) => {
+                        {sortedGroups.map((g) => {
                           const rows = sortedCampaigns.filter((c) => c.groupId === g.id);
                           return (
                             <Fragment key={g.id}>

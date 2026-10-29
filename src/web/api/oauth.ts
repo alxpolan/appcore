@@ -19,6 +19,19 @@ oauthRouter.use("/register", oauthLimiter);
 oauthRouter.use("/token", oauthLimiter);
 oauthRouter.use("/authorize", oauthLimiter);
 
+export async function isTokenClientAuthenticated(
+  client: { clientSecret: string; tokenEndpointAuthMethod: string },
+  providedSecret: string | undefined,
+): Promise<boolean> {
+  if (client.tokenEndpointAuthMethod === "none") return true;
+
+  if (!providedSecret) return false;
+
+  if (client.clientSecret.startsWith("$2")) return bcrypt.compare(providedSecret, client.clientSecret);
+
+  return client.clientSecret === providedSecret;
+}
+
 oauthRouter.post("/register", async (req: Request, res: Response) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -58,6 +71,12 @@ oauthRouter.post("/register", async (req: Request, res: Response) => {
     }
   }
 
+  const supportedAuthMethods = ["client_secret_post", "client_secret_basic", "none"];
+  const authMethod =
+    typeof token_endpoint_auth_method === "string" && supportedAuthMethods.includes(token_endpoint_auth_method)
+      ? token_endpoint_auth_method
+      : "client_secret_post";
+
   try {
     const { randomBytes } = await import("crypto");
     const clientId = `appcore_${randomBytes(12).toString("hex")}`;
@@ -71,6 +90,7 @@ oauthRouter.post("/register", async (req: Request, res: Response) => {
         name: client_name?.trim() || "Unnamed client",
         userId: null,
         redirectUris: redirect_uris,
+        tokenEndpointAuthMethod: authMethod,
       },
     });
 
@@ -81,7 +101,7 @@ oauthRouter.post("/register", async (req: Request, res: Response) => {
       redirect_uris,
       grant_types: grant_types ?? ["authorization_code"],
       response_types: response_types ?? ["code"],
-      token_endpoint_auth_method: token_endpoint_auth_method ?? "client_secret_post",
+      token_endpoint_auth_method: authMethod,
     });
   } catch (err) {
     logger.error("DCR error", err);
@@ -353,7 +373,7 @@ oauthRouter.post("/authorize", express.urlencoded({ extended: false }), async (r
       },
     });
 
-    if (!user || !user.passwordHash) {
+    if (!user || !user.passwordHash || !password) {
       redirectToForm("Invalid email or password");
       return;
     }
@@ -452,11 +472,12 @@ oauthRouter.post(
       return;
     }
 
-    const secretValid = client.clientSecret.startsWith("$2")
-      ? await bcrypt.compare(client_secret, client.clientSecret)
-      : client.clientSecret === client_secret;
+    const authenticated = await isTokenClientAuthenticated(
+      { clientSecret: client.clientSecret, tokenEndpointAuthMethod: client.tokenEndpointAuthMethod },
+      client_secret,
+    );
 
-    if (!secretValid) {
+    if (!authenticated) {
       res.status(401).json({ error: "invalid_client" });
       return;
     }

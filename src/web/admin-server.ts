@@ -66,17 +66,20 @@ app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/oauth", oauthRouter);
 
-app.get("/.well-known/oauth-protected-resource", (req, res) => {
+app.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"], (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
 
   res.json({ resource: `${base}/mcp`, authorization_servers: [base] });
 });
 
-app.get("/.well-known/oauth-protected-resource-admin", (req, res) => {
-  const base = `${req.protocol}://${req.get("host")}`;
+app.get(
+  ["/.well-known/oauth-protected-resource-admin", "/.well-known/oauth-protected-resource/mcp-admin"],
+  (req, res) => {
+    const base = `${req.protocol}://${req.get("host")}`;
 
-  res.json({ resource: `${base}/mcp-admin`, authorization_servers: [base] });
-});
+    res.json({ resource: `${base}/mcp-admin`, authorization_servers: [base] });
+  },
+);
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
@@ -89,7 +92,7 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["client_secret_post"],
+    token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
   });
 });
 

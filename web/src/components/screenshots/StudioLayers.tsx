@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Smartphone, Square, TriangleAlert, Type } from "lucide-react";
 import { thumbUrl } from "../../utils/screenshotUtils";
-import { borderDefault, cardCls, textMuted, textPrimary, textSecondary } from "../../styles";
+import { borderDefault, studioCardCls, textMuted, textPrimary, textSecondary } from "../../styles";
 import type { StudioItem, StudioLayer, StudioStyle } from "./studioApi";
 
 interface Props {
@@ -44,9 +44,7 @@ export default function StudioLayers({
             </span>
           )}
           {style.titleScale !== 1 && (
-            <span className={`ml-1.5 font-mono text-[11px] ${textMuted}`}>
-              {Math.round(style.titleScale * 100)}%
-            </span>
+            <span className={`ml-1.5 font-mono text-[11px] ${textMuted}`}>{Math.round(style.titleScale * 100)}%</span>
           )}
           {style.titleBoxW > 0 && (
             <span className={`ml-1.5 font-mono text-[11px] ${textMuted}`}>
@@ -69,9 +67,7 @@ export default function StudioLayers({
             </span>
           )}
           {style.deviceScale !== 1 && (
-            <span className={`ml-1.5 font-mono text-[11px] ${textMuted}`}>
-              {Math.round(style.deviceScale * 100)}%
-            </span>
+            <span className={`ml-1.5 font-mono text-[11px] ${textMuted}`}>{Math.round(style.deviceScale * 100)}%</span>
           )}
         </span>
       ),
@@ -91,7 +87,7 @@ export default function StudioLayers({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className={cardCls}>
+      <div className={studioCardCls}>
         <div className={`text-[13px] font-semibold ${textPrimary} mb-2.5`}>Layers</div>
         <div className="flex flex-col gap-1.5">
           {layers.map((layer) => (
@@ -113,18 +109,22 @@ export default function StudioLayers({
         </div>
       </div>
 
-      <div className={cardCls}>
+      <div className={studioCardCls}>
         <div className={`text-[13px] font-semibold ${textPrimary} mb-2.5`}>Screenshots</div>
         <div className="flex flex-col gap-1.5 max-h-[52vh] overflow-y-auto pr-0.5">
-          {items.map((shot) => {
+          {items.map((shot, index) => {
             const selected = selectedBasename === shot.basename;
             const draft = titles[shot.basename] ?? shot.title;
             const changed = draft !== shot.title;
             const noSource = !shot.hasRaw;
+            const showDeviceHeader = index === 0 || items[index - 1].deviceLabel !== shot.deviceLabel;
 
             return (
+              <Fragment key={shot.basename}>
+              {showDeviceHeader && (
+                <div className={`text-[11px] font-medium ${textMuted} px-1 pt-1.5`}>{shot.deviceLabel}</div>
+              )}
               <button
-                key={shot.basename}
                 type="button"
                 onClick={() => onSelectScreenshot(shot.basename)}
                 className={`flex items-center gap-2.5 rounded-xl border px-2 py-1.5 text-left transition-all ${
@@ -160,6 +160,7 @@ export default function StudioLayers({
                   </span>
                 )}
               </button>
+              </Fragment>
             );
           })}
         </div>

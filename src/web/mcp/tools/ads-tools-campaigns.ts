@@ -8,6 +8,7 @@ import {
   getAppleAdsDailyStats,
   getAppleAdsKeywordCountryBreakdown,
   listAppleAdsCampaigns,
+  listAppleAdsSearchTerms,
   resolveAppleAdsRange,
   resolveAppOrgByAdamId,
   updateAppleAdsCampaign,
@@ -204,6 +205,36 @@ export function registerAppleAdsCampaignTools(server: McpServer, userId: string)
         });
       } catch (err) {
         return adsError("get_ads_keyword_country_breakdown", err);
+      }
+    },
+  );
+
+  registerAdsReadTool(
+    server,
+    userId,
+    "get_ads_search_terms",
+    {
+      description:
+        "Get the actual App Store search queries (search terms) that triggered taps and installs for one Apple Search Ads campaign, " +
+        "with the matched ad group, keyword and performance stats (spend, impressions, taps, installs) sorted by spend descending. " +
+        "Use this to find new keyword ideas and negative keyword candidates. " +
+        "Use list_ads_campaigns first to find the campaign ID.",
+      inputSchema: {
+        campaignId: z.string().describe("Apple Search Ads campaign ID (numeric string, e.g. '2144630640')."),
+        ...rangeSchema,
+      },
+    },
+    async ({ campaignId, days, period, startDate, endDate }) => {
+      const ctx = await getCampaignAppleAdsContext(userId, campaignId);
+      if ("error" in ctx) return textResult(ctx.error);
+
+      try {
+        const range = resolveAppleAdsRange({ days, period, startDate, endDate });
+        const searchTerms = await listAppleAdsSearchTerms(ctx.creds, campaignId, range);
+
+        return jsonResult({ range, campaignId, searchTerms });
+      } catch (err) {
+        return adsError("get_ads_search_terms", err);
       }
     },
   );

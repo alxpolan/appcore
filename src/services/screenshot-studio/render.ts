@@ -29,6 +29,7 @@ import {
   type StudioPresetInfo,
   type StudioRevisionInfo,
 } from "./revisions";
+import { getStudioDraft, type StudioDraft } from "./drafts";
 
 export interface StudioItem {
   basename: string;
@@ -61,6 +62,7 @@ export interface StudioData {
   activeRevisionId: string | null;
   defaultRevisionId: string | null;
   presets: StudioPresetInfo[];
+  draft: StudioDraft | null;
 }
 
 export interface StudioSaveLocale {
@@ -323,6 +325,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
     activeRevisionId,
     defaultRevisionId: job.app.defaultScreenshotRevisionId ?? null,
     presets,
+    draft: await getStudioDraft(jobId),
   };
 }
 

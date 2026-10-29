@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { borderDefault, btnSecSm, cardCls, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
+import { borderDefault, btnSecSm, studioCardCls, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
 import {
   STUDIO_GEOMETRY_KEYS,
   type StudioItem,
@@ -136,13 +136,25 @@ function NudgeControl({
           <ArrowUp className="w-4 h-4" />
         </button>
         <span />
-        <button type="button" disabled={disabled} title="Move left (shift: 10px)" onClick={nudge(-1, 0)} className={btn}>
+        <button
+          type="button"
+          disabled={disabled}
+          title="Move left (shift: 10px)"
+          onClick={nudge(-1, 0)}
+          className={btn}
+        >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <button type="button" disabled={disabled} title="Reset position" onClick={() => onChange(0, 0)} className={btn}>
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
-        <button type="button" disabled={disabled} title="Move right (shift: 10px)" onClick={nudge(1, 0)} className={btn}>
+        <button
+          type="button"
+          disabled={disabled}
+          title="Move right (shift: 10px)"
+          onClick={nudge(1, 0)}
+          className={btn}
+        >
           <ArrowRight className="w-4 h-4" />
         </button>
         <span />
@@ -306,7 +318,7 @@ export default function StudioInspector({
     layer === "caption" ? "Caption" : layer === "device" ? "Device" : layer === "background" ? "Background" : "Studio";
 
   return (
-    <div className={cardCls}>
+    <div className={studioCardCls}>
       <div className={`text-[13px] font-semibold ${textPrimary}`}>{layerTitle}</div>
       <div className={`text-[11px] ${textMuted} mb-1`}>
         {layer === null
@@ -460,7 +472,10 @@ export default function StudioInspector({
         )}
         <div className="flex flex-col gap-1.5 mb-2">
           {presets.map((preset) => (
-            <div key={preset.id} className={`flex items-center gap-2 rounded-xl border ${borderDefault} pl-2 pr-1.5 py-1.5`}>
+            <div
+              key={preset.id}
+              className={`flex items-center gap-2 rounded-xl border ${borderDefault} pl-2 pr-1.5 py-1.5`}
+            >
               <span
                 className="w-6 h-6 rounded-md shrink-0 border border-black/10"
                 style={{ background: `linear-gradient(135deg, ${preset.bgColor1}, ${preset.bgColor2})` }}
@@ -503,7 +518,12 @@ export default function StudioInspector({
                 }}
                 className={`${inputCls} !py-[5px]`}
               />
-              <button type="button" onClick={savePreset} disabled={savingPreset || !presetName.trim()} className={btnSecSm}>
+              <button
+                type="button"
+                onClick={savePreset}
+                disabled={savingPreset || !presetName.trim()}
+                className={btnSecSm}
+              >
                 {savingPreset ? <div className="spinner !w-3.5 !h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                 Save
               </button>

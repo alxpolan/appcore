@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { borderDefault, cardCls, textMuted, textPrimary, textSecondary } from "../../styles";
-import { getLocaleName } from "../../utils/localeUtils";
+import { useClickOutside } from "../../hooks/useClickOutside";
+import { getLocaleFlag, getLocaleName } from "../../utils/localeUtils";
 import type { StudioItem, StudioLayer, StudioStyle } from "./studioApi";
 import { computePreviewLayout, drawStudioPreview, type PreviewRect } from "./studioPreview";
 import { snapOffset } from "./studioSnap";
@@ -45,6 +46,75 @@ interface GuideLines {
 const CORNER_CURSORS = ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize"];
 
 const EDGE_CURSORS: Record<CanvasEdge, string> = { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize" };
+
+function LocaleFlag({ locale }: { locale: string }) {
+  return (
+    <img
+      src={`/country-flags/${getLocaleFlag(locale)}.svg`}
+      alt=""
+      width={20}
+      height={15}
+      className="h-[12px] w-4 object-cover shrink-0 rounded-xs"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
+  );
+}
+
+function LocaleDropdown({
+  locales,
+  value,
+  onChange,
+}: {
+  locales: string[];
+  value: string;
+  onChange: (locale: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+
+  useClickOutside(ref, close);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="Preview locale"
+        className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[12px] font-medium bg-transparent cursor-pointer ${borderDefault} ${textSecondary}`}
+      >
+        <LocaleFlag locale={value} />
+        <span>{getLocaleName(value)}</span>
+        <ChevronDown className={`w-3.5 h-3.5 ${textMuted} transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div
+          className={`absolute right-0 top-full mt-1.5 z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[200px] max-h-[320px] overflow-auto`}
+        >
+          {locales.map((locale) => (
+            <button
+              key={locale}
+              type="button"
+              onClick={() => {
+                onChange(locale);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left ${
+                value === locale ? "font-semibold" : ""
+              }`}
+            >
+              <LocaleFlag locale={locale} />
+              {getLocaleName(locale)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function clampOffset(value: number): number {
   return Math.max(-2048, Math.min(2048, Math.round(value)));
@@ -463,18 +533,7 @@ export default function StudioCanvas({
           </button>
         </div>
         <div className="flex items-center gap-1.5">
-          <select
-            value={activeLocale}
-            onChange={(e) => onLocaleChange(e.target.value)}
-            title="Preview locale"
-            className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border bg-transparent cursor-pointer ${borderDefault} ${textSecondary}`}
-          >
-            {locales.map((locale) => (
-              <option key={locale} value={locale} title={locale}>
-                {getLocaleName(locale)}
-              </option>
-            ))}
-          </select>
+          <LocaleDropdown locales={locales} value={activeLocale} onChange={onLocaleChange} />
         </div>
       </div>
 

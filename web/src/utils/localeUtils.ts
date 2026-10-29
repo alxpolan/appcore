@@ -42,6 +42,15 @@ export function getLocaleFlag(locale: string): string {
   return lang.toLowerCase();
 }
 
+export function sortStudioLocales(locales: string[]): string[] {
+  return [...locales].sort((a, b) => {
+    if (a === "en-US") return -1;
+    if (b === "en-US") return 1;
+
+    return a.localeCompare(b);
+  });
+}
+
 const displayNames = new Intl.DisplayNames(["en"], { type: "language" });
 
 export const getLocaleName = (locale: string) => {

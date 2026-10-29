@@ -780,6 +780,7 @@ model OAuthClient {
   name         String
   userId       String?
   redirectUris String[]
+  tokenEndpointAuthMethod String @default("client_secret_post")
   createdAt    DateTime @default(now())
 
   @@index([userId])
@@ -855,6 +856,7 @@ model ScreenshotJob {
   screenshotShotStyles   Json?
   activeRevisionId       String?
   revisions              ScreenshotRevision[]
+  draft                  ScreenshotStudioDraft?
   startedAt              DateTime?
   completedAt            DateTime?
   createdAt              DateTime  @default(now())
@@ -903,6 +905,17 @@ model ScreenshotRevision {
 
   @@unique([jobId, rev])
   @@index([jobId])
+}
+
+model ScreenshotStudioDraft {
+  jobId     String        @id
+  job       ScreenshotJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  style     Json?
+  styles    Json?
+  titles    Json?
+  updatedBy String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 }
 
 model CppProposal {

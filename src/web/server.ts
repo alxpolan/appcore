@@ -171,7 +171,7 @@ app.get("/internal/appstoreinfo/:token", (req, res) => {
   fs.createReadStream(plistPath).pipe(res);
 });
 
-app.get("/.well-known/oauth-protected-resource", (req, res) => {
+app.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"], (req, res) => {
   const base = `${req.protocol}://${req.get("host")}`;
 
   res.json({
@@ -191,7 +191,7 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["client_secret_post"],
+    token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
   });
 });
 app.post("/mcp", mcpAuth, createMcpHandler());

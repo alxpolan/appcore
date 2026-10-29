@@ -20,7 +20,7 @@ export interface StudioStyle {
 
 export const STUDIO_FONT_IDS: StudioFontId[] = ["rounded", "inter", "baloo"];
 
-export const STUDIO_GEOMETRY_KEYS: Array<keyof StudioStyle> = [
+export const STUDIO_GEOMETRY_KEYS = [
   "offsetX",
   "offsetY",
   "titleOffsetX",
@@ -30,7 +30,7 @@ export const STUDIO_GEOMETRY_KEYS: Array<keyof StudioStyle> = [
   "titleBoxW",
   "titleBoxH",
   "titleLines",
-];
+] as const;
 
 export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_KEYS)[number]> = {
   offsetX: 0,

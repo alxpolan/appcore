@@ -26,18 +26,18 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    appPicker
-                }
-                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showMore = true
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "gearshape")
                     }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    appPicker
                 }
             }
             .sheet(isPresented: $showMore) {
-                MoreView()
+                SettingsView()
             }
             .refreshable { await loadData() }
         }
@@ -56,9 +56,6 @@ struct DashboardView: View {
     private func dashboardContent(_ data: DashboardData) -> some View {
         ScrollView {
             VStack(spacing: 20) {
-                if let app = data.app {
-                    appInfoCard(app)
-                }
 
                 if let downloads, !downloads.byDay.isEmpty {
                     downloadsChart(downloads.byDay)
@@ -117,37 +114,6 @@ struct DashboardView: View {
             .padding(.vertical, 8)
             .glassEffect(.regular, in: .capsule)
         }
-    }
-
-    @ViewBuilder
-    private func appInfoCard(_ app: AppInfo) -> some View {
-        HStack(spacing: 16) {
-            AppIconView(url: app.iconUrl, size: 64)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(app.displayNameOrName)
-                    .font(.title3)
-                    .fontWeight(.bold)
-
-                if let rating = app.rating {
-                    HStack(spacing: 6) {
-                        RatingStars(rating: rating)
-                        Text(String(format: "%.1f", rating))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let count = app.ratingsCount {
-                            Text("(\(count))")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-            }
-
-            Spacer()
-        }
-        .padding()
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
     private struct DownloadChartDay: Identifiable {

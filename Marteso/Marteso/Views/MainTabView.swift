@@ -44,7 +44,7 @@ struct MainTabView: View {
 
 // MARK: - More Tab (Settings, Suggestions, Actions, App Switcher)
 
-struct MoreView: View {
+struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
@@ -72,7 +72,7 @@ struct MoreView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .navigationTitle("More")
+            .navigationTitle("Settings")
         }
     }
 }

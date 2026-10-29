@@ -230,6 +230,39 @@ export async function createStudioRevision(args: {
   };
 }
 
+export const STUDIO_JOB_NAME_MAX_LENGTH = 80;
+
+export function normalizeStudioJobName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const clean = value.trim().replace(/\s+/g, " ");
+
+  if (!clean) return null;
+
+  return clean.slice(0, STUDIO_JOB_NAME_MAX_LENGTH);
+}
+
+export async function renameStudioJob(
+  jobId: string,
+  name: unknown,
+): Promise<{ jobId: string; commitMessage: string | null }> {
+  const job = await prisma.screenshotJob.findUnique({
+    where: { id: jobId },
+    select: { id: true },
+  });
+
+  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
+
+  const commitMessage = normalizeStudioJobName(name);
+
+  await prisma.screenshotJob.update({
+    where: { id: jobId },
+    data: { commitMessage },
+  });
+
+  return { jobId, commitMessage };
+}
+
 export async function setActiveStudioRevision(jobId: string, revisionId: string | null): Promise<void> {
   if (revisionId) {
     const revision = await prisma.screenshotRevision.findFirst({

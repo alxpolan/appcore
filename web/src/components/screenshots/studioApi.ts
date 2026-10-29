@@ -18,7 +18,7 @@ export interface StudioStyle {
   titleLines: string[];
 }
 
-export const STUDIO_GEOMETRY_KEYS: Array<keyof StudioStyle> = [
+export const STUDIO_GEOMETRY_KEYS = [
   "offsetX",
   "offsetY",
   "titleOffsetX",
@@ -28,7 +28,7 @@ export const STUDIO_GEOMETRY_KEYS: Array<keyof StudioStyle> = [
   "titleBoxW",
   "titleBoxH",
   "titleLines",
-];
+] as const;
 
 export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_KEYS)[number]> = {
   offsetX: 0,
@@ -93,12 +93,21 @@ export interface StudioData {
   activeRevisionId: string | null;
   defaultRevisionId: string | null;
   presets: StudioPresetInfo[];
+  draft: StudioDraft | null;
 }
 
 export interface StudioSaveLocale {
   titles: Record<string, string>;
   styles?: Record<string, Partial<StudioStyle>>;
   titleLines?: Record<string, string[]>;
+}
+
+export interface StudioDraft {
+  style: StudioStyle;
+  styles: Record<string, Partial<StudioStyle>>;
+  titles: Record<string, Record<string, string>>;
+  updatedBy: string | null;
+  updatedAt: string;
 }
 
 export interface StudioSaveResponse {
@@ -204,6 +213,11 @@ export const studioApi = {
       method: "PATCH",
       body: JSON.stringify({ revisionId }),
     }),
+  renameJob: (jobId: string, name: string) =>
+    studioRequest<{ jobId: string; commitMessage: string | null }>(`/github/screenshots/studio/${jobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
   deleteRevision: (revisionId: string) =>
     studioRequest<{ jobId: string; activeRevisionId: string | null }>(
       `/github/screenshots/studio/revisions/${revisionId}`,
@@ -223,4 +237,14 @@ export const studioApi = {
     studioRequest<{ ok: boolean }>(`/github/screenshots/presets/${presetId}`, { method: "DELETE" }),
   duplicate: (jobId: string) =>
     studioRequest<{ jobId: string }>(`/github/screenshots/studio/${jobId}/duplicate`, { method: "POST" }),
+  saveDraft: (
+    jobId: string,
+    draft: { style: StudioStyle; styles: Record<string, Partial<StudioStyle>>; titles: Record<string, Record<string, string>> },
+  ) =>
+    studioRequest<{ draft: StudioDraft }>(`/github/screenshots/studio/${jobId}/draft`, {
+      method: "PUT",
+      body: JSON.stringify(draft),
+    }),
+  deleteDraft: (jobId: string) =>
+    studioRequest<{ ok: boolean }>(`/github/screenshots/studio/${jobId}/draft`, { method: "DELETE" }),
 };

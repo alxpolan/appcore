@@ -234,6 +234,56 @@ async function wrapWords(
   return lines;
 }
 
+function binomial(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+
+  let capped = 1;
+
+  for (let i = 1; i <= k; i++) {
+    capped = Math.min(201, Math.round((capped * (n - k + i)) / i));
+  }
+
+  return capped;
+}
+
+export function chooseBalancedLines(
+  candidates: string[][],
+  widthOf: (line: string) => number | null,
+  maxWidth: number,
+  fallback: string[],
+): string[] {
+  const fallbackWidths = fallback.map((line) => widthOf(line) ?? 0);
+  let best = fallback;
+  let bestLongest = Math.max(...fallbackWidths);
+  let bestImbalance = bestLongest - Math.min(...fallbackWidths);
+  let bestFirst = fallbackWidths[0] ?? 0;
+
+  for (const lines of candidates) {
+    if (lines === fallback) continue;
+
+    const widths = lines.map((line) => widthOf(line) ?? 0);
+
+    if (widths.some((width) => width > maxWidth)) continue;
+
+    const longest = Math.max(...widths);
+    const shortest = Math.min(...widths);
+    const imbalance = longest - shortest;
+    const first = widths[0] ?? 0;
+    const better =
+      longest < bestLongest ||
+      (longest === bestLongest && (imbalance < bestImbalance || (imbalance === bestImbalance && first < bestFirst)));
+
+    if (better) {
+      best = lines;
+      bestLongest = longest;
+      bestImbalance = imbalance;
+      bestFirst = first;
+    }
+  }
+
+  return best;
+}
+
 async function wrapWordsBalanced(
   words: string[],
   fontPath: string,
@@ -246,38 +296,81 @@ async function wrapWordsBalanced(
 
   if (greedy.length <= 1) return greedy;
 
-  const fullInk = await renderLine(words.join(" "), fontPath, textColor, fontSize, tmpDir);
-  const idealWidth = (fullInk?.w ?? 0) / greedy.length;
-  const lines: string[] = [];
-  let current: string[] = [];
+  if (words.length > 12) return greedy;
 
-  for (const word of words) {
-    const candidate = [...current, word].join(" ");
-    const ink = await renderLine(candidate, fontPath, textColor, fontSize, tmpDir);
-    const width = ink?.w ?? 0;
-    const isFinalLine = lines.length === greedy.length - 1;
-    const threshold = isFinalLine ? maxWidth : idealWidth;
+  if (binomial(words.length - 1, greedy.length - 1) > 200) return greedy;
 
-    if (width <= threshold || current.length === 0) {
-      current.push(word);
-      continue;
+  const splits: number[][] = [];
+  const cursor: number[] = [];
+
+  const collectSplits = (start: number, remaining: number): void => {
+    if (remaining === 1) {
+      splits.push([...cursor, words.length]);
+
+      return;
     }
 
-    lines.push(current.join(" "));
-    current = [word];
+    for (let i = start + 1; i <= words.length - remaining + 1; i++) {
+      cursor.push(i);
+
+      collectSplits(i, remaining - 1);
+
+      cursor.pop();
+    }
+  };
+
+  collectSplits(0, greedy.length);
+
+  const candidates = splits.map((points) => {
+    const lines: string[] = [];
+    let from = 0;
+
+    for (const to of points) {
+      lines.push(words.slice(from, to).join(" "));
+
+      from = to;
+    }
+
+    return lines;
+  });
+
+  const charScore = (lines: string[]) => {
+    const lens = lines.map((line) => line.length);
+    const longest = Math.max(...lens);
+
+    return { longest, imbalance: longest - Math.min(...lens), first: lens[0] ?? 0 };
+  };
+
+  const ranked = [...candidates].sort((a, b) => {
+    const left = charScore(a);
+    const right = charScore(b);
+
+    if (left.longest !== right.longest) return left.longest - right.longest;
+
+    if (left.imbalance !== right.imbalance) return left.imbalance - right.imbalance;
+
+    return left.first - right.first;
+  });
+
+  const shortlist = ranked.slice(0, 8);
+
+  if (!shortlist.some((lines) => lines.length === greedy.length && lines.every((line, index) => line === greedy[index]))) {
+    shortlist.push(greedy);
   }
 
-  if (current.length > 0) lines.push(current.join(" "));
+  const measured = new Map<string, number>();
 
-  if (lines.length !== greedy.length) return greedy;
+  for (const lines of shortlist) {
+    for (const line of lines) {
+      if (measured.has(line)) continue;
 
-  for (const line of lines) {
-    const ink = await renderLine(line, fontPath, textColor, fontSize, tmpDir);
+      const ink = await renderLine(line, fontPath, textColor, fontSize, tmpDir);
 
-    if (ink && ink.w > maxWidth) return greedy;
+      measured.set(line, ink?.w ?? 0);
+    }
   }
 
-  return lines;
+  return chooseBalancedLines(shortlist, (line) => measured.get(line) ?? 0, maxWidth, greedy);
 }
 
 const MAX_AUTO_LINES = 4;

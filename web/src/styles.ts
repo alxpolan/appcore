@@ -12,6 +12,9 @@ export const TD = "px-4 py-3.5 border-b border-[#f3f4f6] dark:border-[#2a2f3d] t
 export const cardCls =
   "bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] rounded-2xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]";
 
+export const studioCardCls =
+  "bg-white dark:bg-[#1c2028] border border-[#eef0f3] dark:border-[#2a2f3d] rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]";
+
 export const btnPrimary =
   "inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-gradient-to-br from-[#6E72E4] to-[#595DD2] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 

@@ -35,7 +35,7 @@ import {
   textSecondary,
 } from "../styles";
 import type { AppItem, AppRepoLink, GitHubStatus } from "../types";
-import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
+import { getLocaleFlag, getLocaleName, sortStudioLocales } from "../utils/localeUtils";
 import { getDeviceLabel, thumbUrl, DEVICES, type FramedJob } from "../utils/screenshotUtils";
 
 interface Props {
@@ -495,7 +495,10 @@ function RunResults({
   }, [previewUrl]);
 
   const framedByLocale = job.framedByLocale ?? {};
-  const locales = Object.keys(framedByLocale).filter((l) => (framedByLocale[l]?.length ?? 0) > 0);
+  const locales = sortStudioLocales(
+    Object.keys(framedByLocale).filter((l) => (framedByLocale[l]?.length ?? 0) > 0),
+  );
+
   const effectiveLocale = activeLocale && locales.includes(activeLocale) ? activeLocale : (locales[0] ?? null);
 
   if (locales.length === 0) return null;

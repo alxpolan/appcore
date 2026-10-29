@@ -4,13 +4,16 @@ import { requireAuth, loadTeamRole, requireWriteRole } from "../auth";
 import { resolveInternalAppId } from "../lib/resolve-app";
 import {
   createStudioPreset,
+  deleteStudioDraft,
   deleteStudioPreset,
   deleteStudioRevision,
   duplicateStudioJob,
   getStudioData,
   listStudioPresets,
   normalizeStudioStyle,
+  renameStudioJob,
   renderStudioRevision,
+  saveStudioDraft,
   setActiveStudioRevision,
   setAppDefaultFromRevision,
   updateStudioPreset,
@@ -157,6 +160,19 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
   }
 });
 
+studioRouter.patch("/screenshots/studio/:jobId", writeAuth, async (req: Request, res: Response) => {
+  try {
+    const { name } = req.body as { name?: unknown };
+
+    res.json(await renameStudioJob(req.params.jobId as string, name));
+  } catch (err: any) {
+    const status = err.message.includes("not found") ? 404 : 500;
+
+    logger.error(`studio rename error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
+
 studioRouter.post("/screenshots/studio/:jobId/duplicate", writeAuth, async (req: Request, res: Response) => {
   try {
     res.json(await duplicateStudioJob(req.params.jobId as string, req.user?.userId ?? null));
@@ -165,6 +181,29 @@ studioRouter.post("/screenshots/studio/:jobId/duplicate", writeAuth, async (req:
 
     logger.error(`studio duplicate error: ${err.message}`);
     res.status(status).json({ error: err.message });
+  }
+});
+
+studioRouter.put("/screenshots/studio/:jobId/draft", writeAuth, async (req: Request, res: Response) => {
+  try {
+    res.json({
+      draft: await saveStudioDraft(req.params.jobId as string, req.body, req.user?.userId ?? null),
+    });
+  } catch (err: any) {
+    const status = err.message.includes("not found") ? 404 : 500;
+
+    logger.error(`studio draft save error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
+
+studioRouter.delete("/screenshots/studio/:jobId/draft", writeAuth, async (req: Request, res: Response) => {
+  try {
+    await deleteStudioDraft(req.params.jobId as string);
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error(`studio draft delete error: ${err.message}`);
+    res.status(500).json({ error: err.message });
   }
 });
 

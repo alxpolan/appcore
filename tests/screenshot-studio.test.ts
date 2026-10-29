@@ -20,7 +20,11 @@ import {
   studioDeviceLabel,
   titleLinesForTitle,
 } from "../src/services/screenshot-studio/style";
-import { asFramedMap } from "../src/services/screenshot-studio/revisions";
+import {
+  asFramedMap,
+  normalizeStudioJobName,
+  STUDIO_JOB_NAME_MAX_LENGTH,
+} from "../src/services/screenshot-studio/revisions";
 import {
   assertStudioBasename,
   assertStudioSegment,
@@ -248,6 +252,25 @@ describe("studio revisions: framed map guard", () => {
     assert.deepEqual(asFramedMap(null), {});
     assert.deepEqual(asFramedMap([]), {});
     assert.deepEqual(asFramedMap("nope"), {});
+  });
+});
+
+describe("studio revisions: job name normalization", () => {
+  it("trims and collapses whitespace", () => {
+    assert.equal(normalizeStudioJobName("  Launch   Set  "), "Launch Set");
+  });
+
+  it("returns null for empty or non-string input", () => {
+    assert.equal(normalizeStudioJobName("   "), null);
+    assert.equal(normalizeStudioJobName(""), null);
+    assert.equal(normalizeStudioJobName(null), null);
+    assert.equal(normalizeStudioJobName(42), null);
+  });
+
+  it("caps length at the studio job maximum", () => {
+    const long = "x".repeat(STUDIO_JOB_NAME_MAX_LENGTH + 20);
+
+    assert.equal(normalizeStudioJobName(long)?.length, STUDIO_JOB_NAME_MAX_LENGTH);
   });
 });
 
