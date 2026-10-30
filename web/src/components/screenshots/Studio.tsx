@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, Pencil, X } from "lucide-react";
-import { useApi } from "../../hooks/useApi";
+import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import { cardCls, inputCls, pageTitle, textMuted, textSecondary } from "../../styles";
 import { getLocaleName } from "../../utils/localeUtils";
@@ -17,8 +17,10 @@ import {
   STUDIO_GEOMETRY_KEYS,
   revisionLabel,
   studioApi,
+  type StudioBezels,
   type StudioData,
   type StudioLayer,
+  type StudioOverlay,
   type StudioPresetInfo,
   type StudioProgressEvent,
   type StudioSaveLocale,
@@ -30,6 +32,12 @@ interface Props {
 }
 
 type TitleDrafts = Record<string, Record<string, string>>;
+
+interface StudioSnapshot {
+  style: StudioStyle;
+  shotOverrides: Record<string, Partial<StudioStyle>>;
+  titles: TitleDrafts;
+}
 
 export default function Studio({ addToast }: Props) {
   const { jobId } = useParams<{ jobId: string }>();
@@ -57,6 +65,12 @@ export default function Studio({ addToast }: Props) {
   const [savingSetName, setSavingSetName] = useState(false);
   const draftAppliedRef = useRef<string | null>(null);
   const draftSavedRef = useRef(false);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [bezels, setBezels] = useState<StudioBezels | null>(null);
+  const pastRef = useRef<StudioSnapshot[]>([]);
+  const futureRef = useRef<StudioSnapshot[]>([]);
+  const lastPushRef = useRef(0);
+  const [, setHistoryTick] = useState(0);
 
   const baselineKey = data
     ? `${data.job.id}:${data.activeRevisionId ?? "orig"}:${data.revisions.length}:${data.presets.length}`
@@ -93,6 +107,10 @@ export default function Studio({ addToast }: Props) {
     }
 
     setRevName("");
+    pastRef.current = [];
+    futureRef.current = [];
+    lastPushRef.current = 0;
+    setHistoryTick((tick) => tick + 1);
 
     if (!activeLocale || !data.locales.some((l) => l.locale === activeLocale)) {
       const fromUrl = requestedLocale && data.locales.some((l) => l.locale === requestedLocale) ? requestedLocale : null;
@@ -132,6 +150,20 @@ export default function Studio({ addToast }: Props) {
     return { ...style, ...(selectedBasename ? (shotOverrides[selectedBasename] ?? {}) : {}) };
   }, [style, shotOverrides, selectedBasename]);
 
+  const selectedOverlay = useMemo(
+    () => effectiveShot?.overlays.find((overlay) => overlay.id === selectedOverlayId) ?? null,
+    [effectiveShot, selectedOverlayId],
+  );
+
+  const frameLabel = useMemo(() => {
+    const file = effectiveShot?.deviceFrame || bezels?.current || "";
+    const options = bezels?.options ?? [];
+
+    if (!file || options.length === 0) return null;
+
+    return options.find((option) => option.file === file)?.color ?? null;
+  }, [effectiveShot, bezels]);
+
   const allBasenames = useMemo(() => {
     const bases = new Set<string>();
 
@@ -156,6 +188,93 @@ export default function Studio({ addToast }: Props) {
 
     return false;
   }, [data, style, titles, shotOverrides]);
+
+  const pushHistory = () => {
+    if (!style) return;
+
+    const now = Date.now();
+
+    if (now - lastPushRef.current < 800) return;
+
+    lastPushRef.current = now;
+    pastRef.current.push({ style, shotOverrides, titles });
+
+    if (pastRef.current.length > 80) pastRef.current.shift();
+
+    futureRef.current = [];
+    setHistoryTick((tick) => tick + 1);
+  };
+
+  const handleUndo = () => {
+    const prev = pastRef.current.pop();
+
+    if (!prev || !style) return;
+
+    futureRef.current.push({ style, shotOverrides, titles });
+    setStyle(prev.style);
+    setShotOverrides(prev.shotOverrides);
+    setTitles(prev.titles);
+    setHistoryTick((tick) => tick + 1);
+  };
+
+  const handleRedo = () => {
+    const next = futureRef.current.pop();
+
+    if (!next || !style) return;
+
+    pastRef.current.push({ style, shotOverrides, titles });
+    setStyle(next.style);
+    setShotOverrides(next.shotOverrides);
+    setTitles(next.titles);
+    setHistoryTick((tick) => tick + 1);
+  };
+
+  useEffect(() => {
+    if (!jobId || !selectedBasename) {
+      setBezels(null);
+
+      return;
+    }
+
+    let live = true;
+
+    apiGet<StudioBezels>(`/github/screenshots/studio/${jobId}/bezels/${selectedBasename}`).then(
+      (result) => {
+        if (live) setBezels(result);
+      },
+      () => {
+        if (live) setBezels({ current: null, options: [], device: null });
+      },
+    );
+
+    return () => {
+      live = false;
+    };
+  }, [jobId, selectedBasename]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+
+      const key = e.key.toLowerCase();
+      const redo = key === "y" || (key === "z" && e.shiftKey);
+
+      if (key !== "z" && key !== "y") return;
+
+      const target = e.target as HTMLElement | null;
+
+      if (target && target.closest("input, textarea, select, [contenteditable]")) return;
+
+      e.preventDefault();
+
+      if (redo) handleRedo();
+      else handleUndo();
+    };
+
+    window.addEventListener("keydown", onKey);
+
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   useEffect(() => {
     if (!jobId || !data || !style || saving || !dirty) return;
@@ -204,6 +323,8 @@ export default function Studio({ addToast }: Props) {
   const handleTitleChange = (title: string) => {
     if (!localeData || !selectedBasename) return;
 
+    pushHistory();
+
     const localeTitles = titles[localeData.locale] ?? {};
 
     setTitles({ ...titles, [localeData.locale]: { ...localeTitles, [selectedBasename]: title } });
@@ -211,6 +332,8 @@ export default function Studio({ addToast }: Props) {
 
   const handleGeometryChange = (patch: Partial<StudioStyle>) => {
     if (!style || !selectedBasename) return;
+
+    pushHistory();
 
     const geoPatch: Partial<StudioStyle> = {};
     const sink = geoPatch as Record<string, unknown>;
@@ -235,6 +358,8 @@ export default function Studio({ addToast }: Props) {
   const handleDesignChange = (patch: Partial<StudioStyle>) => {
     if (!style) return;
 
+    pushHistory();
+
     const designPatch: Partial<StudioStyle> = {};
     const sink = designPatch as Record<string, unknown>;
     const geo = new Set<string>(STUDIO_GEOMETRY_KEYS);
@@ -248,6 +373,8 @@ export default function Studio({ addToast }: Props) {
 
   const handleApplyToAll = () => {
     if (!style || !selectedBasename || !effectiveShot) return;
+
+    pushHistory();
 
     const source: Partial<StudioStyle> = {};
     const sink = source as Record<string, unknown>;
@@ -268,6 +395,139 @@ export default function Studio({ addToast }: Props) {
     setShotOverrides(next);
     addToast(`Applied to all ${allBasenames.length} screenshots`, "success");
   };
+
+  const handleSelectLayer = (layer: StudioLayer | null) => {
+    setSelectedLayer(layer);
+
+    if (layer) setSelectedOverlayId(null);
+  };
+
+  const handleSelectOverlay = (id: string | null) => {
+    setSelectedOverlayId(id);
+
+    if (id) setSelectedLayer(null);
+  };
+
+  const handleSelectScreenshot = (basename: string) => {
+    setSelectedBasename(basename);
+    setSelectedOverlayId(null);
+  };
+
+  const replaceShotOverlays = (basename: string, list: StudioOverlay[]) => {
+    const next = { ...shotOverrides };
+    const merged = { ...(next[basename] ?? {}) };
+
+    if (list.length > 0) merged.overlays = list;
+    else delete merged.overlays;
+
+    if (Object.keys(merged).length === 0) delete next[basename];
+    else next[basename] = merged;
+
+    setShotOverrides(next);
+  };
+
+  const handleShotPatch = (patch: Partial<StudioStyle>) => {
+    if (!selectedBasename) return;
+
+    pushHistory();
+
+    const next = { ...shotOverrides };
+    const merged = { ...(next[selectedBasename] ?? {}), ...patch };
+
+    if (!merged.deviceFrame) delete merged.deviceFrame;
+
+    if (Object.keys(merged).length === 0) delete next[selectedBasename];
+    else next[selectedBasename] = merged;
+
+    setShotOverrides(next);
+  };
+
+  const handleOverlayPatch = (id: string, patch: Partial<StudioOverlay>) => {
+    if (!selectedBasename || !effectiveShot) return;
+
+    pushHistory();
+    replaceShotOverlays(
+      selectedBasename,
+      effectiveShot.overlays.map((overlay) => (overlay.id === id ? { ...overlay, ...patch } : overlay)),
+    );
+  };
+
+  const handleOverlayDelete = (id: string) => {
+    if (!selectedBasename || !effectiveShot) return;
+
+    pushHistory();
+    replaceShotOverlays(
+      selectedBasename,
+      effectiveShot.overlays.filter((overlay) => overlay.id !== id),
+    );
+
+    if (selectedOverlayId === id) setSelectedOverlayId(null);
+
+    if (jobId) {
+      studioApi.deleteOverlay(jobId, id).catch(() => {});
+    }
+  };
+
+  const handleOverlaysAdd = (list: StudioOverlay[]) => {
+    if (!selectedBasename || !effectiveShot || list.length === 0) return;
+
+    pushHistory();
+
+    const known = new Set(effectiveShot.overlays.map((overlay) => overlay.id));
+
+    replaceShotOverlays(selectedBasename, [
+      ...effectiveShot.overlays,
+      ...list.filter((overlay) => !known.has(overlay.id)),
+    ]);
+
+    const last = list[list.length - 1];
+
+    if (last) {
+      setSelectedOverlayId(last.id);
+      setSelectedLayer(null);
+    }
+  };
+
+  const uploadOverlayFile = useCallback(
+    async (file: File) => {
+      if (!jobId) return null;
+
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error("read failed"));
+          reader.readAsDataURL(file);
+        });
+        const { overlay } = await studioApi.uploadOverlay(jobId, dataUrl);
+
+        return overlay;
+      } catch (err: any) {
+        addToast(`Overlay upload failed: ${err.message}`, "error");
+
+        return null;
+      }
+    },
+    [jobId, addToast],
+  );
+
+  const duplicateOverlayFile = useCallback(
+    async (overlayId: string) => {
+      if (!jobId) return null;
+
+      try {
+        const { overlay } = await studioApi.duplicateOverlay(jobId, overlayId);
+
+        return overlay;
+      } catch (err: any) {
+        addToast(`Overlay duplicate failed: ${err.message}`, "error");
+
+        return null;
+      }
+    },
+    [jobId, addToast],
+  );
 
   const handleSave = async () => {
     if (!jobId || !data || !style || saving) return;
@@ -389,6 +649,8 @@ export default function Studio({ addToast }: Props) {
   const handleApplyPreset = (preset: StudioPresetInfo) => {
     if (!style) return;
 
+    pushHistory();
+
     setStyle({
       ...style,
       bgColor1: preset.bgColor1,
@@ -425,7 +687,12 @@ export default function Studio({ addToast }: Props) {
     setSavingPreset(true);
 
     try {
-      await studioApi.createPreset(data.job.appId, { name, style: { ...effectiveShot, titleLines: [] } });
+      const { titleLines: _titles, overlays: _overlays, deviceFrame: _frame, ...presetStyle } = effectiveShot;
+
+      await studioApi.createPreset(data.job.appId, {
+        name,
+        style: { ...presetStyle, titleLines: [], deviceFrame: "", overlays: [] },
+      });
       addToast(`Preset ${name} saved`, "success");
       refetch();
     } catch (err: any) {
@@ -564,12 +831,17 @@ export default function Studio({ addToast }: Props) {
           title={selectedTitle}
           style={effectiveShot}
           selectedLayer={selectedLayer}
-          onSelectLayer={setSelectedLayer}
+          onSelectLayer={handleSelectLayer}
           items={orderedItems}
           titles={titles[localeData.locale] ?? {}}
           selectedBasename={selectedBasename}
-          onSelectScreenshot={setSelectedBasename}
+          onSelectScreenshot={handleSelectScreenshot}
           shotOverrides={shotOverrides}
+          overlays={effectiveShot.overlays}
+          selectedOverlayId={selectedOverlayId}
+          onSelectOverlay={handleSelectOverlay}
+          onDeleteOverlay={handleOverlayDelete}
+          frameLabel={frameLabel}
         />
         <StudioCanvas
           item={selectedItem}
@@ -579,7 +851,7 @@ export default function Studio({ addToast }: Props) {
           disabled={!canWrite}
           onGeometryChange={handleGeometryChange}
           onApplyToAll={handleApplyToAll}
-          onSelectLayer={setSelectedLayer}
+          onSelectLayer={handleSelectLayer}
           index={Math.max(0, selectedIndex)}
           total={orderedItems.length}
           onPrev={showPrev}
@@ -587,6 +859,18 @@ export default function Studio({ addToast }: Props) {
           locales={data.locales.map((l) => l.locale)}
           activeLocale={localeData.locale}
           onLocaleChange={setActiveLocale}
+          overlays={effectiveShot.overlays}
+          selectedOverlayId={selectedOverlayId}
+          onSelectOverlay={handleSelectOverlay}
+          onOverlayPatch={handleOverlayPatch}
+          onOverlaysAdd={handleOverlaysAdd}
+          uploadOverlayFile={uploadOverlayFile}
+          duplicateOverlayFile={duplicateOverlayFile}
+          canUndo={pastRef.current.length > 0}
+          canRedo={futureRef.current.length > 0}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          bezels={bezels}
         />
         <div className="flex flex-col gap-5 min-w-0">
           <StudioRevisions
@@ -625,6 +909,11 @@ export default function Studio({ addToast }: Props) {
             onSavePreset={handleSavePreset}
             onDeletePreset={handleDeletePreset}
             savingPreset={savingPreset}
+            bezels={bezels}
+            onShotPatch={handleShotPatch}
+            overlay={selectedOverlay}
+            onOverlayPatch={handleOverlayPatch}
+            onDeleteOverlay={handleOverlayDelete}
           />
         </div>
       </div>

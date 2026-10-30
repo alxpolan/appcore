@@ -4,6 +4,18 @@ export function isEditableCppVersionState(state: string | null | undefined): boo
   return !!state && CPP_VERSION_EDITABLE_STATES.has(state);
 }
 
+export function cppPageInitialLocale(primaryLocale: string | null | undefined, requestedLocale: string): string {
+  if (primaryLocale) {
+    return primaryLocale;
+  }
+
+  return requestedLocale;
+}
+
+export function findEditableCppVersion<T extends { attributes: { state?: string | null } }>(versions: T[]): T | null {
+  return versions.find((version) => isEditableCppVersionState(version.attributes.state)) ?? null;
+}
+
 export function buildCreatePageBody(appId: string, name: string, locale: string) {
   const versionId = "${new-cpp-version}";
   const localizationId = "${new-cpp-localization}";
@@ -23,8 +35,8 @@ export function buildCreatePageBody(appId: string, name: string, locale: string)
       {
         type: "appCustomProductPageVersions",
         id: versionId,
+        attributes: { deepLink: null },
         relationships: {
-          appCustomProductPage: {},
           appCustomProductPageLocalizations: {
             data: [{ type: "appCustomProductPageLocalizations", id: localizationId }],
           },
@@ -174,6 +186,23 @@ export function detectDisplayTypeFromDimensions(
   if (!width || !height) return null;
 
   return DIMENSION_TO_DISPLAY_TYPE[`${width}x${height}`] ?? null;
+}
+
+export function findCppLocalizationsToRemove<T extends { attributes: { locale: string } }>(
+  localizations: T[],
+  keepLocales: string[],
+): T[] {
+  const keep = new Set(keepLocales);
+
+  return localizations.filter((localization) => !keep.has(localization.attributes.locale));
+}
+
+export function pendingCppScreenshots(
+  shots: Array<{ attributes: { fileName?: string; assetDeliveryState?: { state?: string | null } | null } }>,
+): string[] {
+  return shots
+    .filter((shot) => shot.attributes.assetDeliveryState?.state !== "COMPLETE")
+    .map((shot) => shot.attributes.fileName ?? "unknown");
 }
 
 export function buildScreenshotAssetUrl(templateUrl: string, w: number, h: number): string {

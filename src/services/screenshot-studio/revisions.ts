@@ -210,7 +210,7 @@ export async function createStudioRevision(args: {
       rev: args.rev,
       name: args.name?.trim() || null,
       framedByLocale: args.framedByLocale as Prisma.InputJsonValue,
-      style: (args.style ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      style: (args.style ?? Prisma.JsonNull) as unknown as Prisma.InputJsonValue,
       titles: (args.titles ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       styles: (args.styles ?? Prisma.JsonNull) as Prisma.InputJsonValue,
     },
@@ -301,7 +301,7 @@ export async function setAppDefaultFromRevision(
   await prisma.app.update({
     where: { id: appId },
     data: {
-      defaultScreenshotStyle: style as Prisma.InputJsonValue,
+      defaultScreenshotStyle: style as unknown as Prisma.InputJsonValue,
       defaultScreenshotShotStyles: styles as Prisma.InputJsonValue,
       defaultScreenshotRevisionId: revision.id,
       defaultScreenshotTitles: titles as Prisma.InputJsonValue,

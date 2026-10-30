@@ -104,6 +104,10 @@ export interface AppleAdsCountryStats extends AppleAdsStats {
   countryOrRegion: string;
 }
 
+export interface AppleAdsDeviceStats extends AppleAdsStats {
+  deviceClass: string;
+}
+
 export interface AppleAdsStoreApp {
   adamId: string;
   name: string;

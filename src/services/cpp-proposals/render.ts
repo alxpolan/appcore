@@ -1,19 +1,10 @@
 import fs from "fs";
 import path from "path";
-import PQueue from "p-queue";
 import { prisma } from "../../config";
 import { Prisma } from "@prisma/client";
-import { workerClient } from "../worker-client";
-import { frameComplexBatch } from "../screenshot-studio/complex";
-import { pickStudioSourceLocale } from "../screenshot-studio/render";
 import { asFramedMap } from "../screenshot-studio/revisions";
-import {
-  matchDescriptionKey,
-  normalizeStudioStyle,
-  normalizeStudioTitle,
-  resolveStudioTitle,
-} from "../screenshot-studio/style";
-import { groupPlannedByDevice } from "../screenshot-studio/render";
+import { normalizeStudioStyle } from "../screenshot-studio/style";
+import { frameScreenshots } from "../generate-screenshots-framing";
 import {
   CPP_RENDERABLE_STATUSES,
   failCppProposal,
@@ -21,7 +12,6 @@ import {
   isCppProcessingStale,
   readCppCaptions,
   setCppProposalStatus,
-  type CppCaptions,
 } from "./proposals";
 import { generateGroupCaptions } from "./captions";
 import type { CppProposal } from "@prisma/client";
@@ -37,7 +27,6 @@ interface CppSourceJob {
   id: string;
   screenshotStyle: unknown;
   screenshotDescriptions: unknown;
-  screenshotSublines: unknown;
   framedByLocale: unknown;
 }
 
@@ -57,7 +46,7 @@ async function pickSourceJob(appId: string, preferredId: string | null): Promise
   if (preferredId) {
     const preferred = await prisma.screenshotJob.findUnique({
       where: { id: preferredId },
-      select: { id: true, screenshotStyle: true, screenshotDescriptions: true, screenshotSublines: true, framedByLocale: true },
+      select: { id: true, screenshotStyle: true, screenshotDescriptions: true, framedByLocale: true },
     });
 
     if (preferred && hasRawDir(preferred.id)) return preferred;
@@ -67,21 +56,10 @@ async function pickSourceJob(appId: string, preferredId: string | null): Promise
     where: { appId, status: "COMPLETED" },
     orderBy: { completedAt: "desc" },
     take: 5,
-    select: { id: true, screenshotStyle: true, screenshotDescriptions: true, screenshotSublines: true, framedByLocale: true },
+    select: { id: true, screenshotStyle: true, screenshotDescriptions: true, framedByLocale: true },
   });
 
   return jobs.find((job) => hasRawDir(job.id)) ?? null;
-}
-
-function rawLocalesOf(jobId: string): string[] {
-  try {
-    return fs
-      .readdirSync(path.join(jobDir(jobId), "raw"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
 }
 
 function readStringMap(value: unknown): Record<string, string> {
@@ -96,42 +74,15 @@ function readStringMap(value: unknown): Record<string, string> {
   return out;
 }
 
-function readSublines(value: unknown): Record<string, Record<string, string>> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+export function cppFrameConfig(sourceStyle: unknown): Record<string, string> {
+  const style = normalizeStudioStyle(sourceStyle);
 
-  const out: Record<string, Record<string, string>> = {};
-
-  for (const [locale, captions] of Object.entries(value as Record<string, unknown>)) {
-    const map = readStringMap(captions);
-
-    if (Object.keys(map).length > 0) out[locale] = map;
-  }
-
-  return out;
-}
-
-function titleForBasename(args: {
-  basename: string;
-  locale: string;
-  captions: CppCaptions;
-  sublines: Record<string, Record<string, string>>;
-  descriptions: Record<string, string>;
-  fallback: string;
-}): string {
-  const descKey = matchDescriptionKey(args.basename, args.descriptions);
-  const groupHit = descKey ? (args.captions[args.locale]?.[descKey] ?? args.captions["en-US"]?.[descKey]) : undefined;
-
-  if (groupHit) return normalizeStudioTitle(groupHit);
-
-  return normalizeStudioTitle(
-    resolveStudioTitle({
-      basename: args.basename,
-      locale: args.locale,
-      sublines: args.sublines,
-      descriptions: args.descriptions,
-      fallback: args.fallback,
-    }),
-  );
+  return {
+    bgColor1: style.bgColor1,
+    bgColor2: style.bgColor2,
+    textColor: style.textColor,
+    textPosition: style.textPosition,
+  };
 }
 
 export async function renderCppProposal(
@@ -162,7 +113,6 @@ export async function renderCppProposal(
     if (locales.length === 0) throw new Error("Source run has no rendered locales");
 
     const descriptions = readStringMap(source.screenshotDescriptions);
-    const style = normalizeStudioStyle(source.screenshotStyle);
     const stored = readCppCaptions(proposal.captions);
     const keywords = Array.isArray(proposal.keywords)
       ? (proposal.keywords as Array<{ term?: unknown }>).map((item) => String(item.term ?? "")).filter(Boolean)
@@ -186,7 +136,6 @@ export async function renderCppProposal(
         commitMessage: `CPP ${proposal.label}`,
         branch: "cpp",
         status: "RUNNING",
-        screenshotStyle: style as Prisma.InputJsonValue,
         screenshotDescriptions: descriptions as Prisma.InputJsonValue,
         screenshotSublines: captions as Prisma.InputJsonValue,
         startedAt: new Date(),
@@ -197,97 +146,38 @@ export async function renderCppProposal(
 
     fs.cpSync(path.join(jobDir(source.id), "raw"), path.join(jobDir(job.id), "raw"), { recursive: true });
 
-    const rawLocales = rawLocalesOf(source.id);
-    const sublines = readSublines(source.screenshotSublines);
-    const planned: Array<{ locale: string; basename: string; title: string }> = [];
+    const jobWithApp = await prisma.screenshotJob.findUnique({ where: { id: job.id }, include: { app: true } });
 
-    for (const locale of locales) {
-      const sourceLocale = pickStudioSourceLocale(locale, rawLocales);
+    if (!jobWithApp) throw new Error(`Screenshot job ${job.id} not found`);
 
-      if (!sourceLocale) continue;
+    await frameScreenshots(
+      job.id,
+      jobWithApp,
+      jobDir(job.id),
+      descriptions,
+      Object.keys(descriptions).length > 0,
+      captions,
+      cppFrameConfig(source.screenshotStyle),
+      locales,
+      {},
+      () => {},
+      (event) => onProgress?.({ ...event, basenames: [] }),
+    );
 
-      const files = fs
-        .readdirSync(path.join(jobDir(source.id), "raw", sourceLocale))
-        .filter((file) => /\.png$/i.test(file))
-        .sort();
+    const framedJob = await prisma.screenshotJob.findUnique({
+      where: { id: job.id },
+      select: { framedByLocale: true },
+    });
 
-      for (const basename of files) {
-        planned.push({
-          locale,
-          basename,
-          title: titleForBasename({ basename, locale, captions, sublines, descriptions, fallback: proposal.label }),
-        });
-      }
-    }
+    const framedByLocale = asFramedMap(framedJob?.framedByLocale);
+    const framedCount = locales.reduce((sum, locale) => sum + (framedByLocale[locale]?.length ?? 0), 0);
 
-    if (planned.length === 0) throw new Error("No editable sources stored for these locales");
-
-    const total = planned.length;
-    let done = 0;
-
-    onProgress?.({ done: 0, total, locale: null, basenames: [] });
-
-    const queue = new PQueue({ concurrency: workerClient.slotCount() });
-    const tasks: Array<Promise<void>> = [];
-
-    for (const locale of locales) {
-      const localePlanned = planned.filter((item) => item.locale === locale);
-
-      if (localePlanned.length === 0) continue;
-
-      const sourceLocale = pickStudioSourceLocale(locale, rawLocales);
-
-      if (!sourceLocale) continue;
-
-      for (const chunk of groupPlannedByDevice(localePlanned)) {
-        const titles = new Map(chunk.map((item) => [item.basename.replace(/\.[^.]+$/, ""), item.title]));
-        const basenames = chunk.map((item) => item.basename);
-
-        tasks.push(
-          queue.add(async () => {
-            onProgress?.({ done, total, locale, basenames });
-
-            await frameComplexBatch({
-              srcDir: path.join(jobDir(source.id), "raw", sourceLocale),
-              outDir: path.join(jobDir(job.id), "framed", locale),
-              shots: chunk.map((item) => ({
-                filename: item.basename,
-                base: item.basename.replace(/\.[^.]+$/, ""),
-                style,
-              })),
-              titles,
-              style,
-            });
-
-            done += chunk.length;
-            onProgress?.({ done, total, locale, basenames: [] });
-          }),
-        );
-      }
-    }
-
-    try {
-      await Promise.all(tasks);
-    } catch (err) {
-      queue.clear();
-      throw err;
-    }
-
-    const framedByLocale: Record<string, string[]> = {};
-
-    for (const item of planned) {
-      const base = item.basename.replace(/\.[^.]+$/, "");
-      const list = framedByLocale[item.locale] ?? [];
-
-      list.push(`/screenshots/${job.id}/framed/${item.locale}/${base}.png`);
-      framedByLocale[item.locale] = list;
-    }
+    if (framedCount === 0) throw new Error("No editable sources stored for these locales");
 
     await prisma.screenshotJob.update({
       where: { id: job.id },
       data: {
         status: "COMPLETED",
-        framedByLocale: framedByLocale as Prisma.InputJsonValue,
         completedAt: new Date(),
       },
     });

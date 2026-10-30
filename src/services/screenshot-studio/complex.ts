@@ -9,12 +9,56 @@ export interface ComplexShot {
   style: StudioStyle;
 }
 
+function overlayFileForJob(jobId: string, url: string): string | null {
+  const prefix = `/screenshots/${jobId}/overlays/`;
+
+  if (!url.startsWith(prefix)) return null;
+
+  const file = url.slice(prefix.length);
+
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/i.test(file) || file.includes("..")) return null;
+
+  return file;
+}
+
+function readOverlayPayloads(
+  jobId: string | undefined,
+  overlays: StudioStyle["overlays"],
+): Array<{ data: string; x: number; y: number; scale: number; rotation: number }> {
+  if (!jobId || !Array.isArray(overlays) || overlays.length === 0) return [];
+
+  const out: Array<{ data: string; x: number; y: number; scale: number; rotation: number }> = [];
+
+  for (const overlay of overlays) {
+    const file = overlayFileForJob(jobId, overlay.url);
+
+    if (!file) continue;
+
+    try {
+      const data = fs.readFileSync(path.join(process.cwd(), "screenshots", jobId, "overlays", file));
+
+      out.push({
+        data: data.toString("base64"),
+        x: overlay.x,
+        y: overlay.y,
+        scale: overlay.scale,
+        rotation: overlay.rotation ?? 0,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return out;
+}
+
 export async function frameComplexBatch(args: {
   srcDir: string;
   outDir: string;
   shots: ComplexShot[];
   titles: Map<string, string>;
   style: StudioStyle;
+  jobId?: string;
   log?: (msg: string) => void;
 }): Promise<void> {
   const images = args.shots.map((shot) => ({
@@ -30,6 +74,10 @@ export async function frameComplexBatch(args: {
     titleBoxW: shot.style.titleBoxW,
     titleBoxH: shot.style.titleBoxH,
     titleLines: shot.style.titleLines,
+    bezelFile: shot.style.deviceFrame || undefined,
+    rotation: shot.style.rotation ?? 0,
+    titleRotation: shot.style.titleRotation ?? 0,
+    overlays: readOverlayPayloads(args.jobId, shot.style.overlays),
   }));
 
   const result = await workerClient.frameit({

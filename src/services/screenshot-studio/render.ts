@@ -453,6 +453,7 @@ export async function renderStudioRevision(args: {
           await frameComplexBatch({
             srcDir: path.join(studioJobDir(args.jobId), "raw", sourceLocale),
             outDir: path.join(revDir, locale),
+            jobId: args.jobId,
             shots: chunk.map((item) => ({
               filename: item.basename,
               base: item.basename.replace(/\.[^.]+$/, ""),
@@ -489,7 +490,7 @@ export async function renderStudioRevision(args: {
     });
   }
 
-  const storedGlobalStyle = { ...globalStyle, titleLines: [] };
+  const storedGlobalStyle = { ...globalStyle, titleLines: [], overlays: [] };
 
   const revision = await createStudioRevision({
     jobId: args.jobId,
@@ -552,7 +553,7 @@ export async function duplicateStudioJob(jobId: string, pusher?: string | null):
       status: "COMPLETED",
       screenshotUrls: [],
       framedByLocale: effective.framedByLocale as Prisma.InputJsonValue,
-      screenshotStyle: style as Prisma.InputJsonValue,
+      screenshotStyle: style as unknown as Prisma.InputJsonValue,
       screenshotSublines: (job.screenshotSublines ?? {}) as Prisma.InputJsonValue,
       screenshotDescriptions: (job.screenshotDescriptions ?? {}) as Prisma.InputJsonValue,
       startedAt: new Date(),

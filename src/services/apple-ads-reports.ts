@@ -5,7 +5,6 @@ import type {
   AppleAdsAdGroup,
   AppleAdsAdGroupWithKeywords,
   AppleAdsCampaign,
-  AppleAdsCountryStats,
   AppleAdsCredentials,
   AppleAdsKeyword,
   AppleAdsReportRange,
@@ -119,7 +118,7 @@ export function mergeReportRows(rows: any[], idOf: (row: any) => string | undefi
   return [...merged.values()];
 }
 
-function statsFromTotal(total: any): AppleAdsStats {
+export function statsFromTotal(total: any): AppleAdsStats {
   const spend = total.localSpend?.amount != null ? Number(total.localSpend.amount) : 0;
   const impressions = total.impressions != null ? Number(total.impressions) : 0;
   const taps = total.taps != null ? Number(total.taps) : 0;
@@ -137,7 +136,7 @@ function statsFromTotal(total: any): AppleAdsStats {
   };
 }
 
-function totalsFromRow(row: any): any {
+export function totalsFromRow(row: any): any {
   if (row.total) return row.total;
 
   if (Array.isArray(row.granularity)) {
@@ -158,7 +157,7 @@ function totalsFromRow(row: any): any {
   return {};
 }
 
-function rowsFromReport(data: any): any[] {
+export function rowsFromReport(data: any): any[] {
   if (data?.error) throw new Error(`Apple Search Ads reports error: ${JSON.stringify(data.error)}`);
 
   const envelope = data == null ? undefined : data.data;
@@ -275,100 +274,6 @@ export async function getAppleAdsDailyStats(
   );
 
   return aggregateDailyStats(rows, campaignId);
-}
-
-function countryStatsFromRows(rows: any[]): AppleAdsCountryStats[] {
-  return rows
-    .map((row) => {
-      const meta = row.metadata ?? {};
-
-      return {
-        countryOrRegion: String(meta.countryOrRegion ?? ""),
-        ...statsFromTotal(totalsFromRow(row)),
-      };
-    })
-    .filter((r) => r.countryOrRegion !== "")
-    .sort((a, b) => b.spend - a.spend);
-}
-
-export async function getAppleAdsCampaignCountryBreakdown(
-  creds: AppleAdsCredentials,
-  campaignId: string,
-  range: AppleAdsReportRange = resolveAppleAdsRange({}),
-): Promise<AppleAdsCountryStats[]> {
-  const accessToken = await fetchAppleAdsAccessToken(creds);
-  const headers = authedHeaders(accessToken, creds.orgId);
-
-  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
-    const reportRes = await axios.post<any>(
-      `${API_BASE}/reports/campaigns`,
-      {
-        startTime,
-        endTime,
-        selector: {
-          orderBy: [{ field: "campaignId", sortOrder: "ASCENDING" }],
-          conditions: [{ field: "campaignId", operator: "EQUALS", values: [campaignId] }],
-          pagination: { offset: 0, limit: 1000 },
-        },
-        groupBy: ["countryOrRegion"],
-        timeZone: "UTC",
-        returnRecordsWithNoMetrics: true,
-        returnRowTotals: true,
-        returnGrandTotals: false,
-      },
-      { headers },
-    );
-
-    return rowsFromReport(reportRes.data);
-  };
-
-  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
-  const rows = mergeReportRows(chunks.flat(), (row) =>
-    row.metadata?.countryOrRegion != null ? String(row.metadata.countryOrRegion) : undefined,
-  );
-
-  return countryStatsFromRows(rows);
-}
-
-export async function getAppleAdsKeywordCountryBreakdown(
-  creds: AppleAdsCredentials,
-  campaignId: string,
-  adGroupId: string,
-  keywordId: string,
-  range: AppleAdsReportRange = resolveAppleAdsRange({}),
-): Promise<AppleAdsCountryStats[]> {
-  const accessToken = await fetchAppleAdsAccessToken(creds);
-  const headers = authedHeaders(accessToken, creds.orgId);
-
-  const fetchChunk = async (startTime: string, endTime: string): Promise<any[]> => {
-    const reportRes = await axios.post<any>(
-      `${API_BASE}/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`,
-      {
-        startTime,
-        endTime,
-        selector: {
-          orderBy: [{ field: "keywordId", sortOrder: "ASCENDING" }],
-          conditions: [{ field: "keywordId", operator: "EQUALS", values: [keywordId] }],
-          pagination: { offset: 0, limit: 1000 },
-        },
-        groupBy: ["countryOrRegion"],
-        timeZone: "UTC",
-        returnRecordsWithNoMetrics: true,
-        returnRowTotals: true,
-        returnGrandTotals: false,
-      },
-      { headers },
-    );
-
-    return rowsFromReport(reportRes.data);
-  };
-
-  const chunks = await Promise.all(splitReportSpan(range).map((chunk) => fetchChunk(chunk.startDate, chunk.endDate)));
-  const rows = mergeReportRows(chunks.flat(), (row) =>
-    row.metadata?.countryOrRegion != null ? String(row.metadata.countryOrRegion) : undefined,
-  );
-
-  return countryStatsFromRows(rows);
 }
 
 export async function listAppleAdsAdGroups(

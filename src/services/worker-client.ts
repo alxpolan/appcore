@@ -66,6 +66,20 @@ export interface WorkerBuildResult {
   buildNumber?: string;
 }
 
+export interface WorkerBezelImageOption {
+  file: string;
+  color: string;
+  frameW: number;
+  frameH: number;
+}
+
+export interface WorkerBezelDevice {
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  rounded: boolean;
+}
+
 export interface WorkerFrameitParams {
   images: Array<{
     filename: string;
@@ -80,6 +94,10 @@ export interface WorkerFrameitParams {
     titleBoxW?: number;
     titleBoxH?: number;
     titleLines?: string[];
+    bezelFile?: string;
+    rotation?: number;
+    titleRotation?: number;
+    overlays?: Array<{ data: string; x: number; y: number; scale: number; rotation: number }>;
   }>;
   options: {
     subtitle?: string;
@@ -407,6 +425,61 @@ class FastlaneWorkerClient {
 
         onLog?.(`[snapshot] Warning: failed to download ${meta.filename}: ${msg}`);
       }
+    }
+  }
+
+  async frameitBezels(
+    filename: string,
+    width: number,
+    height: number,
+  ): Promise<{
+    ok: boolean;
+    current: string | null;
+    options: WorkerBezelImageOption[];
+    device: WorkerBezelDevice | null;
+    error?: string;
+  }> {
+    const slot = await this.acquireFrameitSlot();
+
+    try {
+      const res = await slot.client.get("/worker/frameit/bezels", {
+        params: { filename, width, height },
+        timeout: 30_000,
+        validateStatus: () => true,
+      });
+
+      return res.data;
+    } finally {
+      slot.sem.release();
+    }
+  }
+
+  async frameitBezelImage(file: string): Promise<Buffer> {
+    const slot = await this.acquireFrameitSlot();
+
+    try {
+      const res = await slot.client.get("/worker/frameit/bezel-image", {
+        params: { file },
+        responseType: "arraybuffer",
+        timeout: 60_000,
+        validateStatus: () => true,
+      });
+
+      const contentType = String(res.headers?.["content-type"] ?? "");
+
+      if (contentType.includes("application/json")) {
+        const body = JSON.parse(Buffer.from(res.data).toString("utf8"));
+
+        throw new Error(typeof body?.error === "string" && body.error.length > 0 ? body.error : "Bezel image unavailable");
+      }
+
+      if (res.status !== 200 || !(res.data instanceof ArrayBuffer) || res.data.byteLength === 0) {
+        throw new Error("Bezel image unavailable");
+      }
+
+      return Buffer.from(res.data);
+    } finally {
+      slot.sem.release();
     }
   }
 

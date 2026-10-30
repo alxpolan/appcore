@@ -1,6 +1,15 @@
 export type StudioFontId = "rounded" | "inter" | "baloo";
 export type StudioTextPosition = "top" | "bottom";
 
+export interface StudioOverlay {
+  id: string;
+  url: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
 export interface StudioStyle {
   bgColor1: string;
   bgColor2: string;
@@ -16,6 +25,10 @@ export interface StudioStyle {
   titleBoxW: number;
   titleBoxH: number;
   titleLines: string[];
+  deviceFrame: string;
+  overlays: StudioOverlay[];
+  rotation: number;
+  titleRotation: number;
 }
 
 export const STUDIO_GEOMETRY_KEYS = [
@@ -28,6 +41,8 @@ export const STUDIO_GEOMETRY_KEYS = [
   "titleBoxW",
   "titleBoxH",
   "titleLines",
+  "rotation",
+  "titleRotation",
 ] as const;
 
 export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_KEYS)[number]> = {
@@ -40,13 +55,35 @@ export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_
   titleBoxW: 0,
   titleBoxH: 0,
   titleLines: [],
+  rotation: 0,
+  titleRotation: 0,
 };
 
 export const STUDIO_APPLY_GEOMETRY_KEYS: Array<keyof StudioStyle> = STUDIO_GEOMETRY_KEYS.filter(
   (key) => key !== "titleLines",
 );
 
-export type StudioLayer = "caption" | "device" | "background";
+export type StudioLayer = "caption" | "device" | "image" | "background";
+
+export interface StudioBezelOption {
+  file: string;
+  color: string;
+  frameW: number;
+  frameH: number;
+}
+
+export interface StudioBezelDevice {
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  rounded: boolean;
+}
+
+export interface StudioBezels {
+  current: string | null;
+  options: StudioBezelOption[];
+  device: StudioBezelDevice | null;
+}
 
 export interface StudioItem {
   basename: string;
@@ -237,6 +274,22 @@ export const studioApi = {
     studioRequest<{ ok: boolean }>(`/github/screenshots/presets/${presetId}`, { method: "DELETE" }),
   duplicate: (jobId: string) =>
     studioRequest<{ jobId: string }>(`/github/screenshots/studio/${jobId}/duplicate`, { method: "POST" }),
+  getBezels: (jobId: string, basename: string) =>
+    studioRequest<StudioBezels>(`/github/screenshots/studio/${jobId}/bezels/${encodeURIComponent(basename)}`),
+  uploadOverlay: (jobId: string, data: string) =>
+    studioRequest<{ overlay: { id: string; url: string } }>(`/github/screenshots/studio/${jobId}/overlays`, {
+      method: "POST",
+      body: JSON.stringify({ data }),
+    }),
+  deleteOverlay: (jobId: string, overlayId: string) =>
+    studioRequest<{ ok: boolean }>(`/github/screenshots/studio/${jobId}/overlays/${encodeURIComponent(overlayId)}`, {
+      method: "DELETE",
+    }),
+  duplicateOverlay: (jobId: string, overlayId: string) =>
+    studioRequest<{ overlay: { id: string; url: string } }>(
+      `/github/screenshots/studio/${jobId}/overlays/${encodeURIComponent(overlayId)}/duplicate`,
+      { method: "POST" },
+    ),
   saveDraft: (
     jobId: string,
     draft: { style: StudioStyle; styles: Record<string, Partial<StudioStyle>>; titles: Record<string, Record<string, string>> },

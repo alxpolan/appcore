@@ -43,6 +43,7 @@ import AppleAdsCampaignChart from "./AppleAdsCampaignChart";
 import AppleAdsProfitCalculator from "./AppleAdsProfitCalculator";
 import { NegativeKeywordManager } from "./AppleAdsNegativeKeywords";
 import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
+import { KeywordDevices } from "./AppleAdsKeywordDevices";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 import { StatCard } from "../StatCard";
 
@@ -892,8 +893,20 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                                                 <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
                                                   Countries
                                                 </div>
-                                                <div className={kwRevenue ? "mb-4" : ""}>
+                                                <div className="mb-4">
                                                   <KeywordCountries
+                                                    campaignId={campaignId}
+                                                    adGroupId={g.id}
+                                                    keywordId={k.id}
+                                                    currency={k.currency ?? g.currency ?? currency}
+                                                    query={query}
+                                                  />
+                                                </div>
+                                                <div className={`text-[12px] font-semibold ${textPrimary} mb-2`}>
+                                                  Devices
+                                                </div>
+                                                <div className={kwRevenue ? "mb-4" : ""}>
+                                                  <KeywordDevices
                                                     campaignId={campaignId}
                                                     adGroupId={g.id}
                                                     keywordId={k.id}

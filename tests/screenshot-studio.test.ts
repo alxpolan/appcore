@@ -9,12 +9,14 @@ import {
   matchDescriptionKey,
   matchShotStyle,
   normalizeHexColor,
+  normalizeStudioOverlays,
   normalizeStudioStyle,
   normalizeStudioTitle,
   normalizeTitleBoxSize,
   normalizeTitleLines,
   resolveShotStyles,
   resolveStudioTitle,
+  storedShotPatch,
   storedShotStyles,
   studioBasename,
   studioDeviceLabel,
@@ -401,5 +403,55 @@ describe("studio style: shot style resolution", () => {
         "05_NewProject__iphone_6.9.png": { offsetY: 100 },
       },
     );
+  });
+});
+
+describe("studio style: overlays and device frames", () => {
+  it("fills overlay and frame defaults in full styles", () => {
+    const style = normalizeStudioStyle({});
+
+    assert.equal(style.deviceFrame, "");
+    assert.deepEqual(style.overlays, []);
+    assert.equal(style.rotation, 0);
+    assert.equal(style.titleRotation, 0);
+    assert.equal(normalizeStudioStyle({ rotation: 190, titleRotation: -190 }).rotation, -170);
+    assert.equal(normalizeStudioStyle({ rotation: 190, titleRotation: -190 }).titleRotation, 170);
+  });
+
+  it("keeps a valid frame file and clamps overlay geometry", () => {
+    const style = normalizeStudioStyle({
+      deviceFrame: "Apple iPhone 16 Black.png",
+      overlays: [
+        { id: "a", url: "/screenshots/job1/overlays/a.png", x: 10.6, y: -20.2, scale: 2.345 },
+        { id: "", url: "/screenshots/job1/overlays/b.png", x: 0, y: 0, scale: 1 },
+        { id: "c", url: "https://evil.example/a.png", x: 0, y: 0, scale: 1 },
+        { id: "d", url: "/screenshots/job1/overlays/../x.png", x: 0, y: 0, scale: 1 },
+      ],
+    });
+
+    assert.equal(style.deviceFrame, "Apple iPhone 16 Black.png");
+    assert.deepEqual(style.overlays, [
+      { id: "a", url: "/screenshots/job1/overlays/a.png", x: 11, y: -20, scale: 2.35, rotation: 0 },
+    ]);
+  });
+
+  it("normalizes overlay lists in isolation", () => {
+    assert.deepEqual(normalizeStudioOverlays(null), []);
+    assert.deepEqual(normalizeStudioOverlays([{ id: "a", url: "/screenshots/j/overlays/a.png", x: 1, y: 2, scale: 9 }]), [
+      { id: "a", url: "/screenshots/j/overlays/a.png", x: 1, y: 2, scale: 8, rotation: 0 },
+    ]);
+    assert.deepEqual(
+      normalizeStudioOverlays([{ id: "a", url: "/screenshots/j/overlays/a.png", x: 0, y: 0, scale: 1, rotation: 200 }]),
+      [{ id: "a", url: "/screenshots/j/overlays/a.png", x: 0, y: 0, scale: 1, rotation: -160 }],
+    );
+  });
+
+  it("keeps frame and overlays in stored shot patches", () => {
+    assert.deepEqual(storedShotPatch({ deviceFrame: "Apple iPhone 16 Black.png", offsetX: 5 }), {
+      deviceFrame: "Apple iPhone 16 Black.png",
+      offsetX: 5,
+    });
+    assert.deepEqual(storedShotPatch({ deviceFrame: "" }), null);
+    assert.deepEqual(storedShotPatch({ overlays: [] }), null);
   });
 });

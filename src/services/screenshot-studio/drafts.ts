@@ -1,6 +1,11 @@
 import { prisma } from "../../config";
 import { Prisma } from "@prisma/client";
-import { DEFAULT_STUDIO_STYLE, normalizeStudioStyle, type StudioStyle } from "./style";
+import {
+  DEFAULT_STUDIO_STYLE,
+  normalizeStudioOverlays,
+  normalizeStudioStyle,
+  type StudioStyle,
+} from "./style";
 import { parseTitlesMap } from "./revisions";
 
 export interface StudioDraft {
@@ -28,8 +33,14 @@ function cleanDraftStyles(value: unknown): Record<string, Partial<StudioStyle>> 
     const sink = clean as Record<string, unknown>;
 
     for (const key of DRAFT_STYLE_KEYS) {
-      if (key !== "titleLines" && source[key] !== undefined) sink[key] = source[key];
+      if (key === "titleLines" || key === "overlays" || source[key] === undefined) continue;
+
+      sink[key] = source[key];
     }
+
+    const overlays = normalizeStudioOverlays(source.overlays);
+
+    if (overlays.length > 0) sink.overlays = overlays;
 
     if (Object.keys(clean).length > 0) styles[base] = clean;
   }
@@ -72,15 +83,15 @@ export async function saveStudioDraft(
     where: { jobId },
     create: {
       jobId,
-      style: body.style as Prisma.InputJsonValue,
-      styles: body.styles as Prisma.InputJsonValue,
-      titles: body.titles as Prisma.InputJsonValue,
+      style: body.style as unknown as Prisma.InputJsonValue,
+      styles: body.styles as unknown as Prisma.InputJsonValue,
+      titles: body.titles as unknown as Prisma.InputJsonValue,
       updatedBy,
     },
     update: {
-      style: body.style as Prisma.InputJsonValue,
-      styles: body.styles as Prisma.InputJsonValue,
-      titles: body.titles as Prisma.InputJsonValue,
+      style: body.style as unknown as Prisma.InputJsonValue,
+      styles: body.styles as unknown as Prisma.InputJsonValue,
+      titles: body.titles as unknown as Prisma.InputJsonValue,
       updatedBy,
     },
   });

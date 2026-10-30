@@ -590,6 +590,16 @@ export interface AppleAdsCountryBreakdownResponse {
   endDate: string;
 }
 
+export interface AppleAdsDeviceStats extends AppleAdsStats {
+  deviceClass: string;
+}
+
+export interface AppleAdsDeviceBreakdownResponse {
+  devices: AppleAdsDeviceStats[];
+  startDate: string;
+  endDate: string;
+}
+
 export interface AppleAdsRevenueTransaction {
   id: string;
   date: string;

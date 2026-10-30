@@ -5,7 +5,14 @@ import os from "os";
 import sharp from "sharp";
 import { pickFrameitFont, STUDIO_FRAMEIT_FONTS } from "./frameit-fonts";
 import { fitTitleToBox, recompositeShiftedFrame, TITLE_BASE_SIZE } from "./frameit-shift";
-import { loadBezelImage, resolveDevice, type FrameitDevice } from "./frameit-devices";
+import {
+  FRAMEIT_ASSETS_DIR,
+  bezelsForDevice,
+  listBezelFiles,
+  loadBezelImage,
+  resolveDevice,
+  type FrameitDevice,
+} from "./frameit-devices";
 import { frameitPad, frameitSpace, renderBaseFrame, renderDeviceLayer } from "./frameit-native";
 
 export const frameitRouter = Router();
@@ -54,6 +61,22 @@ function normalizeTitleLines(value: unknown): string[] {
   return [...lines.slice(0, 11), lines.slice(11).join(" ")];
 }
 
+interface FrameitOverlay {
+  data: string;
+  x?: number;
+  y?: number;
+  scale?: number;
+  rotation?: number;
+}
+
+function normalizeRotation(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+
+  const wrapped = ((((value + 180) % 360) + 360) % 360) - 180;
+
+  return Math.round(wrapped * 10) / 10;
+}
+
 interface FrameitRequest {
   images: Array<{
     filename: string;
@@ -68,6 +91,10 @@ interface FrameitRequest {
     titleBoxW?: number;
     titleBoxH?: number;
     titleLines?: string[];
+    bezelFile?: string;
+    rotation?: number;
+    titleRotation?: number;
+    overlays?: FrameitOverlay[];
   }>;
   options: {
     subtitle?: string;
@@ -122,6 +149,8 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     const titleOffsetByBase = new Map<string, { x: number; y: number }>();
     const titleScaleByBase = new Map<string, number>();
     const deviceScaleByBase = new Map<string, number>();
+    const rotationByBase = new Map<string, number>();
+    const titleRotationByBase = new Map<string, number>();
     const titleBoxByBase = new Map<string, { w: number; h: number }>();
     const titleLinesByBase = new Map<string, string[]>();
     const workDimsByBase = new Map<string, { w: number; h: number }>();
@@ -159,6 +188,8 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       });
       titleScaleByBase.set(basename, normalizeScale(img.titleScale, 0.2, 3));
       deviceScaleByBase.set(basename, normalizeScale(img.deviceScale, 0.2, 2));
+      rotationByBase.set(basename, normalizeRotation(img.rotation));
+      titleRotationByBase.set(basename, normalizeRotation(img.titleRotation));
       titleBoxByBase.set(basename, { w: normalizeBoxSize(img.titleBoxW), h: normalizeBoxSize(img.titleBoxH) });
       titleLinesByBase.set(basename, normalizeTitleLines(img.titleLines));
 
@@ -204,11 +235,13 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     const deviceChanged = new Set([
       ...[...offsetByBase.entries()].filter(([, o]) => o.x !== 0 || o.y !== 0).map(([base]) => base),
       ...[...deviceScaleByBase.entries()].filter(([, k]) => k !== 1).map(([base]) => base),
+      ...[...rotationByBase.entries()].filter(([, r]) => r !== 0).map(([base]) => base),
     ]);
 
     const titleChanged = new Set([
       ...[...titleOffsetByBase.entries()].filter(([, o]) => o.x !== 0 || o.y !== 0).map(([base]) => base),
       ...[...titleScaleByBase.entries()].filter(([, k]) => k !== 1).map(([base]) => base),
+      ...[...titleRotationByBase.entries()].filter(([, r]) => r !== 0).map(([base]) => base),
     ]);
 
     const boxChanged = new Set([...titleBoxByBase.entries()].filter(([, b]) => b.w > 0).map(([base]) => base));
@@ -296,6 +329,81 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       framedByBase.set(basename, framed);
     }
 
+    const bezelAllowlist = new Set(await listBezelFiles());
+
+    for (const img of images) {
+      const basename = img.filename.replace(/\.[^.]+$/, "");
+
+      if (typeof img.bezelFile !== "string" || img.bezelFile.length === 0) continue;
+
+      const override = img.bezelFile;
+
+      if (!bezelAllowlist.has(override)) {
+        throw new Error(`Unknown bezel file '${override}' for screenshot '${img.filename}'`);
+      }
+
+      const resolved = deviceByBase.get(basename);
+
+      if (resolved) deviceByBase.set(basename, { ...resolved, bezelFile: override });
+    }
+
+    const overlayByBase = new Map<string, Array<{ data: string; x: number; y: number; scale: number; rotation: number }>>();
+
+    for (const img of images) {
+      if (!Array.isArray(img.overlays) || img.overlays.length === 0) continue;
+
+      const basename = img.filename.replace(/\.[^.]+$/, "");
+      const list: Array<{ data: string; x: number; y: number; scale: number; rotation: number }> = [];
+
+      for (const overlay of img.overlays) {
+        if (!overlay || typeof overlay.data !== "string" || overlay.data.length === 0) continue;
+
+        const x = typeof overlay.x === "number" && Number.isFinite(overlay.x) ? overlay.x : 0;
+        const y = typeof overlay.y === "number" && Number.isFinite(overlay.y) ? overlay.y : 0;
+
+        list.push({ data: overlay.data, x, y, scale: normalizeScale(overlay.scale, 0.1, 8), rotation: normalizeRotation(overlay.rotation) });
+      }
+
+      if (list.length > 0) overlayByBase.set(basename, list);
+    }
+
+    const applyOverlays = async (base: string, framed: Buffer): Promise<Buffer> => {
+      const list = overlayByBase.get(base);
+
+      if (!list || list.length === 0) return framed;
+
+      const parts: Array<{ input: Buffer; left: number; top: number }> = [];
+
+      for (const overlay of list) {
+        const buf = Buffer.from(overlay.data, "base64");
+        const meta = await sharp(buf).metadata();
+
+        if (!meta.width || !meta.height) continue;
+
+        const w = Math.max(1, Math.round(meta.width * overlay.scale));
+        const h = Math.max(1, Math.round(meta.height * overlay.scale));
+        const resized = await sharp(buf).resize(w, h, { fit: "fill" }).png().toBuffer();
+
+        if (overlay.rotation !== 0) {
+          const spun = await sharp(resized)
+            .rotate(overlay.rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+            .png()
+            .toBuffer();
+          const spunMeta = await sharp(spun).metadata();
+          const sw = spunMeta.width ?? w;
+          const sh = spunMeta.height ?? h;
+
+          parts.push({ input: spun, left: Math.round(overlay.x - sw / 2), top: Math.round(overlay.y - sh / 2) });
+        } else {
+          parts.push({ input: resized, left: Math.round(overlay.x - w / 2), top: Math.round(overlay.y - h / 2) });
+        }
+      }
+
+      if (parts.length === 0) return framed;
+
+      return sharp(framed).composite(parts).png().toBuffer();
+    };
+
     const deviceLayerByBase = new Map<string, Buffer>();
 
     for (const base of devicePassBases) {
@@ -324,6 +432,8 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         titleOffset: titleOffsetByBase.get(base) ?? { x: 0, y: 0 },
         titleScale: titleScaleByBase.get(base) ?? 1,
         deviceScale: deviceScaleByBase.get(base) ?? 1,
+        rotation: rotationByBase.get(base) ?? 0,
+        titleRotation: titleRotationByBase.get(base) ?? 0,
         titleBoxW: titleBoxByBase.get(base)?.w ?? 0,
         titleBoxH: titleBoxByBase.get(base)?.h ?? 0,
         titleLines: titleLinesByBase.get(base) ?? [],
@@ -340,8 +450,9 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
 
     for (const [base, framed] of framedByBase) {
       const raw = shiftedBases.has(base) ? await shiftDevice(base, framed) : framed;
+      const withOverlays = await applyOverlays(base, raw);
       const dims = outputDims.get(base)!;
-      const finalBuf = await sharp(raw)
+      const finalBuf = await sharp(withOverlays)
         .resize(dims.w, dims.h, { fit: "cover", position: gravityFor(base) })
         .png()
         .toBuffer();
@@ -356,5 +467,54 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {}
+  }
+});
+
+frameitRouter.get("/frameit/bezels", async (req: Request, res: Response) => {
+  try {
+    const { filename, width, height } = req.query as { filename?: unknown; width?: unknown; height?: unknown };
+
+    if (typeof filename !== "string" || filename.length === 0) {
+      res.status(400).json({ ok: false, error: "filename is required" });
+
+      return;
+    }
+
+    const w = Number(width);
+    const h = Number(height);
+
+    if (!Number.isFinite(w) || !Number.isFinite(h)) {
+      res.status(400).json({ ok: false, error: "width and height are required" });
+
+      return;
+    }
+
+    res.json({ ok: true, ...(await bezelsForDevice(filename, w, h)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+frameitRouter.get("/frameit/bezel-image", async (req: Request, res: Response) => {
+  try {
+    const { file } = req.query as { file?: unknown };
+
+    if (typeof file !== "string" || file.length === 0 || file.includes("/") || file.includes("\\")) {
+      res.status(400).json({ ok: false, error: "file is required" });
+
+      return;
+    }
+
+    const allowlist = new Set(await listBezelFiles());
+
+    if (!allowlist.has(file)) {
+      res.status(404).json({ ok: false, error: "Unknown bezel file" });
+
+      return;
+    }
+
+    res.sendFile(path.join(FRAMEIT_ASSETS_DIR, file));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
 });

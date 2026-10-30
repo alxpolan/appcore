@@ -12,7 +12,11 @@ import {
   buildUpdateLocalizationBody,
   buildUpdatePageBody,
   buildUpdateVersionBody,
+  cppPageInitialLocale,
   detectDisplayTypeFromDimensions,
+  findCppLocalizationsToRemove,
+  findEditableCppVersion,
+  pendingCppScreenshots,
   isEditableCppVersionState,
 } from "../src/services/utils/custom-product-pages";
 
@@ -33,8 +37,8 @@ describe("custom product pages: request bodies", () => {
         {
           type: "appCustomProductPageVersions",
           id: "${new-cpp-version}",
+          attributes: { deepLink: null },
           relationships: {
-            appCustomProductPage: {},
             appCustomProductPageLocalizations: {
               data: [{ type: "appCustomProductPageLocalizations", id: "${new-cpp-localization}" }],
             },
@@ -47,6 +51,22 @@ describe("custom product pages: request bodies", () => {
         },
       ],
     });
+  });
+
+  it("keeps appCustomProductPageLocalizations on a well-formed inline version", () => {
+    const body = buildCreatePageBody("app1", "Summer", "de-DE");
+    const version = body.included[0];
+    const localization = body.included[1];
+
+    assert.equal(version.type, "appCustomProductPageVersions");
+    assert.deepEqual(version.attributes, { deepLink: null });
+    assert.deepEqual(version.relationships, {
+      appCustomProductPageLocalizations: {
+        data: [{ type: "appCustomProductPageLocalizations", id: "${new-cpp-localization}" }],
+      },
+    });
+    assert.equal(localization.type, "appCustomProductPageLocalizations");
+    assert.deepEqual(localization.attributes, { locale: "de-DE" });
   });
 
   it("builds the update-page body with only provided fields", () => {
@@ -118,6 +138,54 @@ describe("custom product pages: request bodies", () => {
     assert.deepEqual(buildSubmitReviewSubmissionBody("sub1"), {
       data: { type: "reviewSubmissions", id: "sub1", attributes: { submitted: true } },
     });
+  });
+});
+
+describe("custom product pages: apply flow decisions", () => {
+  it("creates the page with the primary locale, not the ad locale", () => {
+    assert.equal(cppPageInitialLocale("en-US", "de-DE"), "en-US");
+    assert.equal(cppPageInitialLocale("de-DE", "en-US"), "de-DE");
+    assert.equal(cppPageInitialLocale(null, "de-DE"), "de-DE");
+    assert.equal(cppPageInitialLocale(undefined, "de-DE"), "de-DE");
+    assert.equal(cppPageInitialLocale("", "de-DE"), "de-DE");
+  });
+
+  it("reuses an editable version instead of creating an inflight duplicate", () => {
+    const versions = [
+      { id: "v3", attributes: { state: "APPROVED" } },
+      { id: "v2", attributes: { state: "PREPARE_FOR_SUBMISSION" } },
+      { id: "v1", attributes: { state: "REJECTED" } },
+    ];
+
+    assert.equal(findEditableCppVersion(versions)?.id, "v2");
+    assert.equal(findEditableCppVersion([{ id: "v1", attributes: { state: "APPROVED" } }]), null);
+    assert.equal(findEditableCppVersion([]), null);
+  });
+});
+
+describe("custom product pages: apply cleanup and processing", () => {
+  it("removes localizations that are not part of the proposal", () => {
+    const localizations = [
+      { id: "l1", attributes: { locale: "de-DE" } },
+      { id: "l2", attributes: { locale: "en-US" } },
+    ];
+
+    assert.deepEqual(
+      findCppLocalizationsToRemove(localizations, ["de-DE"]).map((l) => l.id),
+      ["l2"],
+    );
+    assert.deepEqual(findCppLocalizationsToRemove(localizations, ["de-DE", "en-US"]), []);
+  });
+
+  it("reports screenshots that are not completely processed", () => {
+    const shots = [
+      { attributes: { fileName: "a.png", assetDeliveryState: { state: "COMPLETE" } } },
+      { attributes: { fileName: "b.png", assetDeliveryState: { state: "UPLOAD_COMPLETE" } } },
+      { attributes: { fileName: "c.png", assetDeliveryState: null } },
+    ];
+
+    assert.deepEqual(pendingCppScreenshots(shots), ["b.png", "c.png"]);
+    assert.deepEqual(pendingCppScreenshots([shots[0]]), []);
   });
 });
 

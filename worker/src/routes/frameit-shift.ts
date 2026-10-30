@@ -22,6 +22,44 @@ export interface ShiftFrameContext {
   textColor: string;
   gradient: Buffer;
   deviceLayer: Buffer | undefined;
+  rotation: number;
+  titleRotation: number;
+}
+
+export interface RotatedPlacement {
+  input: Buffer;
+  left: number;
+  top: number;
+}
+
+export async function rotatedPlacement(
+  input: Buffer,
+  iw: number,
+  ih: number,
+  cx: number,
+  cy: number,
+  angleDeg: number,
+): Promise<RotatedPlacement> {
+  const norm = ((((angleDeg % 360) + 360) % 360) + 180) % 360 - 180;
+
+  if (norm === 0) return { input, left: Math.round(cx - iw / 2), top: Math.round(cy - ih / 2) };
+
+  const span = Math.ceil(Math.hypot(iw, ih));
+  const canvas = await sharp({
+    create: { width: span, height: span, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([{ input, left: Math.round((span - iw) / 2), top: Math.round((span - ih) / 2) }])
+    .png()
+    .toBuffer();
+  const spun = await sharp(canvas)
+    .rotate(angleDeg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const meta = await sharp(spun).metadata();
+  const w = meta.width ?? span;
+  const h = meta.height ?? span;
+
+  return { input: spun, left: Math.round(cx - w / 2), top: Math.round(cy - h / 2) };
 }
 
 export const TITLE_BASE_SIZE = 150;
@@ -500,10 +538,10 @@ async function renderBoxTitle(
 }
 
 export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<Buffer> {
-  const { framed, work, layout, offset, titleOffset, titleScale, deviceScale } = ctx;
+  const { framed, work, layout, offset, titleOffset, titleScale, deviceScale, rotation, titleRotation } = ctx;
   const boxMode = ctx.titleBoxW > 0;
-  const moveDevice = offset.x !== 0 || offset.y !== 0 || deviceScale !== 1;
-  const moveTitle = titleOffset.x !== 0 || titleOffset.y !== 0 || titleScale !== 1 || boxMode;
+  const moveDevice = offset.x !== 0 || offset.y !== 0 || deviceScale !== 1 || rotation !== 0;
+  const moveTitle = titleOffset.x !== 0 || titleOffset.y !== 0 || titleScale !== 1 || boxMode || titleRotation !== 0;
 
   if (!moveDevice && !moveTitle) return framed;
 
@@ -525,24 +563,36 @@ export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<B
 
   if (moveTitle && boxMode) {
     const boxLayers = await renderBoxTitle(ctx, work, bandCenterY);
+    const titleCx = Math.round(work.w / 2 + titleOffset.x);
+    const titleCy = Math.round(bandCenterY + titleOffset.y);
 
-    for (const layer of boxLayers) {
-      const safe = await clipped(layer.input, layer.left, layer.top, work.w, work.h);
+    if (titleRotation !== 0) {
+      const boxCanvas = await sharp({
+        create: { width: work.w, height: work.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+      })
+        .composite(boxLayers.map((layer) => ({ input: layer.input, left: layer.left, top: layer.top })))
+        .png()
+        .toBuffer();
+      const spun = await rotatedPlacement(boxCanvas, work.w, work.h, titleCx, titleCy, titleRotation);
+      const placed = await clipped(spun.input, spun.left, spun.top, work.w, work.h);
 
-      if (safe) layers.push(safe);
+      if (placed) layers.push(placed);
+    } else {
+      for (const layer of boxLayers) {
+        const safe = await clipped(layer.input, layer.left, layer.top, work.w, work.h);
+
+        if (safe) layers.push(safe);
+      }
     }
   } else if (moveTitle) {
     const text = await extractTitleLayer(framed, ctx.gradient, work, bandY, space, ctx.textColor, titleScale);
     const textMeta = await sharp(text).metadata();
     const textW = textMeta.width ?? work.w;
     const textH = textMeta.height ?? space;
-    const placed = await clipped(
-      text,
-      Math.round(work.w / 2 - textW / 2 + titleOffset.x),
-      Math.round(bandY + space / 2 - textH / 2 + titleOffset.y),
-      work.w,
-      work.h,
-    );
+    const titleCx = Math.round(work.w / 2 + titleOffset.x);
+    const titleCy = Math.round(bandY + space / 2 + titleOffset.y);
+    const spun = await rotatedPlacement(text, textW, textH, titleCx, titleCy, titleRotation);
+    const placed = await clipped(spun.input, spun.left, spun.top, work.w, work.h);
 
     if (placed) layers.push(placed);
   } else {
@@ -570,7 +620,8 @@ export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<B
     const imgX = Math.round(homeX + ((devW * fw - imgW) / 2 + ox));
     const imgY = Math.round(homeY + ((devH * fw - imgH) / 2 + oy));
     const resizedDevice = await sharp(device).resize(imgW, imgH).png().toBuffer();
-    const placed = await clipped(resizedDevice, imgX, imgY, work.w, work.h);
+    const spun = await rotatedPlacement(resizedDevice, imgW, imgH, imgX + imgW / 2, imgY + imgH / 2, rotation);
+    const placed = await clipped(spun.input, spun.left, spun.top, work.w, work.h);
 
     if (placed) layers.push(placed);
   };

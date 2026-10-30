@@ -1,9 +1,10 @@
-import type { StudioStyle } from "./studioApi";
+import type { StudioOverlay, StudioStyle } from "./studioApi";
 
 export interface StudioPreviewDraw {
   rawUrl: string;
   title: string;
   style: StudioStyle;
+  overlays?: StudioOverlay[];
 }
 
 export interface PreviewRect {
@@ -38,7 +39,7 @@ const FONT_FAMILIES: Record<string, string> = {
   baloo: "StudioBaloo",
 };
 
-interface FrameEntry {
+export interface FrameEntry {
   file: string;
   frameW: number;
   frameH: number;
@@ -47,6 +48,21 @@ interface FrameEntry {
   shotW: number;
   triple: boolean;
   rounded: boolean;
+}
+
+export interface PreviewFrameOverride {
+  key: string;
+  entry: FrameEntry;
+}
+
+let previewFrameOverride: PreviewFrameOverride | null = null;
+
+export function setPreviewFrameOverride(override: PreviewFrameOverride | null): void {
+  previewFrameOverride = override;
+}
+
+export function getPreviewFrameOverride(): PreviewFrameOverride | null {
+  return previewFrameOverride;
 }
 
 const FRAMES: Record<string, FrameEntry> = {
@@ -68,7 +84,11 @@ export function computePreviewLayout(outW: number, outH: number, top: boolean): 
   const remap = SIZE_REMAP[`${outW}x${outH}`];
   const workW = remap?.w ?? outW;
   const workH = remap?.h ?? outH;
-  const frame = FRAMES[`${workW}x${workH}`] ?? null;
+  const key = `${workW}x${workH}`;
+  const frame =
+    (previewFrameOverride && previewFrameOverride.key === key ? previewFrameOverride.entry : null) ??
+    FRAMES[key] ??
+    null;
   const pad = frame?.triple ? 85 : 50;
   const space = pad + 150 + pad;
 
@@ -334,7 +354,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioPreviewDraw): Promise<void> {
-  const { style, title } = draw;
+  const { style, title, overlays } = draw;
   const text = title.trim().length > 0 ? title.trim() : " ";
   const top = style.textPosition === "top";
 
@@ -363,6 +383,10 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
   } else {
     const bandCenterY = top ? space / 2 : workH - space / 2;
 
+    const titleCx = workW / 2 + style.titleOffsetX;
+    const titleCy = bandCenterY + style.titleOffsetY;
+    const titleRad = ((style.titleRotation || 0) * Math.PI) / 180;
+
     if (style.titleBoxW > 0) {
       const baseSize = TITLE_BASE_SIZE * style.titleScale;
       const fitted =
@@ -376,14 +400,16 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
 
       if (fitted.lines.length > 0) {
         ctx.save();
+        ctx.translate(titleCx, titleCy);
+        if (titleRad !== 0) ctx.rotate(titleRad);
         ctx.beginPath();
-        ctx.rect(cx - style.titleBoxW / 2, boxTop, style.titleBoxW, boxH);
+        ctx.rect(cx - titleCx - style.titleBoxW / 2, boxTop - titleCy, style.titleBoxW, boxH);
         ctx.clip();
 
         const fontCss = `700 ${fitted.size}px "${family}", system-ui, sans-serif`;
 
         for (let i = 0; i < fitted.lines.length; i++) {
-          blitCenteredLine(ctx, fitted.lines[i], fontCss, style.textColor, cx, boxTop + i * step, step);
+          blitCenteredLine(ctx, fitted.lines[i], fontCss, style.textColor, cx - titleCx, boxTop + i * step - titleCy, step);
         }
 
         ctx.restore();
@@ -393,11 +419,15 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
       const titleTop = bandCenterY - tm.h / 2 + style.titleOffsetY;
 
       if (text !== " ") {
+        ctx.save();
+        ctx.translate(titleCx, titleCy);
+        if (titleRad !== 0) ctx.rotate(titleRad);
         ctx.font = `700 ${tm.size}px "${family}", system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "alphabetic";
         ctx.fillStyle = style.textColor;
-        ctx.fillText(text, workW / 2 + style.titleOffsetX, titleTop + tm.ascent);
+        ctx.fillText(text, workW / 2 + style.titleOffsetX - titleCx, titleTop + tm.ascent - titleCy);
+        ctx.restore();
       }
     }
 
@@ -429,13 +459,37 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
 
       const { phone } = layout;
       const k = style.deviceScale;
-      ctx.drawImage(
-        dev,
-        phone.x + ((phone.w - phone.w * k) / 2 + style.offsetX),
-        phone.y + ((phone.h - phone.h * k) / 2 + style.offsetY),
-        phone.w * k,
-        phone.h * k,
-      );
+      const dw = phone.w * k;
+      const dh = phone.h * k;
+      const dcx = phone.x + phone.w / 2 + style.offsetX;
+      const dcy = phone.y + phone.h / 2 + style.offsetY;
+      const devRad = ((style.rotation || 0) * Math.PI) / 180;
+
+      ctx.save();
+      ctx.translate(dcx, dcy);
+      if (devRad !== 0) ctx.rotate(devRad);
+      ctx.drawImage(dev, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
+    }
+  }
+
+  for (const overlay of overlays ?? []) {
+    try {
+      const img = await loadImage(overlay.url);
+      const w = img.naturalWidth * overlay.scale;
+      const h = img.naturalHeight * overlay.scale;
+
+      if (!(w > 0) || !(h > 0)) continue;
+
+      const overlayRad = ((overlay.rotation || 0) * Math.PI) / 180;
+
+      ctx.save();
+      ctx.translate(overlay.x, overlay.y);
+      if (overlayRad !== 0) ctx.rotate(overlayRad);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    } catch {
+      continue;
     }
   }
 

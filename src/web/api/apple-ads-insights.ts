@@ -10,6 +10,7 @@ import {
   deleteAppleAdsNegativeKeywordsBulk,
   getAppleAdsCampaignCountryBreakdown,
   getAppleAdsKeywordCountryBreakdown,
+  getAppleAdsKeywordDeviceBreakdown,
   listTeamAppleAdsOrgs,
   AppleAdsCampaignNotFoundError,
   type CreateAppleAdsNegativeKeywordInput,
@@ -83,6 +84,36 @@ appleAdsInsightsRouter.get(
       res.json({ countries, revenueAvailable: accessibleApps.length > 0, startDate: range.startDate, endDate: range.endDate });
     } catch (err: any) {
       countryBreakdownError(res, err, "[apple-ads] keyword country breakdown fetch error");
+    }
+  },
+);
+
+appleAdsInsightsRouter.get(
+  "/campaigns/:campaignId/adgroups/:adGroupId/keywords/:keywordId/devices",
+  loadTeamSettings,
+  async (req, res) => {
+    const s = req.teamSettings;
+
+    if (appleAdsKeyMissing(s)) {
+      res.status(400).json({ error: "Apple Search Ads is not connected" });
+
+      return;
+    }
+
+    try {
+      const range = resolveAppleAdsRange(req.query);
+      const creds = await orgCredsForCampaign(req.user!.teamId, appleAdsKeyCreds(s), req.params.campaignId as string);
+      const devices = await getAppleAdsKeywordDeviceBreakdown(
+        creds,
+        req.params.campaignId as string,
+        req.params.adGroupId as string,
+        req.params.keywordId as string,
+        range,
+      );
+
+      res.json({ devices, startDate: range.startDate, endDate: range.endDate });
+    } catch (err: any) {
+      countryBreakdownError(res, err, "[apple-ads] keyword device breakdown fetch error");
     }
   },
 );

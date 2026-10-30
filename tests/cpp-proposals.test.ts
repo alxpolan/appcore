@@ -7,6 +7,7 @@ import {
   type CppKeywordStat,
 } from "../src/services/cpp-proposals/grouping";
 import { countryToScreenshotLocales, resolveProposalLocales } from "../src/services/cpp-proposals/locales";
+import { cppFrameConfig } from "../src/services/cpp-proposals/render";
 
 function stat(term: string, spend: number, taps = 10, installs = 2): CppKeywordStat {
   return { term, keyword: term, matchType: "EXACT", adGroupId: "g1", adGroupName: null, spend, taps, installs };
@@ -92,6 +93,22 @@ describe("cpp grouping: themes", () => {
       first.map((group) => group.key),
       second.map((group) => group.key),
     );
+  });
+});
+
+describe("cpp render: shared framing input", () => {
+  it("hands the shared framing only the source palette as repo config", () => {
+    assert.deepEqual(
+      cppFrameConfig({ bgColor1: "#112233", bgColor2: "#445566", textColor: "#ffffff", textPosition: "bottom", offsetX: 40 }),
+      { bgColor1: "#112233", bgColor2: "#445566", textColor: "#ffffff", textPosition: "bottom" },
+    );
+  });
+
+  it("falls back to normalized defaults without a source style", () => {
+    const config = cppFrameConfig(null);
+
+    assert.equal(typeof config.bgColor1, "string");
+    assert.equal(config.textPosition, "top");
   });
 });
 

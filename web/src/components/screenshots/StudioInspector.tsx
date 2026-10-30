@@ -3,8 +3,10 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Plus, RotateCcw, Tras
 import { borderDefault, btnSecSm, studioCardCls, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
 import {
   STUDIO_GEOMETRY_KEYS,
+  type StudioBezels,
   type StudioItem,
   type StudioLayer,
+  type StudioOverlay,
   type StudioPresetInfo,
   type StudioStyle,
 } from "./studioApi";
@@ -23,6 +25,11 @@ interface Props {
   onSavePreset: (name: string) => void;
   onDeletePreset: (preset: StudioPresetInfo) => void;
   savingPreset: boolean;
+  bezels: StudioBezels | null;
+  onShotPatch: (patch: Partial<StudioStyle>) => void;
+  overlay: StudioOverlay | null;
+  onOverlayPatch: (id: string, patch: Partial<StudioOverlay>) => void;
+  onDeleteOverlay: (id: string) => void;
 }
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -114,13 +121,15 @@ function NudgeControl({
   y,
   onChange,
   disabled,
+  range = 2048,
 }: {
   x: number;
   y: number;
   onChange: (x: number, y: number) => void;
   disabled: boolean;
+  range?: number;
 }) {
-  const clamp = (value: number) => Math.max(-2048, Math.min(2048, Math.round(value)));
+  const clamp = (value: number) => Math.max(-range, Math.min(range, Math.round(value)));
   const nudge = (dx: number, dy: number) => (e: React.MouseEvent) => {
     const m = e.shiftKey ? 10 : 1;
     onChange(clamp(x + dx * m), clamp(y + dy * m));
@@ -167,6 +176,40 @@ function NudgeControl({
         <div>X {fmt(x)}</div>
         <div>Y {fmt(y)}</div>
       </div>
+    </div>
+  );
+}
+
+function AngleSlider({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <input
+        type="range"
+        min={-180}
+        max={180}
+        step={1}
+        value={Math.round(value)}
+        onChange={(e) => onChange(Number(e.target.value))}
+        disabled={disabled}
+        className="flex-1 accent-[#595DD2] disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(0)}
+        disabled={disabled}
+        title="Reset rotation"
+        className={`w-[52px] shrink-0 text-right font-mono text-[12px] ${textMuted} hover:text-[#595DD2] transition-colors disabled:opacity-50`}
+      >
+        {Math.round(value)}°
+      </button>
     </div>
   );
 }
@@ -282,6 +325,11 @@ export default function StudioInspector({
   onSavePreset,
   onDeletePreset,
   savingPreset,
+  bezels,
+  onShotPatch,
+  overlay,
+  onOverlayPatch,
+  onDeleteOverlay,
 }: Props) {
   const [presetName, setPresetName] = useState("");
   const [showPresetForm, setShowPresetForm] = useState(false);
@@ -314,20 +362,31 @@ export default function StudioInspector({
     setShowPresetForm(false);
   };
 
-  const layerTitle =
-    layer === "caption" ? "Caption" : layer === "device" ? "Device" : layer === "background" ? "Background" : "Studio";
+  const layerTitle = overlay
+    ? "Overlay"
+    : layer === "caption"
+      ? "Caption"
+      : layer === "device"
+        ? "Device"
+        : layer === "image"
+          ? "Image"
+          : layer === "background"
+            ? "Background"
+            : "Studio";
 
   return (
     <div className={studioCardCls}>
       <div className={`text-[13px] font-semibold ${textPrimary}`}>{layerTitle}</div>
       <div className={`text-[11px] ${textMuted} mb-1`}>
-        {layer === null
-          ? "Click the phone, the caption or a layer to edit"
-          : layer === "caption" && item
-            ? item.basename.replace(/\.png$/i, "")
-            : layer === "caption"
-              ? "No screenshot selected"
-              : "Applies to every screenshot"}
+        {overlay && item
+          ? item.basename.replace(/\.png$/i, "")
+          : layer === null
+            ? "Click the phone, the caption or a layer to edit"
+            : (layer === "caption" || layer === "device" || layer === "image") && item
+              ? item.basename.replace(/\.png$/i, "")
+              : layer === "caption" || layer === "device" || layer === "image"
+                ? "No screenshot selected"
+                : "Applies to every screenshot"}
       </div>
 
       {layer === "caption" && (
@@ -391,6 +450,13 @@ export default function StudioInspector({
               disabled={disabled}
             />
           </Section>
+          <Section label="Rotation">
+            <AngleSlider
+              value={style.titleRotation ?? 0}
+              onChange={(titleRotation) => patchStyle({ titleRotation })}
+              disabled={disabled}
+            />
+          </Section>
 
           <Section label="Text box">
             <BoxSizeControl
@@ -431,7 +497,7 @@ export default function StudioInspector({
         </Section>
       )}
 
-      {layer === "device" && (
+      {layer === "image" && (
         <>
           <Section label="Position">
             <NudgeControl
@@ -450,6 +516,13 @@ export default function StudioInspector({
               disabled={disabled}
             />
           </Section>
+          <Section label="Rotation">
+            <AngleSlider
+              value={style.rotation ?? 0}
+              onChange={(rotation) => patchStyle({ rotation })}
+              disabled={disabled}
+            />
+          </Section>
           <Section label="Details">
             <DetailRow label="Device">{item?.deviceLabel ?? "—"}</DetailRow>
             <DetailRow label="Caption key">{item?.descKey ?? "—"}</DetailRow>
@@ -462,6 +535,89 @@ export default function StudioInspector({
                 <span className="text-amber-600 dark:text-amber-400">None</span>
               )}
             </DetailRow>
+          </Section>
+        </>
+      )}
+
+      {layer === "device" && (
+        <>
+          <Section label="Frame">
+            {!item ? (
+              <p className={`text-[12px] ${textMuted}`}>No screenshot selected.</p>
+            ) : !item.hasRaw ? (
+              <p className={`text-[12px] ${textMuted}`}>No editable source stored for this screenshot.</p>
+            ) : !bezels ? (
+              <p className={`text-[12px] ${textMuted}`}>Loading frame variants…</p>
+            ) : (bezels.options ?? []).length === 0 ? (
+              <p className={`text-[12px] ${textMuted}`}>No frame variants available.</p>
+            ) : (
+              <select
+                value={style.deviceFrame || bezels.current || ""}
+                onChange={(e) => onShotPatch({ deviceFrame: e.target.value === (bezels.current ?? "") ? "" : e.target.value })}
+                disabled={disabled}
+                className={`${inputCls} cursor-pointer disabled:opacity-50`}
+              >
+                {(bezels.options ?? []).map((option) => (
+                  <option key={option.file} value={option.file}>
+                    {option.color}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Section>
+          <Section label="Details">
+            <DetailRow label="Device">{item?.deviceLabel ?? "—"}</DetailRow>
+            <DetailRow label="Caption key">{item?.descKey ?? "—"}</DetailRow>
+            <DetailRow label="Source">
+              {!item ? (
+                "—"
+              ) : item.hasRaw ? (
+                <span className="text-sky-600 dark:text-sky-400">Stored</span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400">None</span>
+              )}
+            </DetailRow>
+          </Section>
+        </>
+      )}
+
+      {overlay && (
+        <>
+          <Section label="Position">
+            <NudgeControl
+              x={overlay.x}
+              y={overlay.y}
+              onChange={(x, y) => onOverlayPatch(overlay.id, { x, y })}
+              disabled={disabled}
+              range={8192}
+            />
+          </Section>
+          <Section label="Size">
+            <ScaleSlider
+              value={overlay.scale}
+              min={0.1}
+              max={8}
+              onChange={(scale) => onOverlayPatch(overlay.id, { scale })}
+              disabled={disabled}
+            />
+          </Section>
+          <Section label="Rotation">
+            <AngleSlider
+              value={overlay.rotation ?? 0}
+              onChange={(rotation) => onOverlayPatch(overlay.id, { rotation })}
+              disabled={disabled}
+            />
+          </Section>
+          <Section label="Overlay">
+            <button
+              type="button"
+              onClick={() => onDeleteOverlay(overlay.id)}
+              disabled={disabled}
+              className="inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded-lg border border-red-200 dark:border-red-900/50 text-[12px] font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete overlay
+            </button>
           </Section>
         </>
       )}

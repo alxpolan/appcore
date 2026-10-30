@@ -180,6 +180,34 @@ async function runConcurrent<T>(items: T[], concurrency: number, worker: (item: 
   );
 }
 
+export interface FrameScreenshotsProgress {
+  done: number;
+  total: number;
+  locale: string | null;
+}
+
+export function screenshotFrameStyle(
+  frameConfig: Record<string, string>,
+  defaultStyle: unknown,
+): { style: StudioStyle; usedPinnedDefault: boolean } {
+  const pinnedDefault =
+    defaultStyle && typeof defaultStyle === "object" ? normalizeStudioStyle(defaultStyle) : null;
+
+  if (pinnedDefault) {
+    pinnedDefault.titleLines = [];
+  }
+
+  const style = normalizeStudioStyle({
+    bgColor1: frameConfig.bgColor1,
+    bgColor2: frameConfig.bgColor2,
+    textColor: frameConfig.textColor,
+    textPosition: frameConfig.textPosition,
+    ...(pinnedDefault ?? {}),
+  });
+
+  return { style, usedPinnedDefault: pinnedDefault != null };
+}
+
 export async function frameScreenshots(
   jobId: string,
   job: ScreenshotJobWithApp,
@@ -191,6 +219,7 @@ export async function frameScreenshots(
   targetLocales: string[],
   versionLocales: Record<string, VersionLocale>,
   log: (msg: string) => void,
+  onProgress?: (event: FrameScreenshotsProgress) => void,
 ): Promise<void> {
   try {
     const framedByLocale: Record<string, string[]> = {};
@@ -203,25 +232,29 @@ export async function frameScreenshots(
 
     const failedLocales: string[] = [];
 
-    const pinnedDefault =
-      job.app.defaultScreenshotStyle && typeof job.app.defaultScreenshotStyle === "object"
-        ? normalizeStudioStyle(job.app.defaultScreenshotStyle)
-        : null;
-
-    if (pinnedDefault) pinnedDefault.titleLines = [];
-
     const shotDefaults = storedShotStyles(job.app.defaultScreenshotShotStyles);
     const usedShotStyles: Record<string, Partial<StudioStyle>> = {};
+    const frameStyle = screenshotFrameStyle(frameConfig, job.app.defaultScreenshotStyle);
 
-    if (pinnedDefault) log("[framing] Using pinned Studio default style");
+    if (frameStyle.usedPinnedDefault) log("[framing] Using pinned Studio default style");
 
-    const style = normalizeStudioStyle({
-      bgColor1: frameConfig.bgColor1,
-      bgColor2: frameConfig.bgColor2,
-      textColor: frameConfig.textColor,
-      textPosition: frameConfig.textPosition,
-      ...(pinnedDefault ?? {}),
-    });
+    const style = frameStyle.style;
+
+    let framedCount = 0;
+    let plannedCount = 0;
+
+    for (const locale of targetLocales) {
+      const sourceLocale = pickSourceLocale(locale, [...sourceLocaleDirs.keys()]);
+      const srcDir = sourceLocale ? sourceLocaleDirs.get(sourceLocale) : undefined;
+
+      if (!srcDir) continue;
+
+      const entries = await fs.promises.readdir(srcDir).catch(() => [] as string[]);
+
+      plannedCount += entries.filter((entry) => /\.png$/i.test(entry)).length;
+    }
+
+    onProgress?.({ done: 0, total: plannedCount, locale: null });
 
     await runConcurrent(targetLocales, FRAME_LOCALE_CONCURRENCY, async (locale) => {
       try {
@@ -278,6 +311,9 @@ export async function frameScreenshots(
       const framedDir = path.join(outputDir, "framed", locale);
 
       await frameComplexBatch({ srcDir, outDir: framedDir, shots, titles, style, log });
+
+      framedCount += shots.length;
+      onProgress?.({ done: framedCount, total: plannedCount, locale });
 
       const urls = shots.map((shot) => `/screenshots/${jobId}/framed/${locale}/${shot.base}.png`);
 

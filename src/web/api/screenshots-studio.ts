@@ -5,15 +5,20 @@ import { resolveInternalAppId } from "../lib/resolve-app";
 import {
   createStudioPreset,
   deleteStudioDraft,
+  deleteStudioOverlay,
   deleteStudioPreset,
   deleteStudioRevision,
   duplicateStudioJob,
+  duplicateStudioOverlay,
+  getFrameBezelImage,
   getStudioData,
+  listShotBezels,
   listStudioPresets,
   normalizeStudioStyle,
   renameStudioJob,
   renderStudioRevision,
   saveStudioDraft,
+  saveStudioOverlay,
   setActiveStudioRevision,
   setAppDefaultFromRevision,
   updateStudioPreset,
@@ -206,6 +211,76 @@ studioRouter.delete("/screenshots/studio/:jobId/draft", writeAuth, async (req: R
     res.status(500).json({ error: err.message });
   }
 });
+
+studioRouter.get("/screenshots/studio/:jobId/bezels/:basename", requireAuth, async (req: Request, res: Response) => {
+  try {
+    res.json(await listShotBezels(req.params.jobId as string, req.params.basename as string));
+  } catch (err: any) {
+    const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+
+    logger.error(`studio bezels error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
+
+studioRouter.post("/screenshots/studio/:jobId/overlays", writeAuth, async (req: Request, res: Response) => {
+  try {
+    const { data } = req.body as { data?: unknown };
+
+    res.json({ overlay: await saveStudioOverlay(req.params.jobId as string, data) });
+  } catch (err: any) {
+    const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+
+    logger.error(`studio overlay save error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
+
+studioRouter.delete(
+  "/screenshots/studio/:jobId/overlays/:overlayId",
+  writeAuth,
+  async (req: Request, res: Response) => {
+    try {
+      await deleteStudioOverlay(req.params.jobId as string, req.params.overlayId as string);
+      res.json({ ok: true });
+    } catch (err: any) {
+      const status = err.message.includes("Invalid") ? 404 : 500;
+
+      logger.error(`studio overlay delete error: ${err.message}`);
+      res.status(status).json({ error: err.message });
+    }
+  },
+);
+
+studioRouter.get("/screenshots/frame-bezels/image/:file", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const png = await getFrameBezelImage(req.params.file as string);
+
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(png);
+  } catch (err: any) {
+    const status = err.message.includes("Invalid") ? 404 : 500;
+
+    logger.error(`studio bezel image error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
+
+studioRouter.post(
+  "/screenshots/studio/:jobId/overlays/:overlayId/duplicate",
+  writeAuth,
+  async (req: Request, res: Response) => {
+    try {
+      res.json({ overlay: await duplicateStudioOverlay(req.params.jobId as string, req.params.overlayId as string) });
+    } catch (err: any) {
+      const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+
+      logger.error(`studio overlay duplicate error: ${err.message}`);
+      res.status(status).json({ error: err.message });
+    }
+  },
+);
 
 studioRouter.patch("/screenshots/studio/:jobId/active-revision", writeAuth, async (req: Request, res: Response) => {
   try {

@@ -1,6 +1,15 @@
 export type StudioFontId = "rounded" | "inter" | "baloo";
 export type StudioTextPosition = "top" | "bottom";
 
+export interface StudioOverlay {
+  id: string;
+  url: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
 export interface StudioStyle {
   bgColor1: string;
   bgColor2: string;
@@ -16,6 +25,10 @@ export interface StudioStyle {
   titleBoxW: number;
   titleBoxH: number;
   titleLines: string[];
+  deviceFrame: string;
+  overlays: StudioOverlay[];
+  rotation: number;
+  titleRotation: number;
 }
 
 export const STUDIO_FONT_IDS: StudioFontId[] = ["rounded", "inter", "baloo"];
@@ -30,6 +43,8 @@ export const STUDIO_GEOMETRY_KEYS = [
   "titleBoxW",
   "titleBoxH",
   "titleLines",
+  "rotation",
+  "titleRotation",
 ] as const;
 
 export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_KEYS)[number]> = {
@@ -42,6 +57,8 @@ export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_
   titleBoxW: 0,
   titleBoxH: 0,
   titleLines: [],
+  rotation: 0,
+  titleRotation: 0,
 };
 
 export const DEFAULT_STUDIO_STYLE: StudioStyle = {
@@ -59,7 +76,55 @@ export const DEFAULT_STUDIO_STYLE: StudioStyle = {
   titleBoxW: 0,
   titleBoxH: 0,
   titleLines: [],
+  deviceFrame: "",
+  overlays: [],
+  rotation: 0,
+  titleRotation: 0,
 };
+
+export const STUDIO_ROTATION_RANGE = 180;
+
+export function normalizeRotation(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+
+  const wrapped = ((((value + 180) % 360) + 360) % 360) - 180;
+
+  return Math.round(wrapped * 10) / 10;
+}
+
+export const STUDIO_OVERLAY_ID_MAX_LENGTH = 64;
+export const STUDIO_OVERLAY_COORD_RANGE = 8192;
+
+export function normalizeStudioOverlays(value: unknown): StudioOverlay[] {
+  if (!Array.isArray(value)) return [];
+
+  const overlays: StudioOverlay[] = [];
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+
+    const candidate = entry as Record<string, unknown>;
+
+    if (typeof candidate.id !== "string" || candidate.id.length === 0) continue;
+    if (typeof candidate.url !== "string" || !candidate.url.startsWith("/screenshots/")) continue;
+    if (!candidate.url.endsWith(".png") || candidate.url.includes("..")) continue;
+
+    const x = typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : 0;
+    const y = typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : 0;
+    const scale = typeof candidate.scale === "number" && Number.isFinite(candidate.scale) ? candidate.scale : 1;
+
+    overlays.push({
+      id: candidate.id.slice(0, STUDIO_OVERLAY_ID_MAX_LENGTH),
+      url: candidate.url,
+      x: Math.max(-STUDIO_OVERLAY_COORD_RANGE, Math.min(STUDIO_OVERLAY_COORD_RANGE, Math.round(x))),
+      y: Math.max(-STUDIO_OVERLAY_COORD_RANGE, Math.min(STUDIO_OVERLAY_COORD_RANGE, Math.round(y))),
+      scale: Math.max(0.1, Math.min(8, Math.round(scale * 100) / 100)),
+      rotation: normalizeRotation(candidate.rotation),
+    });
+  }
+
+  return overlays;
+}
 
 export const STUDIO_OFFSET_RANGE = 2048;
 
@@ -165,6 +230,10 @@ export function normalizeStudioStyle(value: unknown): StudioStyle {
     titleBoxW: normalizeTitleBoxSize(input.titleBoxW),
     titleBoxH: normalizeTitleBoxSize(input.titleBoxH),
     titleLines: normalizeTitleLines(input.titleLines),
+    deviceFrame: typeof input.deviceFrame === "string" ? input.deviceFrame.slice(0, 120) : "",
+    overlays: normalizeStudioOverlays(input.overlays),
+    rotation: normalizeRotation(input.rotation),
+    titleRotation: normalizeRotation(input.titleRotation),
   };
 }
 
@@ -173,6 +242,18 @@ export function storedShotPatch(patch: unknown): Partial<StudioStyle> | null {
 
   const rest = { ...(patch as Partial<StudioStyle>) };
   delete rest.titleLines;
+
+  if (rest.overlays !== undefined) {
+    const overlays = normalizeStudioOverlays(rest.overlays);
+
+    if (overlays.length > 0) {
+      rest.overlays = overlays;
+    } else {
+      delete rest.overlays;
+    }
+  }
+
+  if (typeof rest.deviceFrame === "string" && rest.deviceFrame.length === 0) delete rest.deviceFrame;
 
   if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
     return null;
