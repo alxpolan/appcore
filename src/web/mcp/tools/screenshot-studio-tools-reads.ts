@@ -101,12 +101,19 @@ export function registerScreenshotStudioReadTools(server: McpServer, userId: str
         "device frame and caption, device frame color, and any image overlays already placed on that shot). Use " +
         "list_screenshot_jobs first to find a jobId, then this before editing anything with update_screenshot_caption, " +
         "update_screenshot_layout, list_screenshot_bezels, add_screenshot_overlay, update_screenshot_overlay, or " +
-        "delete_screenshot_overlay.",
+        "delete_screenshot_overlay. Pass locale and/or basename to scope the result to one shot instead of every " +
+        "locale — a full job can have dozens of locales, so scoping down keeps the response small when you only " +
+        "need one screenshot's current layout.",
       inputSchema: {
         jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
+        locale: z.string().optional().describe("Restrict to one locale, e.g. 'en-US'. Returns every locale if omitted."),
+        basename: z
+          .string()
+          .optional()
+          .describe("Restrict to one screenshot filename, e.g. '01_Home.png'. Returns every screenshot if omitted."),
       },
     },
-    async ({ jobId }: { jobId: string }) => {
+    async ({ jobId, locale, basename }: { jobId: string; locale?: string; basename?: string }) => {
       const { job, app } = await loadJobWithAccess(userId, jobId);
 
       if (!job || !app) {
@@ -114,6 +121,18 @@ export function registerScreenshotStudioReadTools(server: McpServer, userId: str
       }
 
       const data = await getStudioData(jobId);
+
+      const locales = locale ? data.locales.filter((l) => l.locale === locale) : data.locales;
+
+      if (locale && locales.length === 0) {
+        return textResult(`Locale "${locale}" not found for job ${jobId}.`);
+      }
+
+      const basenames = basename ? locales.flatMap((l) => l.items.filter((item) => item.basename === basename)) : null;
+
+      if (basename && (!basenames || basenames.length === 0)) {
+        return textResult(`Screenshot "${basename}" not found${locale ? ` for locale "${locale}"` : ""} in job ${jobId}.`);
+      }
 
       const result = {
         jobId: data.job.id,
@@ -123,17 +142,19 @@ export function registerScreenshotStudioReadTools(server: McpServer, userId: str
         revisions: data.revisions,
         globalStyle: data.style,
         locales: await Promise.all(
-          data.locales.map(async (l) => ({
+          locales.map(async (l) => ({
             locale: l.locale,
             items: await Promise.all(
-              l.items.map(async (item) => ({
-                basename: item.basename,
-                deviceLabel: item.deviceLabel,
-                caption: item.title,
-                hasRawSource: item.hasRaw,
-                nativeSize: item.hasRaw ? await studioRawImageSize(jobId, item.basename) : null,
-                layout: data.styles[item.basename] ?? {},
-              })),
+              l.items
+                .filter((item) => !basename || item.basename === basename)
+                .map(async (item) => ({
+                  basename: item.basename,
+                  deviceLabel: item.deviceLabel,
+                  caption: item.title,
+                  hasRawSource: item.hasRaw,
+                  nativeSize: item.hasRaw ? await studioRawImageSize(jobId, item.basename) : null,
+                  layout: data.styles[item.basename] ?? {},
+                })),
             ),
           })),
         ),
