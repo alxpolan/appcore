@@ -227,12 +227,56 @@ export default function StudioCanvas({
   const [guides, setGuides] = useState<GuideLines | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string>("move");
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
+  const rawUrl = item?.rawUrl ?? null;
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   useEffect(() => {
     setPan({ x: 0, y: 0 });
+    setZoom(1);
   }, [item?.basename]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      if (e.ctrlKey) {
+        const rect = el.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const prevZoom = zoomRef.current;
+        const nextZoom = Math.max(0.25, Math.min(4, prevZoom * (1 - e.deltaY * 0.01)));
+        const prevPan = panRef.current;
+
+        setZoom(nextZoom);
+        setPan({
+          x: cx - ((cx - prevPan.x) / prevZoom) * nextZoom,
+          y: cy - ((cy - prevPan.y) / prevZoom) * nextZoom,
+        });
+      } else {
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [rawUrl]);
+
   const [, setResizeTick] = useState(0);
-  const rawUrl = item?.rawUrl ?? null;
 
   useEffect(() => {
     const onResize = () => setResizeTick((tick) => tick + 1);
@@ -410,7 +454,7 @@ export default function StudioCanvas({
   const pickTarget = (clientX: number, clientY: number) =>
     canvasGeom.pickTarget(canvasRef.current, clientX, clientY, layer, style, overlayEntries);
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (disabled || e.button !== 0) return;
 
     const handle = pickHandle(e.clientX, e.clientY);
@@ -572,7 +616,7 @@ export default function StudioCanvas({
     }
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     const canvas = canvasRef.current;
 
@@ -729,7 +773,7 @@ export default function StudioCanvas({
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const down = downRef.current;
     dragRef.current = null;
     downRef.current = null;
@@ -1252,6 +1296,16 @@ export default function StudioCanvas({
       ) : (
         <div
           ref={wrapRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={endDrag}
+          onDoubleClick={(e) => {
+            if (pickTarget(e.clientX, e.clientY)) return;
+
+            setPan({ x: 0, y: 0 });
+            setZoom(1);
+          }}
           onDragOver={(e) => {
             if (disabled) return;
 
@@ -1267,28 +1321,23 @@ export default function StudioCanvas({
 
             void handleFiles(Array.from(e.dataTransfer?.files ?? []));
           }}
-          className={`relative flex flex-1 items-center justify-center min-h-[420px] bg-[#f3f4f6] dark:bg-zinc-950 bg-[radial-gradient(rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:20px_20px] ${
+          title={pan.x || pan.y || zoom !== 1 ? "Double-click empty canvas to recenter" : undefined}
+          style={{ touchAction: "none", cursor: disabled ? "default" : cursorForDrag() }}
+          className={`relative flex flex-1 items-center justify-center min-h-[420px] overflow-hidden bg-[#f3f4f6] dark:bg-zinc-950 ${
             dragActive ? "ring-2 ring-[#595DD2] ring-inset" : ""
           }`}
         >
+          <div
+            className="absolute -inset-[200%] bg-[radial-gradient(rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:20px_20px]"
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+          />
           <canvas
             ref={canvasRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={endDrag}
-            onDoubleClick={(e) => {
-              if (pickTarget(e.clientX, e.clientY)) return;
-
-              setPan({ x: 0, y: 0 });
-            }}
-            title={pan.x || pan.y ? "Double-click empty canvas to recenter" : undefined}
             style={{
-              touchAction: "none",
-              cursor: disabled ? "default" : cursorForDrag(),
-              transform: pan.x || pan.y ? `translate(${pan.x}px, ${pan.y}px)` : undefined,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              pointerEvents: "none",
             }}
-            className="max-h-full max-w-full rounded object-contain shadow-lg"
+            className="relative max-h-full max-w-full rounded object-contain shadow-lg"
           />
           {renderSelection()}
           {renderGuides()}

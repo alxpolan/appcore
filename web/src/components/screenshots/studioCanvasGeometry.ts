@@ -274,6 +274,8 @@ export function pickTarget(
     return { target: "title", overlayId: null };
   }
 
+  if (px < 0 || px > canvas.width || py < 0 || py > canvas.height) return null;
+
   if (layer === "caption") return { target: "title", overlayId: null };
   if (layer === "device" || layer === "image") return { target: "phone", overlayId: null };
 
