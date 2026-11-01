@@ -4,6 +4,7 @@ import path from "path";
 import sharp from "sharp";
 import { prisma } from "../../config";
 import { workerClient } from "../worker-client";
+import http from "../utils/http";
 
 const OVERLAY_MAX_BYTES = 6 * 1024 * 1024;
 const BEZEL_SLOT_RETRIES = 3;
@@ -166,21 +167,7 @@ export async function getFrameBezelImage(file: string): Promise<Buffer> {
   throw lastError instanceof Error ? lastError : new Error("Bezel image unavailable");
 }
 
-export async function saveStudioOverlay(jobId: string, dataUrl: unknown): Promise<StudioOverlayFile> {
-  assertStudioJobId(jobId);
-
-  const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
-
-  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
-
-  if (typeof dataUrl !== "string") throw new Error("Image data is required");
-
-  const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
-
-  if (!match) throw new Error("Expected a PNG, JPEG or WebP data URL image");
-
-  const buf = Buffer.from(match[2], "base64");
-
+async function storeOverlayBuffer(jobId: string, buf: Buffer): Promise<StudioOverlayFile> {
   if (buf.length === 0 || buf.length > OVERLAY_MAX_BYTES) throw new Error("Image must be smaller than 6 MB");
 
   try {
@@ -197,6 +184,70 @@ export async function saveStudioOverlay(jobId: string, dataUrl: unknown): Promis
   await fs.promises.writeFile(path.join(dir, `${id}.png`), png);
 
   return { id, url: `/screenshots/${jobId}/overlays/${id}.png` };
+}
+
+export async function saveStudioOverlay(jobId: string, dataUrl: unknown): Promise<StudioOverlayFile> {
+  assertStudioJobId(jobId);
+
+  const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
+
+  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
+
+  if (typeof dataUrl !== "string") throw new Error("Image data is required");
+
+  const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
+
+  if (!match) throw new Error("Expected a PNG, JPEG or WebP data URL image");
+
+  const buf = Buffer.from(match[2], "base64");
+
+  return storeOverlayBuffer(jobId, buf);
+}
+
+export async function saveStudioOverlayFromUrl(jobId: string, imageUrl: unknown): Promise<StudioOverlayFile> {
+  assertStudioJobId(jobId);
+
+  const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
+
+  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
+
+  if (typeof imageUrl !== "string") throw new Error("Image URL is required");
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(imageUrl);
+  } catch {
+    throw new Error("Invalid image URL");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Image URL must be http or https");
+  }
+
+  let res;
+
+  try {
+    res = await http.get<Buffer>(imageUrl, { responseType: "arraybuffer", timeout: 10000 });
+  } catch (err) {
+    throw new Error(`Could not fetch image URL: ${(err as Error).message}`);
+  }
+
+  return storeOverlayBuffer(jobId, res.data);
+}
+
+export async function overlayAssetExists(jobId: string, assetId: string): Promise<string | null> {
+  assertStudioJobId(jobId);
+
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(assetId)) return null;
+
+  try {
+    await fs.promises.access(path.join(process.cwd(), "screenshots", jobId, "overlays", `${assetId}.png`));
+
+    return `/screenshots/${jobId}/overlays/${assetId}.png`;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteStudioOverlay(jobId: string, overlayId: string): Promise<void> {

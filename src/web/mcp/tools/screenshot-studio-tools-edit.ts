@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
@@ -10,8 +11,10 @@ import {
   normalizeStudioOverlays,
   normalizeTitleBoxSize,
   normalizeTitleScale,
+  overlayAssetExists,
   renderStudioRevision,
   saveStudioOverlay,
+  saveStudioOverlayFromUrl,
   studioBasename,
   studioRawImageSize,
   type StudioStyle,
@@ -188,39 +191,121 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
   registerMutatingTool(
     server,
     userId,
+    "upload_screenshot_overlay_asset",
+    {
+      description:
+        "Upload an image once so it can be placed as an overlay on many screenshots and locales without " +
+        "resending the image data each time. Returns an assetId — pass it to add_screenshot_overlay's assetId " +
+        "field instead of imageDataUrl/imageUrl on every subsequent call for this job.",
+      inputSchema: {
+        jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
+        imageDataUrl: z
+          .string()
+          .optional()
+          .describe(
+            "The image as a data URL, e.g. 'data:image/png;base64,iVBORw0KG...'. PNG, JPEG, or WebP, under 6 MB. " +
+              "Provide this or imageUrl, not both.",
+          ),
+        imageUrl: z
+          .string()
+          .optional()
+          .describe("A public http(s) URL to fetch the image from, as an alternative to imageDataUrl."),
+      },
+    },
+    async (args: { jobId: string; imageDataUrl?: string; imageUrl?: string }) => {
+      const { jobId, imageDataUrl, imageUrl } = args;
+      const { job, app } = await loadJobWithAccess(userId, jobId);
+
+      if (!job || !app) {
+        return textResult(`Screenshot job not found: ${jobId}`);
+      }
+
+      if ((imageDataUrl ? 1 : 0) + (imageUrl ? 1 : 0) !== 1) {
+        return textResult("Provide exactly one of imageDataUrl or imageUrl.");
+      }
+
+      const overlay = imageUrl
+        ? await saveStudioOverlayFromUrl(jobId, imageUrl)
+        : await saveStudioOverlay(jobId, imageDataUrl);
+
+      return textResult(
+        `Uploaded. assetId "${overlay.id}". Pass this as assetId to add_screenshot_overlay to place it on any ` +
+          "number of screenshots in this job without resending the image.",
+      );
+    },
+    {
+      action: "mcp.upload_screenshot_overlay_asset",
+      summarize: (args) => ({
+        summary: `Uploaded overlay asset for job ${args.jobId}`,
+        entityType: "ScreenshotJob",
+        entityId: args.jobId,
+      }),
+    },
+  );
+
+  registerMutatingTool(
+    server,
+    userId,
     "add_screenshot_overlay",
     {
       description:
-        "Add an image overlay (sticker, badge, extra graphic, etc.) on top of one screenshot and re-render it as " +
-        "a new studio revision. Applies to every locale that has this screenshot unless you pass locales. Use " +
-        "get_screenshot_studio_overview first to see the screenshot's nativeSize so you can place the overlay " +
-        "sensibly, and view_app_screenshot afterwards to confirm the result. Returns the new overlay's id — keep " +
-        "it to reposition or remove it later with update_screenshot_overlay / delete_screenshot_overlay.",
+        "Add an image overlay (sticker, badge, extra graphic, etc.) on top of one or more screenshots and " +
+        "re-render them as new studio revisions. Applies to every locale that has each screenshot unless you " +
+        "pass locales. Supply the image as imageDataUrl (base64), imageUrl (a public http(s) URL, fetched " +
+        "server-side), or assetId (from upload_screenshot_overlay_asset or a previous add_screenshot_overlay " +
+        "call) — assetId is the cheapest way to place the same image on many screenshots. Use " +
+        "get_screenshot_studio_overview first to see each screenshot's nativeSize, and view_app_screenshot " +
+        "afterwards to confirm the result. The response has two different ids, don't mix them up: an assetId " +
+        "(the uploaded image file — reuse it via the assetId field on later calls) and one overlayId per " +
+        "screenshot it was placed on (each placement is independent — pass that exact basename + overlayId to " +
+        "update_screenshot_overlay / delete_screenshot_overlay; the same assetId placed on 5 screenshots " +
+        "produces 5 different overlayIds).",
       inputSchema: {
         jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
-        basename: z.string().describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview)."),
+        basename: z
+          .string()
+          .optional()
+          .describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview). Use this or basenames."),
+        basenames: z
+          .array(z.string())
+          .max(50)
+          .optional()
+          .describe("Multiple screenshot filenames to place the same overlay on in one call. Use this or basename."),
         locales: z
           .array(z.string())
           .optional()
-          .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has this screenshot."),
+          .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has each screenshot."),
         imageDataUrl: z
           .string()
+          .optional()
           .describe(
-            "The overlay image as a data URL, e.g. 'data:image/png;base64,iVBORw0KG...'. PNG, JPEG, or WebP, under 6 MB.",
+            "The overlay image as a data URL, e.g. 'data:image/png;base64,iVBORw0KG...'. PNG, JPEG, or WebP, " +
+              "under 6 MB. Provide exactly one of imageDataUrl, imageUrl, or assetId.",
+          ),
+        imageUrl: z
+          .string()
+          .optional()
+          .describe("A public http(s) URL to fetch the overlay image from, as an alternative to imageDataUrl."),
+        assetId: z
+          .string()
+          .optional()
+          .describe(
+            "Reuse an already-uploaded image instead of resending it — from upload_screenshot_overlay_asset or " +
+              "the id returned by a previous add_screenshot_overlay call on this job.",
           ),
         x: z
           .number()
           .optional()
           .describe(
-            "Overlay center X in pixels, same coordinate space as the screenshot's native size (origin top-left). " +
-              "Defaults to the horizontal center of the screenshot.",
+            "Overlay center X in pixels, same coordinate space as each screenshot's native size (origin top-left). " +
+              "Defaults to that screenshot's horizontal center.",
           ),
         y: z
           .number()
           .optional()
           .describe(
-            "Overlay center Y in pixels, same coordinate space as the screenshot's native size (origin top-left). " +
-              "Defaults to the vertical center of the screenshot.",
+            "Overlay center Y in pixels, same coordinate space as each screenshot's native size (origin top-left). " +
+              "Defaults to that screenshot's vertical center.",
           ),
         scale: z.number().optional().describe("Overlay scale multiplier, 1 = the image's native size. Default 1."),
         rotation: z.number().optional().describe("Overlay rotation in degrees, -180..180. Default 0."),
@@ -228,63 +313,118 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     },
     async (args: {
       jobId: string;
-      basename: string;
+      basename?: string;
+      basenames?: string[];
       locales?: string[];
-      imageDataUrl: string;
+      imageDataUrl?: string;
+      imageUrl?: string;
+      assetId?: string;
       x?: number;
       y?: number;
       scale?: number;
       rotation?: number;
     }) => {
-      const { jobId, basename, locales, imageDataUrl } = args;
+      const { jobId, locales } = args;
       const { job, app } = await loadJobWithAccess(userId, jobId);
 
       if (!job || !app) {
         return textResult(`Screenshot job not found: ${jobId}`);
       }
 
-      let x = args.x;
-      let y = args.y;
+      const basenames = args.basenames && args.basenames.length > 0 ? args.basenames : args.basename ? [args.basename] : [];
 
-      if (x === undefined || y === undefined) {
-        const size = await studioRawImageSize(jobId, basename);
+      if (basenames.length === 0) {
+        return textResult("Provide basename or basenames.");
+      }
 
-        if (!size) {
+      const sourceCount = (args.imageDataUrl ? 1 : 0) + (args.imageUrl ? 1 : 0) + (args.assetId ? 1 : 0);
+
+      if (sourceCount !== 1) {
+        return textResult("Provide exactly one of imageDataUrl, imageUrl, or assetId.");
+      }
+
+      let overlay: { id: string; url: string };
+
+      if (args.assetId) {
+        const url = await overlayAssetExists(jobId, args.assetId);
+
+        if (!url) {
           return textResult(
-            `Could not determine the native size of "${basename}" to center the overlay. Provide x and y explicitly.`,
+            `Overlay asset "${args.assetId}" not found for job ${jobId}. Upload it first with ` +
+              "upload_screenshot_overlay_asset.",
           );
         }
 
-        x = x ?? size.w / 2;
-        y = y ?? size.h / 2;
+        overlay = { id: args.assetId, url };
+      } else if (args.imageUrl) {
+        overlay = await saveStudioOverlayFromUrl(jobId, args.imageUrl);
+      } else {
+        overlay = await saveStudioOverlay(jobId, args.imageDataUrl);
       }
 
-      const overlay = await saveStudioOverlay(jobId, imageDataUrl);
+      const placed: string[] = [];
+      const skipped: string[] = [];
+      let lastResult: Awaited<ReturnType<typeof applyShotStylePatch>>["result"] | null = null;
 
-      const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
-        const existing = Array.isArray(current.overlays) ? current.overlays : [];
-        const merged = normalizeStudioOverlays([
-          ...existing,
-          { id: overlay.id, url: overlay.url, x, y, scale: args.scale ?? 1, rotation: args.rotation ?? 0 },
-        ]);
-        const next = { ...current };
+      for (const basename of basenames) {
+        let x = args.x;
+        let y = args.y;
 
-        if (merged.length > 0) next.overlays = merged;
-        else delete next.overlays;
+        if (x === undefined || y === undefined) {
+          const size = await studioRawImageSize(jobId, basename);
 
-        return next;
-      });
+          if (!size) {
+            skipped.push(`${basename} (no native size, pass x/y explicitly)`);
+            continue;
+          }
+
+          x = x ?? size.w / 2;
+          y = y ?? size.h / 2;
+        }
+
+        const placementId = crypto.randomUUID();
+
+        try {
+          const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
+            const existing = Array.isArray(current.overlays) ? current.overlays : [];
+            const merged = normalizeStudioOverlays([
+              ...existing,
+              { id: placementId, url: overlay.url, x, y, scale: args.scale ?? 1, rotation: args.rotation ?? 0 },
+            ]);
+            const next = { ...current };
+
+            if (merged.length > 0) next.overlays = merged;
+            else delete next.overlays;
+
+            return next;
+          });
+
+          lastResult = result;
+          placed.push(`${basename} (overlayId "${placementId}", locales: ${targetLocales.join(", ")})`);
+        } catch (err) {
+          skipped.push(`${basename} (${(err as Error).message})`);
+        }
+      }
+
+      if (placed.length === 0) {
+        return textResult(`Overlay uploaded (assetId "${overlay.id}") but could not be placed. ${skipped.join("; ")}`);
+      }
 
       return textResult(
-        `Overlay added (id "${overlay.id}"). New studio revision rev${result.revision.rev} (${result.revision.id}) ` +
-          `is now active for job ${jobId}. ${basename} → ${targetLocales.join(", ")}. Use view_app_screenshot to see ` +
-          "the result.",
+        `Overlay placed, assetId "${overlay.id}" (reuse this with add_screenshot_overlay's assetId field for more ` +
+          "screenshots without resending the image). Each screenshot below got its own overlayId — use that " +
+          "with basename when calling update_screenshot_overlay / delete_screenshot_overlay, since the same " +
+          "assetId can be placed on many screenshots independently. " +
+          `Latest studio revision rev${lastResult!.revision.rev} (${lastResult!.revision.id}) is now active for ` +
+          `job ${jobId}. Placed on: ${placed.join("; ")}.` +
+          (skipped.length > 0 ? ` Skipped: ${skipped.join("; ")}.` : "") +
+          " Use view_app_screenshot to see the result.",
       );
     },
     {
       action: "mcp.add_screenshot_overlay",
       summarize: (args) => ({
-        summary: `Added overlay to ${args.basename} in job ${args.jobId}`,
+        summary: `Added overlay to ${args.basenames?.join(", ") ?? args.basename ?? "screenshot"} in job ${args.jobId}`,
         entityType: "ScreenshotJob",
         entityId: args.jobId,
       }),
@@ -374,7 +514,11 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     userId,
     "delete_screenshot_overlay",
     {
-      description: "Remove an image overlay from one screenshot and re-render it as a new studio revision.",
+      description:
+        "Remove an image overlay from one screenshot and re-render it as a new studio revision. The underlying " +
+        "uploaded image is only deleted once no other screenshot in this job still has it placed — the same " +
+        "assetId can be placed on several screenshots independently, via add_screenshot_overlay's basenames field " +
+        "or repeated calls.",
       inputSchema: {
         jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
         basename: z.string().describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview)."),
@@ -393,13 +537,15 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         return textResult(`Screenshot job not found: ${jobId}`);
       }
 
+      const before = await getStudioData(jobId);
+      const removedOverlay = (before.styles[basename]?.overlays ?? []).find((overlay) => overlay.id === overlayId);
+
+      if (!removedOverlay) {
+        return textResult(`Overlay "${overlayId}" not found on "${basename}".`);
+      }
+
       const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
         const existing = Array.isArray(current.overlays) ? current.overlays : [];
-
-        if (!existing.some((overlay) => overlay.id === overlayId)) {
-          throw new Error(`Overlay "${overlayId}" not found on "${basename}".`);
-        }
-
         const remaining = existing.filter((overlay) => overlay.id !== overlayId);
         const next = { ...current };
 
@@ -409,11 +555,21 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         return next;
       });
 
-      await deleteStudioOverlay(jobId, overlayId);
+      const stillReferenced = Object.entries(before.styles).some(
+        ([otherBasename, patch]) =>
+          otherBasename !== basename && (patch.overlays ?? []).some((overlay) => overlay.url === removedOverlay.url),
+      );
+
+      if (!stillReferenced) {
+        const assetId = removedOverlay.url.match(/\/([^/]+)\.png$/)?.[1];
+
+        if (assetId) await deleteStudioOverlay(jobId, assetId);
+      }
 
       return textResult(
         `Overlay "${overlayId}" removed. New studio revision rev${result.revision.rev} (${result.revision.id}) is ` +
-          `now active for job ${jobId}. ${basename} → ${targetLocales.join(", ")}.`,
+          `now active for job ${jobId}. ${basename} → ${targetLocales.join(", ")}.` +
+          (stillReferenced ? " The underlying image is still placed elsewhere, so it was kept." : ""),
       );
     },
     {
