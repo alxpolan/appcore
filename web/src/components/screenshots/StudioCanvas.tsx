@@ -125,7 +125,7 @@ function LocaleDropdown({
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="Preview locale"
-        className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[12px] font-medium bg-transparent cursor-pointer ${borderDefault} ${textSecondary}`}
+        className={`inline-flex items-center gap-2 px-2.5 py-2 rounded-xl border text-[12px] font-medium bg-white dark:bg-[#1c2028] shadow-sm cursor-pointer ${borderDefault} ${textSecondary}`}
       >
         <LocaleFlag locale={value} />
         <span>{getLocaleName(value)}</span>
@@ -1223,29 +1223,21 @@ export default function StudioCanvas({
     return () => window.removeEventListener("paste", onPaste);
   });
 
+  const floatBtnCls = `w-9 h-9 flex items-center justify-center rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`;
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 shrink-0 px-4 pt-4 lg:px-7 lg:pt-4">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onPrev}
-            disabled={total < 2}
-            title="Previous screenshot"
-            className={`w-8 h-8 flex items-center justify-center rounded-lg border ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
-          >
+    <div className="relative h-full">
+      <div className="absolute top-4 inset-x-4 lg:inset-x-7 z-10 flex items-center justify-between gap-2 flex-wrap pointer-events-none">
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          <button type="button" onClick={onPrev} disabled={total < 2} title="Previous screenshot" className={floatBtnCls}>
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={total < 2}
-            title="Next screenshot"
-            className={`w-8 h-8 flex items-center justify-center rounded-lg border ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
-          >
+          <button type="button" onClick={onNext} disabled={total < 2} title="Next screenshot" className={floatBtnCls}>
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className={`text-[12px] ${textMuted} ml-1 font-mono`}>
+          <span
+            className={`text-[12px] ${textMuted} ml-1 font-mono rounded-lg border ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm px-2 py-[7px]`}
+          >
             {total === 0 ? "0 / 0" : `${index + 1} / ${total}`}
           </span>
           <button
@@ -1253,18 +1245,12 @@ export default function StudioCanvas({
             onClick={onApplyToAll}
             disabled={disabled || total < 2}
             title="Apply this screenshot's positions and sizes to all screenshots of this set"
-            className={`ml-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] font-medium ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
+            className={`ml-2 inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-[12px] font-medium ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
           >
             <Copy className="w-3.5 h-3.5" />
             Apply to all
           </button>
-          <button
-            type="button"
-            onClick={onUndo}
-            disabled={disabled || !canUndo}
-            title="Undo change (Cmd+Z)"
-            className={`w-8 h-8 flex items-center justify-center rounded-lg border ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
-          >
+          <button type="button" onClick={onUndo} disabled={disabled || !canUndo} title="Undo change (Cmd+Z)" className={floatBtnCls}>
             <Undo2 className="w-4 h-4" />
           </button>
           <button
@@ -1272,22 +1258,22 @@ export default function StudioCanvas({
             onClick={onRedo}
             disabled={disabled || !canRedo}
             title="Redo change (Cmd+Shift+Z)"
-            className={`w-8 h-8 flex items-center justify-center rounded-lg border ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
+            className={floatBtnCls}
           >
             <Redo2 className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pointer-events-auto">
           <LocaleDropdown locales={locales} value={activeLocale} onChange={onLocaleChange} />
         </div>
       </div>
 
       {!item ? (
-        <div className="flex flex-1 min-h-[420px] items-center justify-center rounded-xl border border-dashed border-zinc-700 text-sm text-zinc-500">
+        <div className="flex h-full min-h-[420px] items-center justify-center rounded-xl border border-dashed border-zinc-700 text-sm text-zinc-500">
           Select a screenshot to preview
         </div>
       ) : !item.rawUrl ? (
-        <div className="flex flex-1 min-h-[420px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 text-center px-6">
+        <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 text-center px-6">
           <p className={`text-sm ${textPrimary}`}>No stored source for this screenshot</p>
           <p className={`text-xs ${textMuted}`}>
             Older runs did not keep the raw device shot, caption editing needs a rerun
@@ -1323,7 +1309,7 @@ export default function StudioCanvas({
           }}
           title={pan.x || pan.y || zoom !== 1 ? "Double-click empty canvas to recenter" : undefined}
           style={{ touchAction: "none", cursor: disabled ? "default" : cursorForDrag() }}
-          className={`relative flex flex-1 items-center justify-center min-h-[420px] overflow-hidden bg-[#f3f4f6] dark:bg-zinc-950 ${
+          className={`relative flex h-full items-center justify-center min-h-[420px] overflow-hidden bg-[#f3f4f6] dark:bg-zinc-950 ${
             dragActive ? "ring-2 ring-[#595DD2] ring-inset" : ""
           }`}
         >
@@ -1347,12 +1333,12 @@ export default function StudioCanvas({
             </div>
           )}
           {error && (
-            <div className="absolute inset-x-4 top-4 rounded bg-red-950/90 px-3 py-2 text-xs text-red-200">
+            <div className="absolute inset-x-4 bottom-3 rounded bg-red-950/90 px-3 py-2 text-xs text-red-200">
               Preview failed: {error}
             </div>
           )}
           {dragInfo && dragInfo.mode !== "pan" && (
-            <div className="absolute left-3 top-3 rounded bg-zinc-900/90 px-2 py-1 font-mono text-[11px] text-zinc-200">
+            <div className="absolute left-3 bottom-3 rounded bg-zinc-900/90 px-2 py-1 font-mono text-[11px] text-zinc-200">
               {dragInfo.target === "phone" ? "Phone" : dragInfo.target === "overlay" ? "Overlay" : "Title"}{" "}
               {dragInfo.mode === "move"
                 ? `${formatOffset(dragInfo.target === "phone" ? style.offsetX : style.titleOffsetX)} / ${formatOffset(dragInfo.target === "phone" ? style.offsetY : style.titleOffsetY)}`
