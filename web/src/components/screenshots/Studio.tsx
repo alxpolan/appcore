@@ -116,7 +116,6 @@ export default function Studio({ addToast }: Props) {
       }
 
       setTitles(merged);
-      addToast("Restored unsaved changes", "info");
     } else {
       setTitles(draftTitles);
     }
