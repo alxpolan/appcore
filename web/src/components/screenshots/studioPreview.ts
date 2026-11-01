@@ -65,6 +65,28 @@ export function getPreviewFrameOverride(): PreviewFrameOverride | null {
   return previewFrameOverride;
 }
 
+export function buildPreviewFrameOverride(
+  key: string,
+  triple: boolean,
+  option: { frameW: number; frameH: number },
+  device: { offsetX: number; offsetY: number; width: number; rounded: boolean },
+  file: string,
+): PreviewFrameOverride {
+  return {
+    key,
+    entry: {
+      file,
+      frameW: option.frameW,
+      frameH: option.frameH,
+      offX: device.offsetX,
+      offY: device.offsetY,
+      shotW: device.width,
+      triple,
+      rounded: device.rounded,
+    },
+  };
+}
+
 const FRAMES: Record<string, FrameEntry> = {
   "1320x2868": { file: "/frames/iphone-69.png", frameW: 1470, frameH: 3000, offX: 75, offY: 66, shotW: 1320, triple: true, rounded: true },
   "1290x2796": { file: "/frames/iphone-67.png", frameW: 1470, frameH: 2970, offX: 90, offY: 87, shotW: 1290, triple: true, rounded: true },
@@ -336,7 +358,7 @@ export async function ensureStudioFont(font: string): Promise<string> {
 
 const imageCache = new Map<string, HTMLImageElement>();
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+export function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(src);
 
   if (cached) return Promise.resolve(cached);
