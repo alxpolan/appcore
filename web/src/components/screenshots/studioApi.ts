@@ -65,6 +65,20 @@ export const STUDIO_APPLY_GEOMETRY_KEYS: Array<keyof StudioStyle> = STUDIO_GEOME
 
 export type StudioLayer = "caption" | "device" | "image" | "background";
 
+export type StudioDeleteTarget = { kind: "overlay"; id: string } | { kind: "caption" };
+
+export function resolveStudioDeleteTarget(
+  selectedOverlayId: string | null,
+  layer: StudioLayer | null,
+  title: string,
+): StudioDeleteTarget | null {
+  if (selectedOverlayId) return { kind: "overlay", id: selectedOverlayId };
+
+  if (layer === "caption" && title.trim().length > 0) return { kind: "caption" };
+
+  return null;
+}
+
 export interface StudioBezelOption {
   file: string;
   color: string;
