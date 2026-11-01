@@ -496,18 +496,48 @@ export default function StudioInspector({
       {layer === "background" && (
         <Section label="Appearance">
           <div className="flex flex-col gap-2.5">
-            <ColorRow
-              label="Gradient from"
-              value={style.bgColor1}
-              onChange={(v) => patchStyle({ bgColor1: v })}
-              disabled={disabled}
-            />
-            <ColorRow
-              label="Gradient to"
-              value={style.bgColor2}
-              onChange={(v) => patchStyle({ bgColor2: v })}
-              disabled={disabled}
-            />
+            <label className="flex items-center justify-between gap-2">
+              <span className={`text-[12px] ${textSecondary}`}>Fill</span>
+              <select
+                value={style.bgColor1 === style.bgColor2 ? "single" : "gradient"}
+                onChange={(e) => {
+                  if (e.target.value === "single") {
+                    patchStyle({ bgColor2: style.bgColor1 });
+                  } else if (style.bgColor1 === style.bgColor2) {
+                    patchStyle({ bgColor2: style.bgColor1 === "#764ba2" ? "#667eea" : "#764ba2" });
+                  }
+                }}
+                disabled={disabled}
+                className={`${inputCls} !w-auto cursor-pointer disabled:opacity-50`}
+              >
+                <option value="single">Single Color</option>
+                <option value="gradient">Gradient</option>
+              </select>
+            </label>
+
+            {style.bgColor1 === style.bgColor2 ? (
+              <ColorRow
+                label="Color"
+                value={style.bgColor1}
+                onChange={(v) => patchStyle({ bgColor1: v, bgColor2: v })}
+                disabled={disabled}
+              />
+            ) : (
+              <>
+                <ColorRow
+                  label="Gradient from"
+                  value={style.bgColor1}
+                  onChange={(v) => patchStyle({ bgColor1: v })}
+                  disabled={disabled}
+                />
+                <ColorRow
+                  label="Gradient to"
+                  value={style.bgColor2}
+                  onChange={(v) => patchStyle({ bgColor2: v })}
+                  disabled={disabled}
+                />
+              </>
+            )}
           </div>
         </Section>
       )}
