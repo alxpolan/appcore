@@ -11,6 +11,7 @@ import {
   listAppleAdsSearchTerms,
   resolveAppleAdsRange,
   resolveAppOrgByAdamId,
+  resolveAppOrgByBundleId,
   updateAppleAdsCampaign,
   updateAppleAdsCampaignStatus,
   validateCreateCampaignInput,
@@ -36,35 +37,92 @@ import {
 } from "./ads-tools-summaries";
 
 export function registerAppleAdsCampaignTools(server: McpServer, userId: string) {
-  registerAdsReadTool(
-    server,
-    userId,
+  // @ts-ignore
+  server.registerTool(
     "list_ads_campaigns",
     {
       description:
         "List Apple Search Ads campaigns with spend and performance stats (impressions, taps, installs, TTR, avg CPT/CPA, conversion rate) for a date range. " +
-        "Call this to discover campaign IDs before using the campaign-scoped tools.",
-      inputSchema: { ...rangeSchema },
+        "Call this to discover campaign IDs before using the campaign-scoped tools. Pass bundleId to scope to one " +
+        "app's org, status or minSpend to filter, and summaryOnly for a compact shape — a team with many " +
+        "campaigns can otherwise return a very large response.",
+      inputSchema: {
+        ...rangeSchema,
+        bundleId: z
+          .string()
+          .optional()
+          .describe(
+            "Restrict to the Apple Search Ads org mapped to this app's bundle ID. Returns every mapped org's " +
+              "campaigns if omitted.",
+          ),
+        status: z.enum(["ENABLED", "PAUSED"]).optional().describe("Restrict to campaigns with this status."),
+        minSpend: z
+          .number()
+          .optional()
+          .describe("Restrict to campaigns with spend >= this amount, in the campaign's currency."),
+        summaryOnly: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return a compact {id, name, status, spend, orgName} per campaign instead of the full object with " +
+              "budgets, countries and all performance stats. Default false.",
+          ),
+      },
     },
-    async ({ days, period, startDate, endDate }) => {
+    async ({
+      days,
+      period,
+      startDate,
+      endDate,
+      bundleId,
+      status,
+      minSpend,
+      summaryOnly,
+    }: {
+      days?: number;
+      period?: "ytd" | "all";
+      startDate?: string;
+      endDate?: string;
+      bundleId?: string;
+      status?: "ENABLED" | "PAUSED";
+      minSpend?: number;
+      summaryOnly?: boolean;
+    }) => {
       const ctx = await getAppleAdsContext(userId);
       if ("error" in ctx) return textResult(ctx.error);
 
-      if (ctx.orgIds.length === 0) {
+      let orgIds = ctx.orgIds;
+      let orgNameById = ctx.orgNameById;
+
+      if (bundleId) {
+        const org = await resolveAppOrgByBundleId(ctx.teamId, bundleId);
+
+        if (!org) {
+          return textResult(`No Apple Search Ads org mapped for bundle ID "${bundleId}".`);
+        }
+
+        orgIds = [org.orgId];
+        orgNameById = new Map([[org.orgId, org.orgName]]);
+      }
+
+      if (orgIds.length === 0) {
         return textResult("No campaign group is mapped to any app yet — map one per app in Marteso Integrations.");
       }
 
       try {
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
-        const lists = await Promise.all(
-          ctx.orgIds.map((orgId) => listAppleAdsCampaigns({ ...ctx.keyCreds, orgId }, range)),
-        );
+        const lists = await Promise.all(orgIds.map((orgId) => listAppleAdsCampaigns({ ...ctx.keyCreds, orgId }, range)));
 
-        const campaigns = lists
-          .flat()
-          .map((c) => ({ ...c, orgName: ctx.orgNameById.get(c.orgId) ?? c.orgId }));
+        let campaigns = lists.flat().map((c) => ({ ...c, orgName: orgNameById.get(c.orgId) ?? c.orgId }));
 
-        return jsonResult({ range, campaigns });
+        if (status) campaigns = campaigns.filter((c) => c.status === status);
+        if (minSpend !== undefined) campaigns = campaigns.filter((c) => c.spend >= minSpend);
+
+        const out = summaryOnly
+          ? campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status, spend: c.spend, orgName: c.orgName }))
+          : campaigns;
+
+        return textResult(JSON.stringify({ range, campaigns: out }));
       } catch (err) {
         return adsError("list_ads_campaigns", err);
       }

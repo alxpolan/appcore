@@ -133,6 +133,13 @@ export async function resolveAppOrgByAdamId(
   return { orgId: app.appleAdsOrgId, orgName: app.appleAdsOrgName ?? app.appleAdsOrgId };
 }
 
+export async function resolveAppOrgByBundleId(teamId: string, bundleId: string): Promise<AppleAdsOrgOption | null> {
+  const app = await prisma.app.findFirst({ where: { teamId, bundleId } });
+  if (!app?.appleAdsOrgId) return null;
+
+  return { orgId: app.appleAdsOrgId, orgName: app.appleAdsOrgName ?? app.appleAdsOrgId };
+}
+
 export async function getAppleAdsCampaign(
   creds: AppleAdsCredentials,
   campaignId: string,
