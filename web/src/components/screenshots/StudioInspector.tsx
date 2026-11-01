@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { borderDefault, btnSecSm, studioCardCls, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
+import { Check, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { borderDefault, btnSecSm, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
 import {
   STUDIO_GEOMETRY_KEYS,
   type StudioBezels,
@@ -116,7 +116,7 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
-function NudgeControl({
+function PositionInputs({
   x,
   y,
   onChange,
@@ -130,52 +130,66 @@ function NudgeControl({
   range?: number;
 }) {
   const clamp = (value: number) => Math.max(-range, Math.min(range, Math.round(value)));
-  const nudge = (dx: number, dy: number) => (e: React.MouseEvent) => {
-    const m = e.shiftKey ? 10 : 1;
-    onChange(clamp(x + dx * m), clamp(y + dy * m));
+
+  const handleKeyDown = (axis: "x" | "y") => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+
+    e.preventDefault();
+
+    const step = e.shiftKey ? 10 : 1;
+    const delta = e.key === "ArrowUp" ? step : -step;
+
+    if (axis === "x") onChange(clamp(x + delta), y);
+    else onChange(x, clamp(y + delta));
   };
-  const btn = `w-8 h-8 flex items-center justify-center rounded-lg border ${borderDefault} ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`;
-  const fmt = (value: number) => (value > 0 ? `+${value}` : `${value}`);
+
+  const parse = (raw: string, apply: (value: number) => void) => {
+    const value = Number(raw);
+
+    if (Number.isFinite(value)) apply(clamp(value));
+  };
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="grid grid-cols-3 gap-1 shrink-0">
-        <span />
-        <button type="button" disabled={disabled} title="Move up (shift: 10px)" onClick={nudge(0, -1)} className={btn}>
-          <ArrowUp className="w-4 h-4" />
-        </button>
-        <span />
-        <button
-          type="button"
+    <div className="flex items-center gap-2">
+      <label className={`flex items-center gap-1.5 text-[12px] ${textSecondary}`}>
+        X
+        <input
+          type="number"
+          min={-range}
+          max={range}
+          step={1}
+          value={x}
           disabled={disabled}
-          title="Move left (shift: 10px)"
-          onClick={nudge(-1, 0)}
-          className={btn}
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <button type="button" disabled={disabled} title="Reset position" onClick={() => onChange(0, 0)} className={btn}>
-          <RotateCcw className="w-3.5 h-3.5" />
-        </button>
-        <button
-          type="button"
+          title="Arrow keys: ±1, shift+arrow: ±10"
+          onKeyDown={handleKeyDown("x")}
+          onChange={(e) => parse(e.target.value, (value) => onChange(value, y))}
+          className={`${inputCls} !w-20 font-mono`}
+        />
+      </label>
+      <label className={`flex items-center gap-1.5 text-[12px] ${textSecondary}`}>
+        Y
+        <input
+          type="number"
+          min={-range}
+          max={range}
+          step={1}
+          value={y}
           disabled={disabled}
-          title="Move right (shift: 10px)"
-          onClick={nudge(1, 0)}
-          className={btn}
-        >
-          <ArrowRight className="w-4 h-4" />
-        </button>
-        <span />
-        <button type="button" disabled={disabled} title="Move down (shift: 10px)" onClick={nudge(0, 1)} className={btn}>
-          <ArrowDown className="w-4 h-4" />
-        </button>
-        <span />
-      </div>
-      <div className={`font-mono text-[12px] ${textSecondary} leading-5`}>
-        <div>X {fmt(x)}</div>
-        <div>Y {fmt(y)}</div>
-      </div>
+          title="Arrow keys: ±1, shift+arrow: ±10"
+          onKeyDown={handleKeyDown("y")}
+          onChange={(e) => parse(e.target.value, (value) => onChange(x, value))}
+          className={`${inputCls} !w-20 font-mono`}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={disabled}
+        title="Reset position"
+        onClick={() => onChange(0, 0)}
+        className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] transition-colors disabled:opacity-40 shrink-0`}
+      >
+        <RotateCcw className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
@@ -375,25 +389,26 @@ export default function StudioInspector({
             : "Studio";
 
   return (
-    <div className={studioCardCls}>
+    <div className="min-h-full">
       <div className={`text-[13px] font-semibold ${textPrimary}`}>{layerTitle}</div>
-      <div className={`text-[11px] ${textMuted} mb-1`}>
-        {overlay && item
-          ? item.basename.replace(/\.png$/i, "")
-          : layer === null
-            ? "Click the phone, the caption or a layer to edit"
-            : (layer === "caption" || layer === "device" || layer === "image") && item
-              ? item.basename.replace(/\.png$/i, "")
-              : layer === "caption" || layer === "device" || layer === "image"
-                ? "No screenshot selected"
-                : "Applies to every screenshot"}
-      </div>
+      {layer !== "caption" && (
+        <div className={`text-[11px] ${textMuted} mb-1`}>
+          {overlay && item
+            ? item.basename.replace(/\.png$/i, "")
+            : layer === null
+              ? "Click the phone, the caption or a layer to edit"
+              : (layer === "device" || layer === "image") && item
+                ? item.basename.replace(/\.png$/i, "")
+                : layer === "device" || layer === "image"
+                  ? "No screenshot selected"
+                  : "Applies to every screenshot"}
+        </div>
+      )}
 
       {layer === "caption" && (
         <>
           <Section label="Content">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className={`text-[12px] ${textSecondary}`}>Text</span>
+            <div className="flex items-center justify-end mb-1.5">
               <span className={`text-[11px] font-mono ${textMuted}`}>{title.length}/60</span>
             </div>
             <input
@@ -433,7 +448,7 @@ export default function StudioInspector({
           </Section>
 
           <Section label="Position">
-            <NudgeControl
+            <PositionInputs
               x={style.titleOffsetX}
               y={style.titleOffsetY}
               onChange={(titleOffsetX, titleOffsetY) => patchStyle({ titleOffsetX, titleOffsetY })}
@@ -500,7 +515,7 @@ export default function StudioInspector({
       {layer === "image" && (
         <>
           <Section label="Position">
-            <NudgeControl
+            <PositionInputs
               x={style.offsetX}
               y={style.offsetY}
               onChange={(offsetX, offsetY) => patchStyle({ offsetX, offsetY })}
@@ -584,7 +599,7 @@ export default function StudioInspector({
       {overlay && (
         <>
           <Section label="Position">
-            <NudgeControl
+            <PositionInputs
               x={overlay.x}
               y={overlay.y}
               onChange={(x, y) => onOverlayPatch(overlay.id, { x, y })}

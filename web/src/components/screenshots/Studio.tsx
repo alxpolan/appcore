@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, Pencil, X } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
-import { cardCls, inputCls, pageTitle, textMuted, textSecondary } from "../../styles";
+import { borderDefault, cardCls, inputCls, textMuted, textPrimary } from "../../styles";
 import { getLocaleName } from "../../utils/localeUtils";
 import { DEVICES } from "../../utils/screenshotUtils";
 import StudioLayers from "./StudioLayers";
@@ -37,6 +37,21 @@ interface StudioSnapshot {
   style: StudioStyle;
   shotOverrides: Record<string, Partial<StudioStyle>>;
   titles: TitleDrafts;
+}
+
+const STUDIO_SIMPLE_CLS = "h-screen overflow-y-auto bg-white dark:bg-[#0f1117] px-4 py-4 sm:px-7 sm:py-6";
+const STUDIO_SHELL_CLS = "h-screen flex flex-col overflow-y-auto lg:overflow-hidden bg-white dark:bg-[#0f1117]";
+
+function CloseButton() {
+  return (
+    <Link
+      to="/screenshots"
+      title="Close Studio"
+      className={`w-8 h-8 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/10 transition-colors shrink-0`}
+    >
+      <X className="w-4 h-4" />
+    </Link>
+  );
 }
 
 export default function Studio({ addToast }: Props) {
@@ -286,12 +301,36 @@ export default function Studio({ addToast }: Props) {
           () => {
             draftSavedRef.current = true;
           },
-          () => {},
+          (err: Error) => {
+            addToast(`Draft save failed: ${err.message}`, "error");
+          },
         );
-    }, 1500);
+    }, 400);
 
     return () => clearTimeout(timer);
-  }, [jobId, data, style, shotOverrides, titles, saving, dirty]);
+  }, [jobId, data, style, shotOverrides, titles, saving, dirty, addToast]);
+
+  useEffect(() => {
+    if (!jobId || !dirty) return;
+
+    const flush = () => {
+      fetch(`/api/github/screenshots/studio/${jobId}/draft`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style, styles: shotOverrides, titles }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+    };
+  }, [jobId, dirty, style, shotOverrides, titles]);
 
   useEffect(() => {
     if (!jobId || dirty || saving || !draftSavedRef.current) return;
@@ -716,8 +755,10 @@ export default function Studio({ addToast }: Props) {
 
   if (!jobId) {
     return (
-      <div>
-        <h1 className={`${pageTitle} mb-5`}>Screenshot Studio</h1>
+      <div className={STUDIO_SIMPLE_CLS}>
+        <div className="mb-5">
+          <CloseButton />
+        </div>
         <div className={`${cardCls} text-sm ${textMuted}`}>Missing screenshot run.</div>
       </div>
     );
@@ -725,8 +766,10 @@ export default function Studio({ addToast }: Props) {
 
   if (loading && !data) {
     return (
-      <div>
-        <h1 className={`${pageTitle} mb-5`}>Screenshot Studio</h1>
+      <div className={STUDIO_SIMPLE_CLS}>
+        <div className="mb-5">
+          <CloseButton />
+        </div>
         <div className={`${cardCls} flex items-center gap-2 text-sm ${textMuted} py-8 justify-center`}>
           <div className="spinner !w-4 !h-4" /> Loading studio…
         </div>
@@ -736,96 +779,107 @@ export default function Studio({ addToast }: Props) {
 
   if (!data || !localeData || !style || !effectiveShot) {
     return (
-      <div>
-        <h1 className={`${pageTitle} mb-5`}>Screenshot Studio</h1>
-        <div className={`${cardCls} text-sm ${textMuted}`}>
-          Screenshot run not found.{" "}
-          <Link to="/screenshots" className="underline underline-offset-2 hover:text-[#595DD2]">
-            Back to screenshots
-          </Link>
-          .
+      <div className={STUDIO_SIMPLE_CLS}>
+        <div className="mb-5">
+          <CloseButton />
         </div>
+        <div className={`${cardCls} text-sm ${textMuted}`}>Screenshot run not found.</div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
-        <div>
-          <Link
-            to="/screenshots"
-            className={`inline-flex items-center gap-1 text-[12px] ${textSecondary} hover:text-[#595DD2] mb-1`}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Screenshots
-          </Link>
-          <h1 className={pageTitle}>Screenshot Studio</h1>
-          <div className="flex items-center gap-1.5 mt-1">
-            {renamingSet ? (
-              <>
-                <input
-                  type="text"
-                  value={setName}
-                  maxLength={80}
-                  autoFocus
-                  placeholder={data.job.commitSha.slice(0, 7)}
-                  onChange={(e) => setSetName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleRenameSet();
-                    if (e.key === "Escape") setRenamingSet(false);
+    <div className={STUDIO_SHELL_CLS}>
+      <div className={`flex items-center justify-between gap-4 flex-wrap px-4 sm:px-6 py-3 border-b ${borderDefault} shrink-0`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <CloseButton />
+
+          {renamingSet ? (
+            <>
+              <input
+                type="text"
+                value={setName}
+                maxLength={80}
+                autoFocus
+                placeholder={data.job.commitSha.slice(0, 7)}
+                onChange={(e) => setSetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRenameSet();
+                  if (e.key === "Escape") setRenamingSet(false);
+                }}
+                className={`${inputCls} !w-64 !py-[5px] !text-[13px]`}
+              />
+              <button
+                type="button"
+                onClick={handleRenameSet}
+                disabled={savingSetName}
+                title="Save name"
+                className={`w-7 h-7 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50`}
+              >
+                {savingSetName ? <div className="spinner !w-3.5 !h-3.5" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenamingSet(false)}
+                disabled={savingSetName}
+                title="Cancel"
+                className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h1 className={`text-[15px] font-semibold ${textPrimary} truncate`}>
+                {data.job.commitMessage || data.job.commitSha.slice(0, 7)}
+              </h1>
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSetName(data.job.commitMessage ?? "");
+                    setRenamingSet(true);
                   }}
-                  className={`${inputCls} !w-64 !py-[5px] !text-[13px]`}
-                />
-                <button
-                  type="button"
-                  onClick={handleRenameSet}
-                  disabled={savingSetName}
-                  title="Save name"
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50`}
+                  title="Rename set"
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/10 transition-colors shrink-0`}
                 >
-                  {savingSetName ? <div className="spinner !w-3.5 !h-3.5" /> : <Check className="w-4 h-4" />}
+                  <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setRenamingSet(false)}
-                  disabled={savingSetName}
-                  title="Cancel"
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50`}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </>
-            ) : (
-              <>
-                <p className={`text-[13px] ${textSecondary}`}>
-                  {data.job.commitMessage || data.job.commitSha.slice(0, 7)}
-                  <span className="font-mono text-[11px]">
-                    {" "}
-                    · {data.job.commitSha.slice(0, 7)}
-                    {data.job.branch ? ` · ${data.job.branch}` : ""}
-                  </span>
-                </p>
-                {canWrite && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSetName(data.job.commitMessage ?? "");
-                      setRenamingSet(true);
-                    }}
-                    title="Rename set"
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/10 transition-colors`}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+              )}
+              <span className={`text-[12px] font-mono ${textMuted} shrink-0`}>
+                {data.job.commitSha.slice(0, 7)}
+                {data.job.branch ? ` · ${data.job.branch}` : ""}
+              </span>
+            </div>
+          )}
         </div>
+
+        <StudioRevisions
+          disabled={!canWrite}
+          revisions={data.revisions}
+          activeRevisionId={data.activeRevisionId}
+          activatingId={activatingId}
+          onActivate={handleActivate}
+          deletingId={deletingId}
+          onDelete={handleDeleteRevision}
+          defaultRevisionId={data.defaultRevisionId}
+          settingDefaultId={settingDefaultId}
+          onSetDefault={handleSetDefault}
+          dirty={dirty}
+          scope={scope}
+          onScopeChange={setScope}
+          activeLocaleName={getLocaleName(localeData.locale)}
+          localeCount={data.locales.length}
+          revName={revName}
+          onRevNameChange={setRevName}
+          onSave={handleSave}
+          saving={saving}
+          progress={progress}
+        />
       </div>
 
-      <div className="grid lg:grid-cols-[264px_minmax(0,1fr)_300px] gap-5 items-start">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+        <aside className={`lg:w-[264px] lg:shrink-0 lg:h-full lg:overflow-y-auto px-4 py-4 lg:border-r ${borderDefault}`}>
         <StudioLayers
           item={selectedItem}
           title={selectedTitle}
@@ -843,6 +897,8 @@ export default function Studio({ addToast }: Props) {
           onDeleteOverlay={handleOverlayDelete}
           frameLabel={frameLabel}
         />
+        </aside>
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto">
         <StudioCanvas
           item={selectedItem}
           title={selectedTitle}
@@ -864,6 +920,8 @@ export default function Studio({ addToast }: Props) {
           onSelectOverlay={handleSelectOverlay}
           onOverlayPatch={handleOverlayPatch}
           onOverlaysAdd={handleOverlaysAdd}
+          onDeleteOverlay={handleOverlayDelete}
+          onTitleChange={handleTitleChange}
           uploadOverlayFile={uploadOverlayFile}
           duplicateOverlayFile={duplicateOverlayFile}
           canUndo={pastRef.current.length > 0}
@@ -872,29 +930,8 @@ export default function Studio({ addToast }: Props) {
           onRedo={handleRedo}
           bezels={bezels}
         />
-        <div className="flex flex-col gap-5 min-w-0">
-          <StudioRevisions
-            disabled={!canWrite}
-            revisions={data.revisions}
-            activeRevisionId={data.activeRevisionId}
-            activatingId={activatingId}
-            onActivate={handleActivate}
-            deletingId={deletingId}
-            onDelete={handleDeleteRevision}
-            defaultRevisionId={data.defaultRevisionId}
-            settingDefaultId={settingDefaultId}
-            onSetDefault={handleSetDefault}
-            dirty={dirty}
-            scope={scope}
-            onScopeChange={setScope}
-            activeLocaleName={getLocaleName(localeData.locale)}
-            localeCount={data.locales.length}
-            revName={revName}
-            onRevNameChange={setRevName}
-            onSave={handleSave}
-            saving={saving}
-            progress={progress}
-          />
+        </main>
+        <aside className={`lg:w-[300px] lg:shrink-0 lg:h-full lg:overflow-y-auto px-4 py-4 lg:border-l ${borderDefault}`}>
           <StudioInspector
             disabled={!canWrite}
             layer={selectedLayer}
@@ -915,7 +952,7 @@ export default function Studio({ addToast }: Props) {
             onOverlayPatch={handleOverlayPatch}
             onDeleteOverlay={handleOverlayDelete}
           />
-        </div>
+        </aside>
       </div>
     </div>
   );

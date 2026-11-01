@@ -1364,6 +1364,17 @@ export default function App() {
     return <Onboarding initialStep={onboardingStep} onComplete={finishOnboarding} />;
   }
 
+  if (location.pathname.startsWith("/screenshots/studio/")) {
+    return (
+      <PermissionsProvider value={getPermissions(user)}>
+        <ToastContainer toasts={toasts} />
+        <Routes>
+          <Route path="/screenshots/studio/:jobId" element={<Studio addToast={addToast} />} />
+        </Routes>
+      </PermissionsProvider>
+    );
+  }
+
   const ascRequiredView = ASC_REQUIRED_VIEWS.find((v) => location.pathname.startsWith(v.prefix));
   const hasASC = dash?.config?.hasASC ?? true;
   const showAscBanner = !hasASC && !!ascRequiredView && !user.isDemo;
@@ -1564,7 +1575,6 @@ export default function App() {
               <Route path="/versions" element={<Versions addToast={addToast} />} />
               <Route path="/product-pages" element={<ProductPages addToast={addToast} />} />
               <Route path="/screenshots" element={<Screenshots addToast={addToast} />} />
-              <Route path="/screenshots/studio/:jobId" element={<Studio addToast={addToast} />} />
               <Route path="/builds" element={<Builds addToast={addToast} />} />
               <Route path="/monetization/subscriptions" element={<MonetizationSubscriptions addToast={addToast} />} />
               <Route path="/monetization/products" element={<MonetizationProducts addToast={addToast} />} />

@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Image as ImageIcon, Smartphone, Square, TriangleAlert, Type, X } from "lucide-react";
 import { thumbUrl } from "../../utils/screenshotUtils";
-import { borderDefault, studioCardCls, textMuted, textPrimary, textSecondary } from "../../styles";
+import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import type { StudioItem, StudioLayer, StudioOverlay, StudioStyle } from "./studioApi";
 
 interface Props {
@@ -119,8 +119,8 @@ export default function StudioLayers({
   );
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className={studioCardCls}>
+    <div className="flex flex-col">
+      <div>
         <div className={`text-[13px] font-semibold ${textPrimary} mb-2.5`}>Layers</div>
         <div className="flex flex-col gap-1.5">
           {renderLayerButton(layers[0])}
@@ -176,7 +176,7 @@ export default function StudioLayers({
         </div>
       </div>
 
-      <div className={studioCardCls}>
+      <div className={`mt-5 pt-5 border-t ${borderDefault}`}>
         <div className={`text-[13px] font-semibold ${textPrimary} mb-2.5`}>Screenshots</div>
         <div className="flex flex-col gap-1.5 max-h-[52vh] overflow-y-auto pr-0.5">
           {items.map((shot, index) => {
