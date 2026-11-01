@@ -80,6 +80,14 @@ export interface WorkerBezelDevice {
   rounded: boolean;
 }
 
+export function decodeWorkerImageData(data: unknown): Buffer | null {
+  if (Buffer.isBuffer(data)) return data.length > 0 ? data : null;
+
+  if (data instanceof ArrayBuffer) return data.byteLength > 0 ? Buffer.from(data) : null;
+
+  return null;
+}
+
 export interface WorkerFrameitParams {
   images: Array<{
     filename: string;
@@ -473,11 +481,17 @@ class FastlaneWorkerClient {
         throw new Error(typeof body?.error === "string" && body.error.length > 0 ? body.error : "Bezel image unavailable");
       }
 
-      if (res.status !== 200 || !(res.data instanceof ArrayBuffer) || res.data.byteLength === 0) {
+      if (res.status !== 200) {
         throw new Error("Bezel image unavailable");
       }
 
-      return Buffer.from(res.data);
+      const image = decodeWorkerImageData(res.data);
+
+      if (!image) {
+        throw new Error("Bezel image unavailable");
+      }
+
+      return image;
     } finally {
       slot.sem.release();
     }
