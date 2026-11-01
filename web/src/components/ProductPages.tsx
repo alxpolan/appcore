@@ -16,13 +16,14 @@ import {
   textSecondary,
 } from "../styles";
 import type {
+  AppItem,
   ProductPage,
   ProductPageLocalization,
-  ProductPageScreenshot,
   ProductPageVersion,
 } from "../types";
 import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
 import { useClickOutside } from "../hooks/useClickOutside";
+import { ConnectedScreenshotsPanel } from "./screenshots/ConnectedScreenshotsPanel";
 import {
   ArrowLeft,
   Check,
@@ -38,35 +39,10 @@ import {
   Send,
   Trash2,
   X,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 
 type ToastFn = (msg: string, type: "success" | "error" | "info") => void;
 
-const DISPLAY_TYPE_LABELS: Record<string, string> = {
-  APP_IPHONE_67: 'iPhone 6.7"',
-  APP_IPHONE_65: 'iPhone 6.5"',
-  APP_IPHONE_61: 'iPhone 6.1"',
-  APP_IPHONE_58: 'iPhone 5.8"',
-  APP_IPHONE_55: 'iPhone 5.5"',
-  APP_IPHONE_47: 'iPhone 4.7"',
-  APP_IPAD_PRO_3GEN_129: 'iPad Pro 12.9"',
-  APP_IPAD_PRO_3GEN_11: 'iPad Pro 11"',
-  APP_IPAD_105: 'iPad 10.5"',
-  APP_IPAD_97: 'iPad 9.7"',
-  APP_DESKTOP: "Desktop",
-  APP_APPLE_TV: "Apple TV",
-  APP_APPLE_VISION_PRO: "Vision Pro",
-  APP_WATCH_ULTRA: "Watch Ultra",
-  APP_WATCH_SERIES_7: "Watch Series 7",
-  APP_WATCH_SERIES_4: "Watch Series 4",
-  APP_WATCH_SERIES_3: "Watch Series 3",
-};
-
-function displayTypeLabel(t: string): string {
-  return DISPLAY_TYPE_LABELS[t] ?? t;
-}
 
 function stateLabel(state: string | null): string {
   if (!state) return "No version";
@@ -101,24 +77,14 @@ async function copyText(text: string, addToast: ToastFn) {
   }
 }
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      const comma = result.indexOf(",");
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function ProductPages({ addToast }: { addToast: ToastFn }) {
   const { data, loading, error, refetch } = useApi<{ pages: ProductPage[] }>("/product-pages");
+  const { data: apps } = useApi<AppItem[]>("/apps?ownOnly=true", [], true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const { canWrite } = usePermissions();
+
+  const activeApp = apps?.find((a) => a.bundleId === getActiveBundleId() && a.isOwnApp);
 
   const pages = data?.pages ?? [];
   const selected = pages.find((p) => p.id === selectedId) ?? null;
@@ -153,6 +119,7 @@ export default function ProductPages({ addToast }: { addToast: ToastFn }) {
     return (
       <PageDetail
         page={selected}
+        appId={activeApp?.id ?? null}
         addToast={addToast}
         canWrite={canWrite}
         onBack={() => setSelectedId(null)}
@@ -463,12 +430,14 @@ function ConfirmModal({
 
 function PageDetail({
   page,
+  appId,
   addToast,
   canWrite,
   onBack,
   onChanged,
 }: {
   page: ProductPage;
+  appId: string | null;
   addToast: ToastFn;
   canWrite: boolean;
   onBack: () => void;
@@ -719,6 +688,7 @@ function PageDetail({
         <VersionLocalizations
           key={selectedVersion.id}
           version={selectedVersion}
+          appId={appId}
           addToast={addToast}
           canWrite={canWrite}
         />
@@ -828,10 +798,12 @@ function DeepLinkEditor({
 
 function VersionLocalizations({
   version,
+  appId,
   addToast,
   canWrite,
 }: {
   version: ProductPageVersion;
+  appId: string | null;
   addToast: ToastFn;
   canWrite: boolean;
 }) {
@@ -979,6 +951,7 @@ function VersionLocalizations({
         <LocalizationEditor
           key={selected.id}
           localization={selected}
+          appId={appId}
           editable={editable}
           addToast={addToast}
           onDelete={() => deleteLocalization(selected)}
@@ -993,12 +966,14 @@ function VersionLocalizations({
 
 function LocalizationEditor({
   localization,
+  appId,
   editable,
   addToast,
   onDelete,
   onPromoSaved,
 }: {
   localization: ProductPageLocalization;
+  appId: string | null;
   editable: boolean;
   addToast: ToastFn;
   onDelete: () => void;
@@ -1006,34 +981,9 @@ function LocalizationEditor({
 }) {
   const [promoDraft, setPromoDraft] = useState(localization.promotionalText);
   const [savingPromo, setSavingPromo] = useState(false);
-  const [screenshots, setScreenshots] = useState<ProductPageScreenshot[]>([]);
-  const [loadingShots, setLoadingShots] = useState(true);
-  const [uploading, setUploading] = useState(0);
-  const [displayTypeOverride, setDisplayTypeOverride] = useState("");
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const [deletingShot, setDeletingShot] = useState<string | null>(null);
   const [confirmDeleteLocale, setConfirmDeleteLocale] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const promoDirty = promoDraft !== localization.promotionalText;
-
-  const loadScreenshots = useCallback(async () => {
-    setLoadingShots(true);
-    try {
-      const res = await apiGet<{ screenshots: ProductPageScreenshot[] }>(
-        `/product-pages/localizations/${localization.id}/screenshots`,
-      );
-      setScreenshots(res.screenshots);
-    } catch (e: any) {
-      addToast(e.message ?? "Could not load screenshots", "error");
-    } finally {
-      setLoadingShots(false);
-    }
-  }, [localization.id, addToast]);
-
-  useEffect(() => {
-    loadScreenshots();
-  }, [loadScreenshots]);
 
   const savePromo = async () => {
     if (!promoDirty) return;
@@ -1051,58 +1001,6 @@ function LocalizationEditor({
       setSavingPromo(false);
     }
   };
-
-  const uploadFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const list = Array.from(files);
-    setUploading(list.length);
-    let failed = 0;
-    for (const file of list) {
-      try {
-        const fileData = await readFileAsBase64(file);
-        await apiPost(`/product-pages/localizations/${localization.id}/screenshots`, {
-          bundleId: getActiveBundleId(),
-          fileName: file.name,
-          fileData,
-          displayType: displayTypeOverride || undefined,
-        });
-      } catch (e: any) {
-        failed++;
-        addToast(`${file.name}: ${e.message ?? "Upload failed"}`, "error");
-      } finally {
-        setUploading((n) => Math.max(0, n - 1));
-      }
-    }
-    if (failed < list.length) {
-      addToast(
-        failed === 0 ? `${list.length} screenshot(s) uploaded` : `${list.length - failed} uploaded, ${failed} failed`,
-        failed === 0 ? "success" : "info",
-      );
-    }
-    loadScreenshots();
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const deleteScreenshot = async (id: string) => {
-    setDeletingShot(id);
-    try {
-      await apiDelete(`/product-pages/screenshots/${id}?bundleId=${encodeURIComponent(getActiveBundleId() ?? "")}`);
-      setScreenshots((prev) => prev.filter((s) => s.id !== id));
-      setPreviewIndex(null);
-    } catch (e: any) {
-      addToast(e.message ?? "Delete failed", "error");
-    } finally {
-      setDeletingShot(null);
-    }
-  };
-
-  const shotsByType = new Map<string, ProductPageScreenshot[]>();
-  for (const s of screenshots) {
-    if (!shotsByType.has(s.displayType)) shotsByType.set(s.displayType, []);
-    shotsByType.get(s.displayType)!.push(s);
-  }
-
-  const preview = previewIndex !== null ? screenshots[previewIndex] ?? null : null;
 
   return (
     <div>
@@ -1141,173 +1039,19 @@ function LocalizationEditor({
         )}
       </div>
 
-      <div className={`flex items-center justify-between gap-2 mt-5 mb-2.5 pt-4 border-t ${borderDefault}`}>
-        <div className={`text-[13px] font-semibold ${textPrimary}`}>
-          Screenshots
-          {screenshots.length > 0 && (
-            <span className={`font-normal ml-1.5 ${textMuted}`}>· {screenshots.length}</span>
-          )}
-        </div>
-        {editable && (
-          <div className="flex items-center gap-2">
-            <select
-              value={displayTypeOverride}
-              onChange={(e) => setDisplayTypeOverride(e.target.value)}
-              title="Display type (auto-detected from image size by default)"
-              className={`${inputCls} !w-auto !py-[6px] !text-[12px]`}
-            >
-              <option value="">Auto-detect size</option>
-              {Object.entries(DISPLAY_TYPE_LABELS)
-                .filter(([k]) => k.startsWith("APP_IPHONE") || k.startsWith("APP_IPAD"))
-                .map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg"
-              multiple
-              className="hidden"
-              onChange={(e) => uploadFiles(e.target.files)}
-            />
-            <button onClick={() => fileRef.current?.click()} disabled={uploading > 0} className={btnPrimSm}>
-              {uploading > 0 ? <div className="spinner !w-3 h-3" /> : <Plus className="w-3.5 h-3.5" />}
-              {uploading > 0 ? `Uploading… (${uploading})` : "Upload"}
-            </button>
-          </div>
+      <div className={`mt-5 pt-4 border-t ${borderDefault}`}>
+        {appId && (
+          <ConnectedScreenshotsPanel
+            appId={appId}
+            activeLocale={localization.locale}
+            addToast={addToast}
+            liveFallback={(locale) => ({
+              url: `/product-pages/localizations/${localization.id}/screenshots`,
+              sourceLabel: locale,
+            })}
+          />
         )}
       </div>
-
-      {loadingShots ? (
-        <div className="flex items-center gap-2 py-8 justify-center">
-          <div className="spinner" />
-          <span className={`text-[13px] ${textSecondary}`}>Loading screenshots…</span>
-        </div>
-      ) : screenshots.length === 0 ? (
-        <div className={`py-8 text-center border border-dashed rounded-xl ${borderDefault}`}>
-          <ImageIcon className={`w-6 h-6 mx-auto ${textMuted}`} />
-          <div className={`text-[13px] mt-2 ${textSecondary}`}>
-            {editable ? "No screenshots yet — upload PNG or JPEG files." : "No screenshots in this localization."}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {[...shotsByType.entries()].map(([displayType, shots]) => (
-            <div key={displayType}>
-              <div className={`text-[12px] font-medium mb-1.5 ${textMuted}`}>
-                {displayTypeLabel(displayType)} · {shots.length}
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {shots.map((s) => {
-                  const index = screenshots.indexOf(s);
-                  return (
-                    <div key={s.id} className="relative group/shot">
-                      <img
-                        src={s.thumbUrl}
-                        alt={`${displayTypeLabel(displayType)} screenshot`}
-                        onClick={() => setPreviewIndex(index)}
-                        className="h-32 w-auto rounded-lg border border-[#eef0f3] dark:border-[#2a2f3d] object-cover cursor-pointer hover:border-[#595DD2]/60 transition-colors"
-                        loading="lazy"
-                      />
-                      {editable && (
-                        <button
-                          onClick={() => deleteScreenshot(s.id)}
-                          disabled={deletingShot === s.id}
-                          title="Delete screenshot"
-                          className="absolute top-1 right-1 w-6 h-6 rounded-md bg-black/60 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover/shot:opacity-100 transition-all disabled:opacity-50"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {preview && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6"
-          onClick={() => setPreviewIndex(null)}
-        >
-          <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-4 text-white">
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold truncate">{displayTypeLabel(preview.displayType)}</div>
-              <div className="text-[11px] text-white/60 font-mono">
-                {localization.locale}
-                {previewIndex !== null && screenshots.length > 1 ? ` · ${previewIndex + 1}/${screenshots.length}` : ""}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {editable && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteScreenshot(preview.id);
-                  }}
-                  disabled={deletingShot === preview.id}
-                  className="h-9 px-3 rounded-full bg-white/10 hover:bg-red-600/80 flex items-center gap-1.5 transition-colors text-[12px] font-medium"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewIndex(null);
-                }}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-                aria-label="Close screenshot preview"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {screenshots.length > 1 && previewIndex !== null && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewIndex((previewIndex - 1 + screenshots.length) % screenshots.length);
-                }}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
-                aria-label="Previous screenshot"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewIndex((previewIndex + 1) % screenshots.length);
-                }}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
-                aria-label="Next screenshot"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </>
-          )}
-
-          <img
-            src={preview.url}
-            alt={`${displayTypeLabel(preview.displayType)} screenshot preview`}
-            className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
 
       {confirmDeleteLocale && (
         <ConfirmModal
