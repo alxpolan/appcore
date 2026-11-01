@@ -23,6 +23,7 @@ import { studioApi } from "./screenshots/studioApi";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { RepoLinker, ScreenshotJobsTable } from "./Logs";
+import ScreenshotsCppSets from "./ScreenshotsCppSets";
 import {
   borderDefault,
   btnPrimary,
@@ -146,6 +147,7 @@ function Studio({ app, addToast }: { app: AppItem; addToast: Props["addToast"] }
       ) : (
         <>
           <StudioGallery appId={app.id} reloadToken={reloadToken} addToast={addToast} />
+          <ScreenshotsCppSets appId={app.id} />
           <ScreenshotJobsTable
             appId={app.id}
             addToast={addToast}
@@ -335,22 +337,6 @@ function LocaleDropdown({
 
 const GALLERY_PAGE_SIZE = 5;
 
-type GalleryKind = "all" | "real" | "cpp";
-
-function GalleryKindFilter({ value, onChange }: { value: GalleryKind; onChange: (kind: GalleryKind) => void }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as GalleryKind)}
-      className={`text-[13px] font-medium ${textPrimary} bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl px-3 py-[6px]`}
-    >
-      <option value="all">All jobs</option>
-      <option value="real">Real jobs</option>
-      <option value="cpp">CPP jobs</option>
-    </select>
-  );
-}
-
 function StudioGallery({
   appId,
   reloadToken,
@@ -360,14 +346,13 @@ function StudioGallery({
   reloadToken: number;
   addToast: Props["addToast"];
 }) {
-  const [kind, setKind] = useState<GalleryKind>("all");
   const [extraJobs, setExtraJobs] = useState<FramedJob[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const { data, loading, refetch } = useApi<{ jobs: FramedJob[]; hasMore: boolean }>(
-    `/github/screenshots/framed-history/${appId}?kind=${kind}&limit=${GALLERY_PAGE_SIZE}&offset=0`,
-    [appId, reloadToken, kind],
+    `/github/screenshots/framed-history/${appId}?kind=real&limit=${GALLERY_PAGE_SIZE}&offset=0`,
+    [appId, reloadToken],
   );
 
   useEffect(() => {
@@ -382,7 +367,7 @@ function StudioGallery({
 
     try {
       const res = await apiGet<{ jobs: FramedJob[]; hasMore: boolean }>(`/github/screenshots/framed-history/${appId}`, {
-        kind,
+        kind: "real",
         limit: GALLERY_PAGE_SIZE,
         offset: jobs.length,
       });
@@ -413,10 +398,6 @@ function StudioGallery({
 
   return (
     <>
-      <div className="flex items-center justify-end mb-3">
-        <GalleryKindFilter value={kind} onChange={setKind} />
-      </div>
-
       {jobs.length === 0 && (
         <div className={`${cardCls} mb-5 text-center py-10`}>
           <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />

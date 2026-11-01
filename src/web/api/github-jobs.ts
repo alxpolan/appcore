@@ -131,7 +131,7 @@ githubRouter.get("/screenshots/:appId", requireAuth, async (req: Request, res: R
     if (!owned) return;
 
     const jobs = await prisma.screenshotJob.findMany({
-      where: { appId: req.params.appId as string },
+      where: { appId: req.params.appId as string, branch: { not: "cpp" } },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {

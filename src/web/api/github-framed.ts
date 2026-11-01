@@ -6,6 +6,7 @@ import { logger, prisma } from "../../config";
 import { requireAuth, loadTeamRole, requireWriteRole } from "../auth";
 import { resolveInternalAppId } from "../lib/resolve-app";
 import { getEffectiveFramed, writeEffectiveFramed } from "../../services/screenshot-studio";
+import { attachScreenshotJobs, listCppProposals } from "../../services/cpp-proposals";
 import { githubRouter } from "./github-oauth";
 
 const writeAuth = [requireAuth, loadTeamRole, requireWriteRole];
@@ -233,6 +234,33 @@ githubRouter.get("/screenshots/framed-history/:appId", requireAuth, async (req: 
     res.json({ jobs: withEffective, hasMore });
   } catch (err: any) {
     logger.error(`framed-history error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+githubRouter.get("/screenshots/cpp-sets/:appId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const internalAppId = await resolveInternalAppId(req.params.appId as string);
+
+    if (!internalAppId) {
+      res.json({ sets: [] });
+      return;
+    }
+
+    const proposals = await attachScreenshotJobs(await listCppProposals(internalAppId));
+
+    const sets = proposals.map((proposal) => ({
+      id: proposal.id,
+      label: proposal.label,
+      campaignName: proposal.campaignName,
+      status: proposal.status,
+      updatedAt: proposal.updatedAt,
+      studioJobId: proposal.screenshotJob?.framedByLocale ? proposal.screenshotJob.id : null,
+    }));
+
+    res.json({ sets });
+  } catch (err: any) {
+    logger.error(`cpp-sets error: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });
