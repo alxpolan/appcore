@@ -1,28 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Copy, Redo2, Undo2 } from "lucide-react";
-import { borderDefault, cardCls, textMuted, textPrimary, textSecondary } from "../../styles";
+import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { getLocaleFlag, getLocaleName } from "../../utils/localeUtils";
 import type { StudioBezels, StudioItem, StudioLayer, StudioOverlay, StudioStyle } from "./studioApi";
+import { resolveStudioDeleteTarget } from "./studioApi";
 import {
   TITLE_BASE_SIZE,
   TITLE_LINE_HEIGHT,
+  buildPreviewFrameOverride,
   computePreviewLayout,
   drawStudioPreview,
   getPreviewFrameOverride,
+  loadImage,
   measureTitle,
   setPreviewFrameOverride,
   studioFontFamily,
   wrapTitleLines,
   type PreviewRect,
 } from "./studioPreview";
-import { snapOffset } from "./studioSnap";
+import { snapOffset, snapOverlayPosition } from "./studioSnap";
 import type { CanvasEdge, CssBox } from "./studioCanvasGeometry";
 import * as canvasGeom from "./studioCanvasGeometry";
 
 interface StudioCanvasProps {
   item: StudioItem | null;
   title: string;
+  onTitleChange: (title: string) => void;
   style: StudioStyle;
   layer: StudioLayer | null;
   disabled: boolean;
@@ -41,6 +45,7 @@ interface StudioCanvasProps {
   onSelectOverlay: (id: string | null) => void;
   onOverlayPatch: (id: string, patch: Partial<StudioOverlay>) => void;
   onOverlaysAdd: (overlays: StudioOverlay[]) => void;
+  onDeleteOverlay: (id: string) => void;
   uploadOverlayFile: (file: File) => Promise<{ id: string; url: string } | null>;
   duplicateOverlayFile: (overlayId: string) => Promise<{ id: string; url: string } | null>;
   canUndo: boolean;
@@ -55,7 +60,8 @@ type DragState =
   | { mode: "move"; target: "overlay"; overlayId: string; startClientX: number; startClientY: number; origX: number; origY: number }
   | { mode: "scale"; target: "phone" | "title" | "overlay"; overlayId?: string; centerX: number; centerY: number; origDist: number; origScale: number; corner: number }
   | { mode: "resize"; edge: CanvasEdge; centerX: number; centerY: number; origW: number }
-  | { mode: "rotate"; target: "phone" | "title" | "overlay"; overlayId?: string; centerX: number; centerY: number };
+  | { mode: "rotate"; target: "phone" | "title" | "overlay"; overlayId?: string; centerX: number; centerY: number }
+  | { mode: "pan"; startClientX: number; startClientY: number; origPanX: number; origPanY: number };
 
 function normAngle(deg: number): number {
   const wrapped = ((((deg + 180) % 360) + 360) % 360) - 180;
@@ -171,6 +177,7 @@ function clampBox(value: number, min: number, max: number): number {
 export default function StudioCanvas({
   item,
   title,
+  onTitleChange,
   style,
   layer,
   disabled,
@@ -189,6 +196,7 @@ export default function StudioCanvas({
   onSelectOverlay,
   onOverlayPatch,
   onOverlaysAdd,
+  onDeleteOverlay,
   uploadOverlayFile,
   duplicateOverlayFile,
   canUndo,
@@ -209,8 +217,8 @@ export default function StudioCanvas({
   const [dragActive, setDragActive] = useState(false);
   const [, setSizeTick] = useState(0);
   const [dragInfo, setDragInfo] = useState<{
-    mode: "move" | "scale" | "resize" | "rotate";
-    target: "phone" | "title" | "overlay";
+    mode: "move" | "scale" | "resize" | "rotate" | "pan";
+    target?: "phone" | "title" | "overlay";
     corner?: number;
     edge?: CanvasEdge;
     angle?: number;
@@ -218,6 +226,11 @@ export default function StudioCanvas({
 
   const [guides, setGuides] = useState<GuideLines | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string>("move");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setPan({ x: 0, y: 0 });
+  }, [item?.basename]);
   const [, setResizeTick] = useState(0);
   const rawUrl = item?.rawUrl ?? null;
 
@@ -260,17 +273,42 @@ export default function StudioCanvas({
   const [frameTick, setFrameTick] = useState(0);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const options = bezels?.options ?? [];
 
-    if (!canvas || !canvas.width || !item) return;
+    if (options.length === 0) return;
 
-    const layout = computePreviewLayout(canvas.width, canvas.height, style.textPosition === "top");
-    const key = `${layout.workW}x${layout.workH}`;
+    let live = true;
 
-    const wantBezel =
-      bezelOption && bezels?.device && bezelOption.frameW > 0 && bezelOption.frameH > 0 ? bezelOption.file : null;
+    for (const option of options) {
+      if (option.file === bezelFile || bezelObjectUrlsRef.current.has(option.file)) continue;
 
-    if (!wantBezel) {
+      fetch(`/api/github/screenshots/frame-bezels/image/${encodeURIComponent(option.file)}`, { credentials: "include" })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+          return res.blob();
+        })
+        .then((blob) => {
+          if (!live || bezelObjectUrlsRef.current.has(option.file)) return;
+
+          bezelObjectUrlsRef.current.set(option.file, URL.createObjectURL(blob));
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      live = false;
+    };
+  }, [bezels, bezelFile]);
+
+  useEffect(() => {
+    if (!rawUrl || !item) return;
+
+    const option = bezelOption;
+    const device = bezels?.device;
+    const wantBezel = option && device && option.frameW > 0 && option.frameH > 0 ? option.file : null;
+
+    if (!wantBezel || !option || !device) {
       if (getPreviewFrameOverride() !== null) {
         setPreviewFrameOverride(null);
         setFrameTick((tick) => tick + 1);
@@ -279,51 +317,48 @@ export default function StudioCanvas({
       return;
     }
 
-    const cached = bezelObjectUrlsRef.current.get(wantBezel);
-
-    if (cached && bezelOption) {
-      const next = {
-        key,
-        entry: {
-          file: cached,
-          frameW: bezelOption.frameW,
-          frameH: bezelOption.frameH,
-          offX: bezels?.device?.offsetX ?? 0,
-          offY: bezels?.device?.offsetY ?? 0,
-          shotW: bezels?.device?.width ?? layout.workW,
-          triple: layout.frame?.triple ?? false,
-          rounded: bezels?.device?.rounded ?? true,
-        },
-      };
-
-      if (JSON.stringify(getPreviewFrameOverride()) !== JSON.stringify(next)) {
-        setPreviewFrameOverride(next);
-        setFrameTick((tick) => tick + 1);
-      }
-
-      return;
-    }
-
     let live = true;
 
-    fetch(`/api/github/screenshots/frame-bezels/image/${encodeURIComponent(wantBezel)}`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    loadImage(rawUrl).then((raw) => {
+      if (!live) return;
 
-        return res.blob();
-      })
-      .then((blob) => {
-        if (!live) return;
+      const layout = computePreviewLayout(raw.naturalWidth, raw.naturalHeight, style.textPosition === "top");
+      const key = `${layout.workW}x${layout.workH}`;
+      const cached = bezelObjectUrlsRef.current.get(wantBezel);
 
-        bezelObjectUrlsRef.current.set(wantBezel, URL.createObjectURL(blob));
-        setFrameTick((tick) => tick + 1);
-      })
-      .catch(() => {});
+      if (cached) {
+        const next = buildPreviewFrameOverride(key, layout.frame?.triple ?? false, option, device, cached);
+
+        if (JSON.stringify(getPreviewFrameOverride()) !== JSON.stringify(next)) {
+          setPreviewFrameOverride(next);
+          setFrameTick((tick) => tick + 1);
+        }
+
+        return;
+      }
+
+      fetch(`/api/github/screenshots/frame-bezels/image/${encodeURIComponent(wantBezel)}`, { credentials: "include" })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+          return res.blob();
+        })
+        .then((blob) => {
+          if (!live) return;
+
+          const url = URL.createObjectURL(blob);
+
+          bezelObjectUrlsRef.current.set(wantBezel, url);
+          setPreviewFrameOverride(buildPreviewFrameOverride(key, layout.frame?.triple ?? false, option, device, url));
+          setFrameTick((tick) => tick + 1);
+        })
+        .catch(() => {});
+    });
 
     return () => {
       live = false;
     };
-  }, [bezels, style.deviceFrame, style.textPosition, item, rawUrl, drawing, bezelOption]);
+  }, [bezels, style.deviceFrame, style.textPosition, item, rawUrl, bezelOption]);
 
   useEffect(
     () => () => {
@@ -484,7 +519,13 @@ export default function StudioCanvas({
     const target = pickTarget(e.clientX, e.clientY);
     downRef.current = { x: e.clientX, y: e.clientY, hit: target !== null };
 
-    if (!target) return;
+    if (!target) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dragRef.current = { mode: "pan", startClientX: e.clientX, startClientY: e.clientY, origPanX: pan.x, origPanY: pan.y };
+      setDragInfo({ mode: "pan" });
+
+      return;
+    }
 
     if (target.target === "overlay" && target.overlayId) {
       const overlay = overlays.find((entry) => entry.id === target.overlayId);
@@ -549,7 +590,13 @@ export default function StudioCanvas({
         return;
       }
 
-      setHoverCursor(pickTarget(e.clientX, e.clientY) ? "move" : "default");
+      setHoverCursor(pickTarget(e.clientX, e.clientY) ? "move" : "grab");
+
+      return;
+    }
+
+    if (drag.mode === "pan") {
+      setPan({ x: drag.origPanX + (e.clientX - drag.startClientX), y: drag.origPanY + (e.clientY - drag.startClientY) });
 
       return;
     }
@@ -637,19 +684,32 @@ export default function StudioCanvas({
     const outPerCss = canvas.width / rect.width;
     const dx = ((e.clientX - drag.startClientX) * outPerCss) / layout.cover.s;
     const dy = ((e.clientY - drag.startClientY) * outPerCss) / layout.cover.s;
+    const threshold = (8 * outPerCss) / layout.cover.s;
 
     if (drag.target === "overlay") {
       if (drag.overlayId) {
-        onOverlayPatch(drag.overlayId, {
-          x: Math.round(drag.origX + dx),
-          y: Math.round(drag.origY + dy),
-        });
+        const phoneCenter = {
+          x: layout.phone.x + layout.phone.w / 2 + style.offsetX,
+          y: layout.phone.y + layout.phone.h / 2 + style.offsetY,
+        };
+        const titleCenter = {
+          x: layout.workW / 2 + style.titleOffsetX,
+          y: layout.band.y + layout.band.h / 2 + style.titleOffsetY,
+        };
+        const snapped = snapOverlayPosition(drag.origX + dx, drag.origY + dy, layout, [phoneCenter, titleCenter], threshold);
+
+        onOverlayPatch(drag.overlayId, { x: Math.round(snapped.x), y: Math.round(snapped.y) });
+
+        const box = canvasBox();
+
+        if (box) {
+          setGuides({ ...snapped.guides, box, cover: layout.cover, outW: layout.outW, outH: layout.outH });
+        }
       }
 
       return;
     }
 
-    const threshold = (8 * (rect.width / canvas.width)) / layout.cover.s;
     const peer =
       drag.target === "phone" ? { x: style.titleOffsetX, y: style.titleOffsetY } : { x: style.offsetX, y: style.offsetY };
     const snapped = snapOffset(drag.target, drag.origX + dx, drag.origY + dy, layout, peer, threshold);
@@ -805,7 +865,7 @@ export default function StudioCanvas({
 
   const cursorForDrag = (): string => {
     if (!dragInfo) return hoverCursor;
-    if (dragInfo.mode === "move" || dragInfo.mode === "rotate") return "grabbing";
+    if (dragInfo.mode === "move" || dragInfo.mode === "rotate" || dragInfo.mode === "pan") return "grabbing";
     if (dragInfo.mode === "scale") return CORNER_CURSORS[dragInfo.corner ?? 0];
 
     return EDGE_CURSORS[dragInfo.edge ?? "s"];
@@ -974,6 +1034,34 @@ export default function StudioCanvas({
   });
 
   useEffect(() => {
+    const onDelete = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+
+      const target = e.target as HTMLElement | null;
+
+      if (target && target.closest("input, textarea, select, [contenteditable]")) return;
+      if (disabled || !item) return;
+
+      const action = resolveStudioDeleteTarget(selectedOverlayId, layer, title);
+
+      if (!action) return;
+
+      e.preventDefault();
+
+      if (action.kind === "overlay") {
+        onDeleteOverlay(action.id);
+      } else {
+        onTitleChange("");
+      }
+    };
+
+    window.addEventListener("keydown", onDelete);
+
+    return () => window.removeEventListener("keydown", onDelete);
+  });
+
+  useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
 
@@ -1092,8 +1180,8 @@ export default function StudioCanvas({
   });
 
   return (
-    <div className={cardCls}>
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 shrink-0 px-4 pt-4 lg:px-7 lg:pt-4">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -1151,11 +1239,11 @@ export default function StudioCanvas({
       </div>
 
       {!item ? (
-        <div className="flex h-96 items-center justify-center rounded-xl border border-dashed border-zinc-700 text-sm text-zinc-500">
+        <div className="flex flex-1 min-h-[420px] items-center justify-center rounded-xl border border-dashed border-zinc-700 text-sm text-zinc-500">
           Select a screenshot to preview
         </div>
       ) : !item.rawUrl ? (
-        <div className="flex h-96 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 text-center px-6">
+        <div className="flex flex-1 min-h-[420px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 text-center px-6">
           <p className={`text-sm ${textPrimary}`}>No stored source for this screenshot</p>
           <p className={`text-xs ${textMuted}`}>
             Older runs did not keep the raw device shot, caption editing needs a rerun
@@ -1179,8 +1267,8 @@ export default function StudioCanvas({
 
             void handleFiles(Array.from(e.dataTransfer?.files ?? []));
           }}
-          className={`relative flex items-center justify-center rounded-xl bg-zinc-950 p-4 min-h-[420px] ${
-            dragActive ? "ring-2 ring-[#595DD2]" : ""
+          className={`relative flex flex-1 items-center justify-center min-h-[420px] bg-[#f3f4f6] dark:bg-zinc-950 bg-[radial-gradient(rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:20px_20px] ${
+            dragActive ? "ring-2 ring-[#595DD2] ring-inset" : ""
           }`}
         >
           <canvas
@@ -1189,8 +1277,18 @@ export default function StudioCanvas({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={endDrag}
-            style={{ touchAction: "none", cursor: disabled ? "default" : cursorForDrag() }}
-            className="max-h-[62vh] max-w-full rounded object-contain shadow-lg"
+            onDoubleClick={(e) => {
+              if (pickTarget(e.clientX, e.clientY)) return;
+
+              setPan({ x: 0, y: 0 });
+            }}
+            title={pan.x || pan.y ? "Double-click empty canvas to recenter" : undefined}
+            style={{
+              touchAction: "none",
+              cursor: disabled ? "default" : cursorForDrag(),
+              transform: pan.x || pan.y ? `translate(${pan.x}px, ${pan.y}px)` : undefined,
+            }}
+            className="max-h-full max-w-full rounded object-contain shadow-lg"
           />
           {renderSelection()}
           {renderGuides()}
@@ -1204,7 +1302,7 @@ export default function StudioCanvas({
               Preview failed: {error}
             </div>
           )}
-          {dragInfo && (
+          {dragInfo && dragInfo.mode !== "pan" && (
             <div className="absolute left-3 top-3 rounded bg-zinc-900/90 px-2 py-1 font-mono text-[11px] text-zinc-200">
               {dragInfo.target === "phone" ? "Phone" : dragInfo.target === "overlay" ? "Overlay" : "Title"}{" "}
               {dragInfo.mode === "move"

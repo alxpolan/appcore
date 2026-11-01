@@ -84,3 +84,37 @@ export function snapOffset(
     },
   };
 }
+
+export function snapOverlayPosition(
+  rawX: number,
+  rawY: number,
+  layout: PreviewLayout,
+  peers: Array<{ x: number; y: number }>,
+  threshold: number,
+): SnapResult {
+  const canvasCX = layout.workW / 2;
+  const canvasCY = layout.workH / 2;
+
+  const candidatesX: Candidate[] = [
+    { t: canvasCX, rank: 0, center: true },
+    ...peers.map((peer) => ({ t: peer.x, rank: 1, center: false })),
+  ];
+  const candidatesY: Candidate[] = [
+    { t: canvasCY, rank: 0, center: true },
+    ...peers.map((peer) => ({ t: peer.y, rank: 1, center: false })),
+  ];
+
+  const snappedX = snapAxis(0, rawX, candidatesX, threshold);
+  const snappedY = snapAxis(0, rawY, candidatesY, threshold);
+
+  return {
+    x: snappedX.value,
+    y: snappedY.value,
+    guides: {
+      vCenter: snappedX.winner?.center ?? false,
+      hCenter: snappedY.winner?.center ?? false,
+      smartV: snappedX.winner && !snappedX.winner.center ? snappedX.winner.t : null,
+      smartH: snappedY.winner && !snappedY.winner.center ? snappedY.winner.t : null,
+    },
+  };
+}
