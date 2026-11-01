@@ -109,10 +109,49 @@ export async function listShotBezels(
   throw new Error("No editable source stored for this screenshot");
 }
 
+export async function studioRawImageSize(jobId: string, basename: string): Promise<{ w: number; h: number } | null> {
+  assertStudioJobId(jobId);
+
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/i.test(basename) || basename.includes("..")) {
+    throw new Error("Invalid screenshot name");
+  }
+
+  const rawRoot = path.join(process.cwd(), "screenshots", jobId, "raw");
+  const locales = await fs.promises.readdir(rawRoot).catch(() => [] as string[]);
+
+  for (const locale of locales) {
+    try {
+      const meta = await sharp(path.join(rawRoot, locale, basename)).metadata();
+
+      if (meta.width && meta.height) return { w: meta.width, h: meta.height };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+const LOCAL_BEZEL_DIR = path.join(process.cwd(), "assets", "frame-bezels");
+
+export async function readLocalBezelImage(file: string, dir: string = LOCAL_BEZEL_DIR): Promise<Buffer | null> {
+  try {
+    const image = await fs.promises.readFile(path.join(dir, file));
+
+    return image.length > 0 ? image : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getFrameBezelImage(file: string): Promise<Buffer> {
   if (!/^[A-Za-z0-9][A-Za-z0-9 _.'()\-]*\.png$/i.test(file) || file.includes("..")) {
     throw new Error("Invalid bezel file");
   }
+
+  const local = await readLocalBezelImage(file);
+
+  if (local) return local;
 
   let lastError: unknown = new Error("Bezel image unavailable");
 
