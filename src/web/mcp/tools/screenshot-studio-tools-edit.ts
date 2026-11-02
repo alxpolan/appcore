@@ -2,17 +2,17 @@ import crypto from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  deleteStudioOverlay,
   getEffectiveFramed,
-  getStudioData,
+  getStudioWorkspace,
+  saveStudioWorkspaceDraft,
   normalizeDeviceScale,
   normalizeRotation,
   normalizeStudioOffset,
   normalizeStudioOverlays,
   normalizeTitleBoxSize,
   normalizeTitleScale,
+  normalizeTitleLineHeight,
   overlayAssetExists,
-  renderStudioRevision,
   saveStudioOverlay,
   saveStudioOverlayFromUrl,
   studioBasename,
@@ -27,8 +27,9 @@ async function applyShotStylePatch(
   basename: string,
   locales: string[] | undefined,
   mutate: (current: Partial<StudioStyle>) => Partial<StudioStyle>,
+  userId: string,
 ) {
-  const data = await getStudioData(jobId);
+  const data = await getStudioWorkspace(jobId);
   const effective = await getEffectiveFramed(jobId);
 
   const available = Object.keys(effective.framedByLocale).filter((locale) =>
@@ -37,25 +38,22 @@ async function applyShotStylePatch(
 
   if (available.length === 0) throw new Error(`No screenshot "${basename}" found in any locale for job ${jobId}.`);
 
-  const targetLocales =
-    locales && locales.length > 0 ? locales.filter((locale) => available.includes(locale)) : available;
+  if (locales?.some((locale) => !available.includes(locale))) {
+    throw new Error(`Requested locales must contain screenshot "${basename}". Available: ${available.join(", ")}.`);
+  }
+  const targetLocales = locales ?? available;
 
   if (targetLocales.length === 0) throw new Error(`None of the requested locales have screenshot "${basename}".`);
 
-  const stylesOut: Record<string, Partial<StudioStyle>> = { ...data.styles };
-  const patched = mutate(stylesOut[basename] ?? {});
-
-  if (Object.keys(patched).length > 0) stylesOut[basename] = patched;
-  else delete stylesOut[basename];
-
-  const localesPayload: Record<string, { titles: Record<string, string>; styles: Record<string, Partial<StudioStyle>> }> =
-    {};
-
-  for (const locale of targetLocales) {
-    localesPayload[locale] = { titles: {}, styles: stylesOut };
+  for (const entry of data.locales) {
+    if (!targetLocales.includes(entry.locale)) continue;
+    const styles = { ...entry.styles };
+    const patched = mutate(styles[basename] ?? {});
+    if (Object.keys(patched).length > 0) styles[basename] = patched;
+    else delete styles[basename];
+    entry.styles = styles;
   }
-
-  const result = await renderStudioRevision({ jobId, style: data.style, locales: localesPayload });
+  const result = await saveStudioWorkspaceDraft(data, userId);
 
   return { result, targetLocales };
 }
@@ -68,7 +66,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     {
       description:
         "Reposition, resize, or rotate the device frame and/or caption on one screenshot, and/or change its " +
-        "device frame color, then re-render it as a new studio revision. Only the fields you pass are changed — " +
+        "device frame color in the shared Studio draft. No rendering or revision is created. Call save_screenshot_revision explicitly when ready. Only the fields you pass are changed — " +
         "everything else (including any overlays already on the shot) is kept as-is. Applies to every locale that " +
         "has this screenshot unless you pass locales. Use get_screenshot_studio_overview first to see the current " +
         "layout and exact basename, list_screenshot_bezels to see valid deviceFrame values, and view_app_screenshot " +
@@ -77,7 +75,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
         basename: z.string().describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview)."),
         locales: z
-          .array(z.string())
+          .array(z.string()).min(1)
           .optional()
           .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has this screenshot."),
         offsetX: z
@@ -99,6 +97,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
           .optional()
           .describe("Caption vertical offset in pixels, positive = down. Range -2048..2048."),
         titleScale: z.number().optional().describe("Caption font scale multiplier, 1 = default. Range 0.2..3."),
+        titleLineHeight: z.number().min(1).max(2.5).optional().describe("Caption line spacing multiplier, 1.2 = default. Range 1..2.5."),
         titleBoxW: z.number().optional().describe("Caption wrap box width in pixels, 0 = auto-size. Range 0..4096."),
         titleBoxH: z.number().optional().describe("Caption wrap box height in pixels, 0 = auto-size. Range 0..4096."),
         titleRotation: z.number().optional().describe("Caption rotation in degrees, -180..180."),
@@ -122,6 +121,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
       titleOffsetX?: number;
       titleOffsetY?: number;
       titleScale?: number;
+      titleLineHeight?: number;
       titleBoxW?: number;
       titleBoxH?: number;
       titleRotation?: number;
@@ -142,6 +142,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         args.titleOffsetX !== undefined ||
         args.titleOffsetY !== undefined ||
         args.titleScale !== undefined ||
+        args.titleLineHeight !== undefined ||
         args.titleBoxW !== undefined ||
         args.titleBoxH !== undefined ||
         args.titleRotation !== undefined ||
@@ -151,7 +152,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         return textResult("Provide at least one field to change.");
       }
 
-      const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
+      const { targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
         const next: Partial<StudioStyle> = { ...current };
 
         if (args.offsetX !== undefined) next.offsetX = normalizeStudioOffset(args.offsetX);
@@ -161,6 +162,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         if (args.titleOffsetX !== undefined) next.titleOffsetX = normalizeStudioOffset(args.titleOffsetX);
         if (args.titleOffsetY !== undefined) next.titleOffsetY = normalizeStudioOffset(args.titleOffsetY);
         if (args.titleScale !== undefined) next.titleScale = normalizeTitleScale(args.titleScale);
+        if (args.titleLineHeight !== undefined) next.titleLineHeight = normalizeTitleLineHeight(args.titleLineHeight);
         if (args.titleBoxW !== undefined) next.titleBoxW = normalizeTitleBoxSize(args.titleBoxW);
         if (args.titleBoxH !== undefined) next.titleBoxH = normalizeTitleBoxSize(args.titleBoxH);
         if (args.titleRotation !== undefined) next.titleRotation = normalizeRotation(args.titleRotation);
@@ -171,11 +173,11 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         }
 
         return next;
-      });
+      }, userId);
 
       return textResult(
-        `Layout updated. New studio revision rev${result.revision.rev} (${result.revision.id}) is now active for ` +
-          `job ${jobId}. ${basename} → ${targetLocales.join(", ")}. Use view_app_screenshot to see the result.`,
+        `Draft layout updated for job ${jobId}. ${basename} → ${targetLocales.join(", ")}. ` +
+          "No revision was created. Use view_app_screenshot to preview, then save_screenshot_revision when ready.",
       );
     },
     {
@@ -250,7 +252,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     {
       description:
         "Add an image overlay (sticker, badge, extra graphic, etc.) on top of one or more screenshots and " +
-        "re-render them as new studio revisions. Applies to every locale that has each screenshot unless you " +
+        "update the shared Studio draft, without rendering or creating revisions. Call save_screenshot_revision explicitly when ready. Applies to every locale that has each screenshot unless you " +
         "pass locales. Supply the image as imageDataUrl (base64), imageUrl (a public http(s) URL, fetched " +
         "server-side), or assetId (from upload_screenshot_overlay_asset or a previous add_screenshot_overlay " +
         "call) — assetId is the cheapest way to place the same image on many screenshots. Use " +
@@ -272,7 +274,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
           .optional()
           .describe("Multiple screenshot filenames to place the same overlay on in one call. Use this or basename."),
         locales: z
-          .array(z.string())
+          .array(z.string()).min(1)
           .optional()
           .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has each screenshot."),
         imageDataUrl: z
@@ -364,7 +366,6 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
 
       const placed: string[] = [];
       const skipped: string[] = [];
-      let lastResult: Awaited<ReturnType<typeof applyShotStylePatch>>["result"] | null = null;
 
       for (const basename of basenames) {
         let x = args.x;
@@ -385,7 +386,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         const placementId = crypto.randomUUID();
 
         try {
-          const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
+          const { targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
             const existing = Array.isArray(current.overlays) ? current.overlays : [];
             const merged = normalizeStudioOverlays([
               ...existing,
@@ -397,9 +398,8 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
             else delete next.overlays;
 
             return next;
-          });
+          }, userId);
 
-          lastResult = result;
           placed.push(`${basename} (overlayId "${placementId}", locales: ${targetLocales.join(", ")})`);
         } catch (err) {
           skipped.push(`${basename} (${(err as Error).message})`);
@@ -415,8 +415,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
           "screenshots without resending the image). Each screenshot below got its own overlayId — use that " +
           "with basename when calling update_screenshot_overlay / delete_screenshot_overlay, since the same " +
           "assetId can be placed on many screenshots independently. " +
-          `Latest studio revision rev${lastResult!.revision.rev} (${lastResult!.revision.id}) is now active for ` +
-          `job ${jobId}. Placed on: ${placed.join("; ")}.` +
+          `Draft updated for job ${jobId}. Placed on: ${placed.join("; ")}. No revision was created.` +
           (skipped.length > 0 ? ` Skipped: ${skipped.join("; ")}.` : "") +
           " Use view_app_screenshot to see the result.",
       );
@@ -437,15 +436,15 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     "update_screenshot_overlay",
     {
       description:
-        "Reposition, rescale, or rotate an existing image overlay on one screenshot, then re-render it as a new " +
-        "studio revision. Only the fields you pass are changed. Use get_screenshot_studio_overview to find the " +
+        "Reposition, rescale, or rotate an existing image overlay on one screenshot as a " +
+        "draft edit, without rendering or creating a revision. Call save_screenshot_revision explicitly when ready. Only the fields you pass are changed. Use get_screenshot_studio_overview to find the " +
         "overlay's id under that shot's layout.overlays.",
       inputSchema: {
         jobId: z.string().describe("Screenshot job ID, from list_screenshot_jobs."),
         basename: z.string().describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview)."),
         overlayId: z.string().describe("The overlay's id, from get_screenshot_studio_overview or add_screenshot_overlay."),
         locales: z
-          .array(z.string())
+          .array(z.string()).min(1)
           .optional()
           .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has this screenshot."),
         x: z.number().optional().describe("New overlay center X in pixels (native screenshot coordinate space)."),
@@ -471,7 +470,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         return textResult(`Screenshot job not found: ${jobId}`);
       }
 
-      const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
+      const { targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
         const existing = Array.isArray(current.overlays) ? current.overlays : [];
         const index = existing.findIndex((overlay) => overlay.id === overlayId);
 
@@ -491,12 +490,11 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         const next = { ...current, overlays: normalizeStudioOverlays(updated) };
 
         return next;
-      });
+      }, userId);
 
       return textResult(
-        `Overlay "${overlayId}" updated. New studio revision rev${result.revision.rev} (${result.revision.id}) is ` +
-          `now active for job ${jobId}. ${basename} → ${targetLocales.join(", ")}. Use view_app_screenshot to see ` +
-          "the result.",
+        `Draft overlay "${overlayId}" updated for job ${jobId}. ${basename} → ${targetLocales.join(", ")}. ` +
+          "No revision was created. Preview with view_app_screenshot; save with save_screenshot_revision.",
       );
     },
     {
@@ -515,8 +513,8 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
     "delete_screenshot_overlay",
     {
       description:
-        "Remove an image overlay from one screenshot and re-render it as a new studio revision. The underlying " +
-        "uploaded image is only deleted once no other screenshot in this job still has it placed — the same " +
+        "Remove an image overlay from one screenshot in the shared Studio draft, without rendering or creating revisions. Call save_screenshot_revision explicitly when ready. The underlying " +
+        "uploaded image is retained for other languages, earlier revisions and reuse — the same " +
         "assetId can be placed on several screenshots independently, via add_screenshot_overlay's basenames field " +
         "or repeated calls.",
       inputSchema: {
@@ -524,7 +522,7 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         basename: z.string().describe("Screenshot filename, e.g. '01_Home.png' (from get_screenshot_studio_overview)."),
         overlayId: z.string().describe("The overlay's id, from get_screenshot_studio_overview or add_screenshot_overlay."),
         locales: z
-          .array(z.string())
+          .array(z.string()).min(1)
           .optional()
           .describe("Locales to apply to, e.g. ['en-US']. Defaults to every locale that has this screenshot."),
       },
@@ -537,14 +535,17 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         return textResult(`Screenshot job not found: ${jobId}`);
       }
 
-      const before = await getStudioData(jobId);
-      const removedOverlay = (before.styles[basename]?.overlays ?? []).find((overlay) => overlay.id === overlayId);
+      const before = await getStudioWorkspace(jobId);
+      const removedOverlay = before.locales
+        .filter((locale) => !locales || locales.includes(locale.locale))
+        .flatMap((locale) => locale.styles[basename]?.overlays ?? [])
+        .find((overlay) => overlay.id === overlayId);
 
       if (!removedOverlay) {
         return textResult(`Overlay "${overlayId}" not found on "${basename}".`);
       }
 
-      const { result, targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
+      const { targetLocales } = await applyShotStylePatch(jobId, basename, locales, (current) => {
         const existing = Array.isArray(current.overlays) ? current.overlays : [];
         const remaining = existing.filter((overlay) => overlay.id !== overlayId);
         const next = { ...current };
@@ -553,23 +554,11 @@ export function registerScreenshotStudioEditTools(server: McpServer, userId: str
         else delete next.overlays;
 
         return next;
-      });
-
-      const stillReferenced = Object.entries(before.styles).some(
-        ([otherBasename, patch]) =>
-          otherBasename !== basename && (patch.overlays ?? []).some((overlay) => overlay.url === removedOverlay.url),
-      );
-
-      if (!stillReferenced) {
-        const assetId = removedOverlay.url.match(/\/([^/]+)\.png$/)?.[1];
-
-        if (assetId) await deleteStudioOverlay(jobId, assetId);
-      }
+      }, userId);
 
       return textResult(
-        `Overlay "${overlayId}" removed. New studio revision rev${result.revision.rev} (${result.revision.id}) is ` +
-          `now active for job ${jobId}. ${basename} → ${targetLocales.join(", ")}.` +
-          (stillReferenced ? " The underlying image is still placed elsewhere, so it was kept." : ""),
+        `Draft overlay "${overlayId}" removed for job ${jobId}. ${basename} → ${targetLocales.join(", ")}. No revision was created.` +
+          " The uploaded image was retained for reuse and earlier revisions.",
       );
     },
     {
