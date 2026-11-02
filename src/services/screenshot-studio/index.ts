@@ -4,3 +4,7 @@ export * from "./revisions";
 export * from "./drafts";
 export * from "./overlays";
 export * from "./render";
+export * from "./geometry";
+export * from "./ordering";
+export * from "./workspace";
+export * from "./progress";

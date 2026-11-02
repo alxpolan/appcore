@@ -1,0 +1,1 @@
+ALTER TABLE "ScreenshotStylePreset" ADD COLUMN "titleLineHeight" DOUBLE PRECISION NOT NULL DEFAULT 1.2;

@@ -70,6 +70,7 @@ export async function frameComplexBatch(args: {
     titleOffsetX: shot.style.titleOffsetX,
     titleOffsetY: shot.style.titleOffsetY,
     titleScale: shot.style.titleScale,
+    titleLineHeight: shot.style.titleLineHeight,
     deviceScale: shot.style.deviceScale,
     titleBoxW: shot.style.titleBoxW,
     titleBoxH: shot.style.titleBoxH,

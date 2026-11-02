@@ -21,6 +21,7 @@ export interface StudioStyle {
   titleOffsetX: number;
   titleOffsetY: number;
   titleScale: number;
+  titleLineHeight: number;
   deviceScale: number;
   titleBoxW: number;
   titleBoxH: number;
@@ -39,6 +40,7 @@ export const STUDIO_GEOMETRY_KEYS = [
   "titleOffsetX",
   "titleOffsetY",
   "titleScale",
+  "titleLineHeight",
   "deviceScale",
   "titleBoxW",
   "titleBoxH",
@@ -53,6 +55,7 @@ export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_
   titleOffsetX: 0,
   titleOffsetY: 0,
   titleScale: 1,
+  titleLineHeight: 1.2,
   deviceScale: 1,
   titleBoxW: 0,
   titleBoxH: 0,
@@ -72,6 +75,7 @@ export const DEFAULT_STUDIO_STYLE: StudioStyle = {
   titleOffsetX: 0,
   titleOffsetY: 0,
   titleScale: 1,
+  titleLineHeight: 1.2,
   deviceScale: 1,
   titleBoxW: 0,
   titleBoxH: 0,
@@ -138,6 +142,12 @@ export function normalizeTitleScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 1;
 
   return Math.max(0.2, Math.min(3, Math.round(value * 100) / 100));
+}
+
+export function normalizeTitleLineHeight(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1.2;
+
+  return Math.max(1, Math.min(2.5, Math.round(value * 100) / 100));
 }
 
 export function normalizeDeviceScale(value: unknown): number {
@@ -226,6 +236,7 @@ export function normalizeStudioStyle(value: unknown): StudioStyle {
     titleOffsetX: normalizeStudioOffset(input.titleOffsetX),
     titleOffsetY: normalizeStudioOffset(input.titleOffsetY),
     titleScale: normalizeTitleScale(input.titleScale),
+    titleLineHeight: normalizeTitleLineHeight(input.titleLineHeight),
     deviceScale: normalizeDeviceScale(input.deviceScale),
     titleBoxW: normalizeTitleBoxSize(input.titleBoxW),
     titleBoxH: normalizeTitleBoxSize(input.titleBoxH),

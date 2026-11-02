@@ -98,6 +98,7 @@ export interface WorkerFrameitParams {
     titleOffsetX?: number;
     titleOffsetY?: number;
     titleScale?: number;
+    titleLineHeight?: number;
     deviceScale?: number;
     titleBoxW?: number;
     titleBoxH?: number;

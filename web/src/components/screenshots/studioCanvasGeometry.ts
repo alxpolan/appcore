@@ -8,6 +8,34 @@ export interface CssBox {
   height: number;
 }
 
+export interface CanvasViewport {
+  pan: { x: number; y: number };
+  zoom: number;
+}
+
+// The preview and grid scale around the viewport center, with pan in CSS pixels.
+export function zoomCanvasAtPoint(
+  view: CanvasViewport,
+  viewport: CssBox,
+  pointer: { x: number; y: number },
+  nextZoom: number,
+): CanvasViewport {
+  const zoom = Math.max(0.25, Math.min(4, nextZoom));
+  if (zoom === view.zoom) return view;
+
+  const x = pointer.x - viewport.left - viewport.width / 2;
+  const y = pointer.y - viewport.top - viewport.height / 2;
+  const ratio = zoom / view.zoom;
+
+  return {
+    zoom,
+    pan: {
+      x: x - (x - view.pan.x) * ratio,
+      y: y - (y - view.pan.y) * ratio,
+    },
+  };
+}
+
 export type CanvasTarget = "phone" | "title" | "overlay";
 
 export type CanvasEdge = "n" | "s" | "e" | "w";
@@ -80,6 +108,7 @@ export function titleWorkRect(
     style.titleScale,
     style.titleBoxW,
     style.titleBoxH,
+    style.titleLineHeight,
   );
 
   if (tm.w === 0) return null;
