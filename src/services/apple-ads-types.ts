@@ -184,3 +184,31 @@ export interface UpdateAppleAdsKeywordInput {
   bidAmount?: number;
   status?: "ACTIVE" | "PAUSED";
 }
+
+export interface AppleAdsProductPage {
+  id: string;
+  name: string;
+  state: string;
+  adamId: number;
+}
+
+export interface AppleAdsCreative {
+  id: string;
+  adamId: number;
+  name: string;
+  type: string;
+  state: string;
+  productPageId: string | null;
+}
+
+export interface AppleAdsAd {
+  id: string;
+  campaignId: string;
+  adGroupId: string;
+  creativeId: string;
+  name: string;
+  creativeType: string;
+  status: string;
+  servingStatus: string | null;
+  deleted: boolean;
+}
