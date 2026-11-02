@@ -11,24 +11,29 @@ import {
   resolveShotStyles,
   resolveStudioTitle,
   storedShotPatch,
-  storedShotStyles,
   studioBasename,
   studioDeviceLabel,
   titleLinesForTitle,
+  type StudioOverlay,
   type StudioStyle,
 } from "./style";
 import { frameComplexBatch } from "./complex";
 import {
   createStudioRevision,
+  effectiveLocaleStyles,
   ensureStudioOriginal,
   getEffectiveFramed,
   listStudioPresets,
   listStudioRevisions,
   nextStudioRev,
+  parseLocaleStyles,
   parseTitlesMap,
+  type LocaleStylesMap,
   type StudioPresetInfo,
   type StudioRevisionInfo,
 } from "./revisions";
+import { trackStudioRender } from "./progress";
+import { reorderFramedScreenshots } from "./ordering";
 import { getStudioDraft, type StudioDraft } from "./drafts";
 
 export interface StudioItem {
@@ -44,6 +49,7 @@ export interface StudioItem {
 export interface StudioLocaleData {
   locale: string;
   items: StudioItem[];
+  styles: Record<string, Partial<StudioStyle>>;
 }
 
 export interface StudioData {
@@ -56,7 +62,6 @@ export interface StudioData {
     createdAt: Date;
   };
   style: StudioStyle;
-  styles: Record<string, Partial<StudioStyle>>;
   locales: StudioLocaleData[];
   revisions: StudioRevisionInfo[];
   activeRevisionId: string | null;
@@ -172,10 +177,7 @@ async function studioRevisionTitles(
   return parseTitlesMap(revision?.titles);
 }
 
-async function studioRevisionStyles(
-  jobId: string,
-  revisionId: string | null,
-): Promise<Record<string, Partial<StudioStyle>>> {
+async function studioRevisionStyles(jobId: string, revisionId: string | null): Promise<LocaleStylesMap> {
   if (!revisionId) return {};
 
   const revision = await prisma.screenshotRevision.findFirst({
@@ -183,17 +185,7 @@ async function studioRevisionStyles(
     select: { styles: true },
   });
 
-  if (!revision?.styles || typeof revision.styles !== "object" || Array.isArray(revision.styles)) return {};
-
-  const out: Record<string, Partial<StudioStyle>> = {};
-
-  for (const [base, patch] of Object.entries(revision.styles as Record<string, unknown>)) {
-    if (!patch || typeof patch !== "object" || Array.isArray(patch)) continue;
-
-    out[base] = patch as Partial<StudioStyle>;
-  }
-
-  return out;
+  return parseLocaleStyles(revision?.styles);
 }
 
 async function studioRevisionStyle(jobId: string, revisionId: string | null): Promise<StudioStyle | null> {
@@ -219,16 +211,19 @@ function framedBasenames(framedByLocale: Record<string, string[]>): string[] {
   return [...out];
 }
 
-function fallbackStudioShotStyles(
-  jobShotStyles: unknown,
-  appShotStyles: unknown,
-  basenames: string[],
-): Record<string, Partial<StudioStyle>> {
-  const snapshot = storedShotStyles(jobShotStyles);
+function fallbackStudioShotStyles(jobShotStyles: unknown, appShotStyles: unknown, basenames: string[]): LocaleStylesMap {
+  const jobStyles = parseLocaleStyles(jobShotStyles);
 
-  if (Object.keys(snapshot).length > 0) return snapshot;
+  if (Object.keys(jobStyles).length > 0) return jobStyles;
 
-  return resolveShotStyles(storedShotStyles(appShotStyles), basenames);
+  const appStyles = parseLocaleStyles(appShotStyles);
+  const out: LocaleStylesMap = {};
+
+  for (const [locale, byBasename] of Object.entries(appStyles)) {
+    out[locale] = resolveShotStyles(byBasename, basenames);
+  }
+
+  return out;
 }
 
 export async function getStudioData(jobId: string): Promise<StudioData> {
@@ -306,7 +301,7 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
         return item;
       });
 
-      return { locale, items };
+      return { locale, items, styles: effectiveLocaleStyles(styles, locale) };
     });
 
   return {
@@ -319,7 +314,6 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
       createdAt: job.createdAt,
     },
     style,
-    styles,
     locales,
     revisions,
     activeRevisionId,
@@ -329,19 +323,35 @@ export async function getStudioData(jobId: string): Promise<StudioData> {
   };
 }
 
-export async function renderStudioRevision(args: {
+export async function renderStudioRevision(args: StudioRenderArgs): Promise<StudioSaveResult> {
+  assertStudioSegment(args.jobId, "job");
+  return trackStudioRender(args.jobId, (onProgress) => renderStudioRevisionImages({ ...args, onProgress }), args.onProgress);
+}
+
+type StudioRenderArgs = {
   jobId: string;
   name?: string;
   style: StudioStyle;
   locales: Record<string, StudioSaveLocale>;
   onProgress?: (event: StudioProgressEvent) => void;
   pusher?: string | null;
-}): Promise<StudioSaveResult> {
+  order?: Record<string, string[]>;
+};
+
+async function renderStudioRevisionImages(args: StudioRenderArgs): Promise<StudioSaveResult> {
   assertStudioSegment(args.jobId, "job");
 
   const job = await prisma.screenshotJob.findUnique({
     where: { id: args.jobId },
-    include: { app: { select: { name: true, currentSubtitle: true, defaultScreenshotTitles: true } } },
+    include: {
+      app: { select: {
+        name: true,
+        currentSubtitle: true,
+        defaultScreenshotTitles: true,
+        defaultScreenshotShotStyles: true,
+        defaultScreenshotStyle: true,
+      } },
+    },
   });
 
   if (!job) throw new Error(`Screenshot job ${args.jobId} not found`);
@@ -362,7 +372,19 @@ export async function renderStudioRevision(args: {
   const planned: PlannedImage[] = [];
   const skipped: string[] = [];
   const titlesOut: Record<string, Record<string, string>> = { ...revisionTitles };
-  const stylesOut: Record<string, Partial<StudioStyle>> = {};
+  const previousGlobalStyle =
+    (await studioRevisionStyle(args.jobId, effective.revisionId)) ??
+    normalizeStudioStyle(job.screenshotStyle ?? job.app.defaultScreenshotStyle);
+  const previousStyles = effective.revisionId
+    ? await studioRevisionStyles(args.jobId, effective.revisionId)
+    : fallbackStudioShotStyles(
+        job.screenshotShotStyles,
+        job.app.defaultScreenshotShotStyles,
+        framedBasenames(effective.framedByLocale),
+      );
+  const stylesOut: LocaleStylesMap = Object.fromEntries(
+    Object.keys(effective.framedByLocale).map((locale) => [locale, effectiveLocaleStyles(previousStyles, locale)]),
+  );
 
   for (const locale of requestedLocales) {
     assertStudioSegment(locale, "locale");
@@ -397,24 +419,37 @@ export async function renderStudioRevision(args: {
         continue;
       }
 
+      const previousStyle = normalizeStudioStyle({
+        ...previousGlobalStyle,
+        ...effectiveLocaleStyles(previousStyles, locale)[basename],
+      });
+      previousStyle.titleLines = titleLinesForTitle(previousStyle.titleLines, currentTitle);
+      if (title === normalizeStudioTitle(currentTitle) && JSON.stringify(style) === JSON.stringify(previousStyle)) continue;
+
       planned.push({ locale, basename, title, style, outPath: "" });
     }
 
     titlesOut[locale] = localeTitles;
 
+    const localeStyles: Record<string, Partial<StudioStyle>> = {};
+
     for (const [base, patch] of Object.entries(save.styles ?? {})) {
       const clean = storedShotPatch(patch);
 
-      if (!clean) {
-        delete stylesOut[base];
-        continue;
-      }
-
-      stylesOut[base] = clean;
+      if (clean) localeStyles[base] = clean;
     }
+
+    stylesOut[locale] = localeStyles;
   }
 
-  if (planned.length === 0) throw new Error("No editable sources stored for these locales");
+  const orderChanged = Object.entries(args.order ?? {}).some(([locale, order]) =>
+    JSON.stringify((effective.framedByLocale[locale] ?? []).map(studioBasename)) !== JSON.stringify(order),
+  );
+  // Validate order before rendering anything.
+  for (const [locale, order] of Object.entries(args.order ?? {})) {
+    reorderFramedScreenshots(effective.framedByLocale, locale, order);
+  }
+  if (planned.length === 0 && !orderChanged) throw new Error("No changed screenshots with editable sources");
 
   await ensureStudioOriginal(args.jobId);
 
@@ -474,20 +509,25 @@ export async function renderStudioRevision(args: {
     await Promise.all(tasks);
   } catch (err) {
     queue.clear();
+    await queue.onIdle();
     throw err;
   }
 
-  const framedByLocale = { ...effective.framedByLocale };
-  const skippedSet = new Set(skipped);
+  let framedByLocale = { ...effective.framedByLocale };
+  const renderedSet = new Set(planned.map((item) => `${item.locale}/${item.basename}`));
 
   for (const locale of requestedLocales) {
     const current = effective.framedByLocale[locale] ?? [];
 
     framedByLocale[locale] = current.map((url) => {
-      if (skippedSet.has(`${locale}/${studioBasename(url)}`)) return url;
+      if (!renderedSet.has(`${locale}/${studioBasename(url)}`)) return url;
 
       return `/screenshots/${args.jobId}/studio/rev${rev}/${locale}/${studioBasename(url)}`;
     });
+  }
+
+  for (const [locale, order] of Object.entries(args.order ?? {})) {
+    framedByLocale = reorderFramedScreenshots(framedByLocale, locale, order);
   }
 
   const storedGlobalStyle = { ...globalStyle, titleLines: [], overlays: [] };
@@ -517,6 +557,36 @@ export async function renderStudioRevision(args: {
   });
 
   return { revision, modes: { worker: planned.length }, skipped, jobId: args.jobId };
+}
+
+export function rewriteOverlayUrls<T extends { overlays?: StudioOverlay[] }>(obj: T, fromJobId: string, toJobId: string): T {
+  if (!obj.overlays || obj.overlays.length === 0) return obj;
+
+  const fromPrefix = `/screenshots/${fromJobId}/overlays/`;
+  const toPrefix = `/screenshots/${toJobId}/overlays/`;
+
+  return {
+    ...obj,
+    overlays: obj.overlays.map((overlay) =>
+      overlay.url.startsWith(fromPrefix) ? { ...overlay, url: toPrefix + overlay.url.slice(fromPrefix.length) } : overlay,
+    ),
+  };
+}
+
+export function rewriteOverlayUrlsInStyles(styles: LocaleStylesMap, fromJobId: string, toJobId: string): LocaleStylesMap {
+  const out: LocaleStylesMap = {};
+
+  for (const [locale, byBase] of Object.entries(styles)) {
+    const nextByBase: Record<string, Partial<StudioStyle>> = {};
+
+    for (const [base, partial] of Object.entries(byBase)) {
+      nextByBase[base] = rewriteOverlayUrls(partial, fromJobId, toJobId);
+    }
+
+    out[locale] = nextByBase;
+  }
+
+  return out;
 }
 
 export async function duplicateStudioJob(jobId: string, pusher?: string | null): Promise<{ jobId: string }> {
@@ -561,18 +631,32 @@ export async function duplicateStudioJob(jobId: string, pusher?: string | null):
     },
   });
 
+  const rewrittenStyle = rewriteOverlayUrls(style, jobId, duplicate.id);
+  const rewrittenStyles = rewriteOverlayUrlsInStyles(styles, jobId, duplicate.id);
+
+  await prisma.screenshotJob.update({
+    where: { id: duplicate.id },
+    data: { screenshotStyle: rewrittenStyle as unknown as Prisma.InputJsonValue },
+  });
+
   await createStudioRevision({
     jobId: duplicate.id,
     rev: 0,
     framedByLocale: effective.framedByLocale,
-    style,
+    style: rewrittenStyle,
     titles,
-    styles,
+    styles: rewrittenStyles,
   });
 
   fs.cpSync(path.join(studioJobDir(jobId), "raw"), path.join(studioJobDir(duplicate.id), "raw"), {
     recursive: true,
   });
+
+  const overlaysDir = path.join(studioJobDir(jobId), "overlays");
+
+  if (fs.existsSync(overlaysDir)) {
+    fs.cpSync(overlaysDir, path.join(studioJobDir(duplicate.id), "overlays"), { recursive: true });
+  }
 
   return { jobId: duplicate.id };
 }
