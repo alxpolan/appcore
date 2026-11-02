@@ -461,9 +461,18 @@ export const LOCALE_MAP: Record<string, LocaleConfig> = {
 };
 
 const LOCALE_MAP_LOWERCASE = new Map(Object.keys(LOCALE_MAP).map((locale) => [locale.toLowerCase(), locale]));
+const LANGUAGE_ALIASES: Record<string, string> = { nb: "no", nn: "no" };
 
 export function normalizeLocale(locale: string): string | null {
-  return LOCALE_MAP_LOWERCASE.get(locale.toLowerCase()) ?? null;
+  const lower = locale.toLowerCase();
+  const exact = LOCALE_MAP_LOWERCASE.get(lower);
+
+  if (exact) return exact;
+
+  const languageOnly = lower.split("-")[0];
+  const aliased = LANGUAGE_ALIASES[languageOnly] ?? languageOnly;
+
+  return LOCALE_MAP_LOWERCASE.get(aliased) ?? null;
 }
 
 export function isValidLocale(locale: string): boolean {
