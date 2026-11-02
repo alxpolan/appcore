@@ -1,7 +1,15 @@
 import path from "path";
 import fs from "fs";
 import { prisma } from "../config";
-import { frameComplexBatch, matchShotStyle, normalizeStudioStyle, storedShotStyles, type StudioStyle } from "./screenshot-studio";
+import {
+  frameComplexBatch,
+  matchShotStyle,
+  normalizeStudioStyle,
+  parseLocaleStyles,
+  effectiveLocaleStyles,
+  type LocaleStylesMap,
+  type StudioStyle,
+} from "./screenshot-studio";
 import { ascClientForTeam } from "./asc-client";
 import { Prisma } from "@prisma/client";
 import { normalizeLocale } from "./utils/country_lang";
@@ -232,8 +240,8 @@ export async function frameScreenshots(
 
     const failedLocales: string[] = [];
 
-    const shotDefaults = storedShotStyles(job.app.defaultScreenshotShotStyles);
-    const usedShotStyles: Record<string, Partial<StudioStyle>> = {};
+    const shotDefaults = parseLocaleStyles(job.app.defaultScreenshotShotStyles);
+    const usedShotStyles: LocaleStylesMap = {};
     const frameStyle = screenshotFrameStyle(frameConfig, job.app.defaultScreenshotStyle);
 
     if (frameStyle.usedPinnedDefault) log("[framing] Using pinned Studio default style");
@@ -285,14 +293,17 @@ export async function frameScreenshots(
       const localeSublines = sublines[locale] ?? sublines["en-US"] ?? {};
       const defaultSubtitle = versionLocale?.subtitle || versionLocale?.name || job.app.currentSubtitle || job.app.name;
 
+      const localeDefaults = effectiveLocaleStyles(shotDefaults, locale);
+      const localeStyles: Record<string, Partial<StudioStyle>> = {};
+      usedShotStyles[locale] = localeStyles;
       const entries = await fs.promises.readdir(srcDir);
       const shots = entries
         .filter((f) => /\.(png)$/i.test(f))
         .map((filename) => {
-          const patch = matchShotStyle(shotDefaults, filename);
+          const patch = matchShotStyle(localeDefaults, filename);
           const shotStyle = patch ? normalizeStudioStyle({ ...style, ...patch }) : style;
 
-          if (patch) usedShotStyles[filename] = patch;
+          if (patch) localeStyles[filename] = patch;
 
           return { filename, base: filename.replace(/\.[^.]+$/, ""), style: shotStyle };
         })

@@ -15,31 +15,44 @@ import { SnapshotRunnerBase } from "./SnapshotRunner-base";
 
 export class SnapshotRunner extends SnapshotRunnerBase {
   protected async execute(): Promise<void> {
-    const { repoUrl, accessToken, branch, appName, iosDir, framework, envVars } = this.params;
+    const { repoUrl, accessToken, localRepoDir, branch, appName, iosDir, framework, envVars } = this.params;
 
     fs.mkdirSync(this.tmpDir, { recursive: true });
     fs.mkdirSync(this.logsDir, { recursive: true });
     this.sweepOldArtifacts();
-    this.push(`[repo] Cloning repo${branch ? ` @${branch}` : ""} ...`);
 
-    if (!/^https:\/\/[^\s"'`$();|&<>]+$/.test(repoUrl)) {
-      throw new Error(`Refusing to clone unsafe repoUrl: ${repoUrl}`);
+    let repoDir: string;
+
+    if (localRepoDir) {
+      this.push(`[repo] Using local checkout at ${localRepoDir} (skipping clone)`);
+      repoDir = localRepoDir;
+    } else {
+      if (!repoUrl || !accessToken) {
+        throw new Error("repoUrl and accessToken are required when localRepoDir is not set");
+      }
+
+      this.push(`[repo] Cloning repo${branch ? ` @${branch}` : ""} ...`);
+
+      if (!/^https:\/\/[^\s"'`$();|&<>]+$/.test(repoUrl)) {
+        throw new Error(`Refusing to clone unsafe repoUrl: ${repoUrl}`);
+      }
+
+      if (branch && !/^[A-Za-z0-9._\-/]+$/.test(branch)) {
+        throw new Error(`Refusing to clone unsafe branch ref: ${branch}`);
+      }
+
+      await execAsync(
+        `git clone --depth 1 ${branch ? `--branch ${branch}` : ""} "${repoUrl.replace("https://", `https://x-access-token:${accessToken}@`)}" "${this.tmpDir}"`,
+        { timeout: 120_000 },
+      );
+
+      this.push(`[repo] Clone complete`);
+      repoDir = this.tmpDir;
     }
 
-    if (branch && !/^[A-Za-z0-9._\-/]+$/.test(branch)) {
-      throw new Error(`Refusing to clone unsafe branch ref: ${branch}`);
-    }
+    const workDir = resolveRepoWorkDir(repoDir, iosDir, this.logs);
 
-    await execAsync(
-      `git clone --depth 1 ${branch ? `--branch ${branch}` : ""} "${repoUrl.replace("https://", `https://x-access-token:${accessToken}@`)}" "${this.tmpDir}"`,
-      { timeout: 120_000 },
-    );
-
-    this.push(`[repo] Clone complete`);
-
-    const workDir = resolveRepoWorkDir(this.tmpDir, iosDir, this.logs);
-
-    await prepareNativeDeps(this.tmpDir, workDir, (line) => this.push(line), framework);
+    await prepareNativeDeps(repoDir, workDir, (line) => this.push(line), framework);
 
     const configFile = findConfigFile(workDir);
     const { descriptions, frameConfig, effectiveDevices, effectiveLanguages, appearance, scheme, concurrency } =
@@ -115,19 +128,40 @@ export class SnapshotRunner extends SnapshotRunnerBase {
         ? `-project "${projFile}"`
         : `-project "${scheme}.xcodeproj"`;
 
-    const effectiveConcurrency = Math.max(1, Math.min(concurrency, snapDevices.length));
+    const targetConcurrency = Math.max(1, this.params.maxConcurrency ?? concurrency);
+    const perTypeCount = Math.max(1, Math.round(targetConcurrency / Math.max(1, snapDevices.length)));
 
-    await this.bootSimulators(snapDevices, appearance);
+    let expandedDevices = snapDevices;
 
-    const screenshots = await this.captureScreenshots(
-      languages,
-      snapDevices,
-      scheme,
-      projectArg,
-      workDir,
-      envVars,
-      effectiveConcurrency,
-    );
+    if (perTypeCount > 1) {
+      expandedDevices = [];
+
+      for (const baseUdid of snapDevices) {
+        if (!UDID_RE.test(baseUdid)) {
+          expandedDevices.push(baseUdid);
+          continue;
+        }
+
+        const originalName = this.deviceNameMap.get(baseUdid);
+        const exportSize = this.exportSizeMap.get(baseUdid);
+        const instances = await this.cloneDeviceInstances(baseUdid, perTypeCount);
+
+        for (const udid of instances) {
+          if (originalName) this.deviceNameMap.set(udid, originalName);
+          if (exportSize) this.exportSizeMap.set(udid, exportSize);
+        }
+
+        expandedDevices.push(...instances);
+      }
+
+      this.push(
+        `[capture] Expanded to ${expandedDevices.length} simulator instance${expandedDevices.length === 1 ? "" : "s"} (${perTypeCount} per device type) for parallelism`,
+      );
+    }
+
+    await this.bootSimulators(expandedDevices, appearance);
+
+    const screenshots = await this.captureScreenshots(languages, expandedDevices, scheme, projectArg, workDir, envVars);
 
     this.push("[capture] Snapshot completed");
     const totalFiles = Object.values(screenshots).reduce((n, a) => n + a.length, 0);
@@ -154,41 +188,54 @@ export class SnapshotRunner extends SnapshotRunnerBase {
     projectArg: string,
     workDir: string,
     envVars: Record<string, string> | undefined,
-    concurrency: number,
   ): Promise<Record<string, Array<{ filename: string; data: string }>>> {
     const screenshots: Record<string, Array<{ filename: string; data: string }>> = {};
 
-    const runDeviceLanguages = async (device: string): Promise<void> => {
-      for (const lang of effectiveLanguages) {
-        const [langCode, regionCode] = lang.split("-");
-        const localeId = regionCode ? `${langCode}_${regionCode}` : langCode;
+    const runOneLanguage = async (device: string, lang: string): Promise<void> => {
+      const [langCode, regionCode] = lang.split("-");
+      const localeId = regionCode ? `${langCode}_${regionCode}` : langCode;
 
-        const deviceLabel = this.getDeviceLabel(device);
-        const destination = UDID_RE.test(device)
-          ? `-destination 'id=${device}'`
-          : `-destination 'platform=iOS Simulator,name=${device}'`;
+      const deviceLabel = this.getDeviceLabel(device);
+      const destination = UDID_RE.test(device)
+        ? `-destination 'id=${device}'`
+        : `-destination 'platform=iOS Simulator,name=${device}'`;
 
-        const derivedDataPath = this.persistentDerivedDataPathFor(device);
+      const derivedDataPath = this.persistentDerivedDataPathFor(device);
 
-        this.clearStaleTestLogsOnce(derivedDataPath);
-        const testLogsDir = path.join(derivedDataPath, "Logs", "Test");
+      this.clearStaleTestLogsOnce(derivedDataPath);
+      const testLogsDir = path.join(derivedDataPath, "Logs", "Test");
 
-        const shutdownDevice = async () => {
-          if (!UDID_RE.test(device)) return;
-          try {
-            await execAsync(`xcrun simctl shutdown "${device}"`, { timeout: 30_000 });
-            await this.waitForSimulatorShutdown(device);
-          } catch {
-          }
-        };
-
-        if (UDID_RE.test(device)) {
-          await this.setDeviceLanguage(device, lang, localeId, deviceLabel);
+      const shutdownDevice = async () => {
+        if (!UDID_RE.test(device)) return;
+        try {
+          await execAsync(`xcrun simctl shutdown "${device}"`, { timeout: 30_000 });
+          await this.waitForSimulatorShutdown(device);
+        } catch {
         }
+      };
 
-        this.push(`[capture] [${deviceLabel}] ${lang} - running UI tests ...`);
+      if (UDID_RE.test(device)) {
+        await this.setDeviceLanguage(device, lang, localeId, deviceLabel);
+      }
 
-        let testFailed = await this.runXcodebuild(
+      this.push(`[capture] [${deviceLabel}] ${lang} - running UI tests ...`);
+
+      let testFailed = await this.runXcodebuild(
+        scheme,
+        projectArg,
+        destination,
+        derivedDataPath,
+        workDir,
+        lang,
+        localeId,
+        deviceLabel,
+        envVars,
+      );
+
+      if (testFailed) {
+        await shutdownDevice();
+        this.push(`[capture] [${deviceLabel}] ${lang} - retrying after failure ...`);
+        testFailed = await this.runXcodebuild(
           scheme,
           projectArg,
           destination,
@@ -199,43 +246,41 @@ export class SnapshotRunner extends SnapshotRunnerBase {
           deviceLabel,
           envVars,
         );
+      }
 
-        if (testFailed) {
-          await shutdownDevice();
-          this.push(`[capture] [${deviceLabel}] ${lang} - retrying after failure ...`);
-          testFailed = await this.runXcodebuild(
-            scheme,
-            projectArg,
-            destination,
-            derivedDataPath,
-            workDir,
-            lang,
-            localeId,
-            deviceLabel,
-            envVars,
-          );
-        }
+      await shutdownDevice();
 
-        await shutdownDevice();
-
-        if (fs.existsSync(testLogsDir)) {
-          await this.extractScreenshots(testLogsDir, lang, device, screenshots, testFailed, deviceLabel);
-        } else {
-          this.push(`[capture] [${deviceLabel}] ${lang}: no test logs directory at ${testLogsDir}`);
-        }
+      if (fs.existsSync(testLogsDir)) {
+        await this.extractScreenshots(testLogsDir, lang, device, screenshots, testFailed, deviceLabel);
+      } else {
+        this.push(`[capture] [${deviceLabel}] ${lang}: no test logs directory at ${testLogsDir}`);
       }
     };
 
-    const queue = [...snapDevices];
-    const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
-      while (queue.length > 0) {
-        const device = queue.shift();
-        if (device === undefined) return;
-        await runDeviceLanguages(device);
-      }
+    const instancesByType = new Map<string, string[]>();
+
+    for (const device of snapDevices) {
+      const typeLabel = this.getDeviceLabel(device);
+      const group = instancesByType.get(typeLabel) ?? [];
+
+      group.push(device);
+      instancesByType.set(typeLabel, group);
+    }
+
+    const typePools = [...instancesByType.values()].map(async (instances) => {
+      const queue = [...effectiveLanguages];
+      const workers = instances.map(async (device) => {
+        while (queue.length > 0) {
+          const lang = queue.shift();
+          if (lang === undefined) return;
+          await runOneLanguage(device, lang);
+        }
+      });
+
+      await Promise.all(workers);
     });
 
-    await Promise.all(workers);
+    await Promise.all(typePools);
 
     return screenshots;
   }

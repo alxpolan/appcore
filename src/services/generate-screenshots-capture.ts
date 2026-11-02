@@ -10,9 +10,30 @@ import { createJobLogEmitter } from "./log-bus";
 import { normalizeLocale } from "./utils/country_lang";
 import type { ScreenshotJobWithApp } from "./generate-screenshots-types";
 import { frameScreenshots, resolveLatestVersionLocales } from "./generate-screenshots-framing";
+import { parseTitlesMap } from "./screenshot-studio/revisions";
 
 const GITHUB_STATUS_DESC_MAX_LEN = 140;
 const SAFE_FILENAME_RE = /^[a-zA-Z0-9_\-. ]+$/;
+const DEVICE_SUFFIX_RE = /__[a-zA-Z]+_[^_]+$/;
+
+function toDescriptionKeyedTitles(titlesByFilename: ScreenshotSublines): ScreenshotSublines {
+  const result: ScreenshotSublines = {};
+
+  for (const [locale, byFilename] of Object.entries(titlesByFilename)) {
+    const byDescKey: Record<string, string> = {};
+
+    for (const [filename, text] of Object.entries(byFilename)) {
+      const base = filename.replace(/\.[^.]+$/, "");
+      const descKey = base.replace(DEVICE_SUFFIX_RE, "");
+
+      if (!byDescKey[descKey]) byDescKey[descKey] = text;
+    }
+
+    result[locale] = byDescKey;
+  }
+
+  return result;
+}
 
 export async function runScreenshotGeneration(jobId: string): Promise<void> {
   const job = await prisma.screenshotJob.findUnique({
@@ -160,155 +181,7 @@ async function runWorkerScreenshotGeneration(
       throw new Error(`Worker snapshot failed: ${result.errors.join("; ")}`);
     }
 
-    const screenshotUrls: string[] = [];
-    const detectedLocales: string[] = [];
-
-    for (const [locale, images] of Object.entries(result.screenshots)) {
-      const normalizedLoc = normalizeLocale(locale);
-
-      if (!normalizedLoc) {
-        log(`[capture] Skipping invalid locale: ${locale}`);
-        continue;
-      }
-
-      await fs.promises.mkdir(path.join(outputDir, "raw", normalizedLoc), { recursive: true });
-
-      for (const img of images) {
-        const safeFilename = safeSnapshotFilename(img.filename);
-
-        if (!safeFilename) {
-          log(`[capture] Skipping suspicious filename: ${img.filename}`);
-          continue;
-        }
-
-        await fs.promises.writeFile(
-          path.join(outputDir, "raw", normalizedLoc, safeFilename),
-          Buffer.from(img.data, "base64"),
-        );
-        screenshotUrls.push(`/screenshots/${jobId}/raw/${normalizedLoc}/${safeFilename}`);
-      }
-
-      detectedLocales.push(normalizedLoc);
-    }
-
-    log(
-      `[capture] Saved ${screenshotUrls.length} screenshot${screenshotUrls.length === 1 ? "" : "s"} from worker: ${screenshotUrls.join(", ")} (outputDir=${outputDir})`,
-    );
-
-    if (result.xcresultLogs && result.xcresultLogs.length > 0) {
-      await fs.promises.mkdir(path.join(outputDir, "logs"), { recursive: true });
-      let saved = 0;
-
-      for (const archive of result.xcresultLogs) {
-        const safeFilename = safeSnapshotFilename(archive.filename);
-
-        if (!safeFilename) {
-          log(`[capture] Skipping suspicious xcresult filename: ${archive.filename}`);
-          continue;
-        }
-
-        if (!archive.data) {
-          log(`[capture] Skipping xcresult ${safeFilename}: no data (download failed)`);
-          continue;
-        }
-
-        await fs.promises.writeFile(path.join(outputDir, "logs", safeFilename), Buffer.from(archive.data, "base64"));
-        saved += 1;
-      }
-
-      log(`[capture] Saved ${saved} xcresult archive(s)`);
-    }
-
-    const descriptions = result.descriptions ?? {};
-    const frameConfig = result.config ?? {};
-    const filenameKeys = [
-      ...new Set(
-        Object.values(result.screenshots)
-          .flat()
-          .map(({ filename }) => {
-            const base =
-              filename.replace(/\.[^.]+$/, "").match(/^(.+?)(?:_[a-z]{2}(?:-[A-Z]{2})?_)/)?.[1] ??
-              filename.replace(/\.[^.]+$/, "");
-
-            return Object.keys(descriptions).find((k) => base === k || base.startsWith(k + "_")) ?? base;
-          }),
-      ),
-    ];
-
-    const effectiveDescriptions: Record<string, string> = { ...descriptions };
-
-    for (const key of filenameKeys) {
-      if (!effectiveDescriptions[key]) effectiveDescriptions[key] = key.replace(/_/g, " ");
-    }
-
-    const hasDescriptions = Object.keys(effectiveDescriptions).length > 0;
-    let sublines: ScreenshotSublines = {};
-
-    const targetVersionLocales = await resolveLatestVersionLocales(job, log);
-    const targetLocales =
-      targetVersionLocales.length > 0
-        ? targetVersionLocales.map((loc) => loc.locale)
-        : detectedLocales.length > 0
-          ? detectedLocales
-          : ["en-US"];
-
-    const versionLocaleMap = Object.fromEntries(targetVersionLocales.map((loc) => [loc.locale, loc]));
-
-    log(`[framing] Target locales: ${targetLocales.join(", ")}`);
-
-    if (hasDescriptions && screenshotUrls.length > 0) {
-      log(
-        `[framing] Generating AI sublines for ${Object.keys(effectiveDescriptions).length} screen${Object.keys(effectiveDescriptions).length === 1 ? "" : "s"}...`,
-      );
-      try {
-        sublines = await generateScreenshotSublines(
-          job.appId,
-          effectiveDescriptions,
-          targetLocales,
-          targetVersionLocales,
-        );
-        log(
-          `[framing] AI sublines generated for ${Object.keys(sublines).length} locale${Object.keys(sublines).length === 1 ? "" : "s"}`,
-        );
-      } catch (sublineErr) {
-        const sublineMsg = sublineErr instanceof Error ? sublineErr.message : String(sublineErr);
-
-        log(`[framing] Subline generation failed (non-fatal): ${sublineMsg}`);
-      }
-    }
-
-    await prisma.screenshotJob.update({
-      where: { id: jobId },
-      data: {
-        screenshotUrls,
-        ...(hasDescriptions && {
-          screenshotDescriptions: effectiveDescriptions as Prisma.InputJsonValue,
-          screenshotSublines: sublines as Prisma.InputJsonValue,
-        }),
-      },
-    });
-
-    await frameScreenshots(
-      jobId,
-      job,
-      outputDir,
-      effectiveDescriptions,
-      hasDescriptions,
-      sublines,
-      frameConfig,
-      targetLocales,
-      versionLocaleMap,
-      log,
-    );
-
-    await prisma.screenshotJob.update({
-      where: { id: jobId },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-        logs: JSON.stringify(logs),
-      },
-    });
+    await finishScreenshotCapture(jobId, job, outputDir, result, logs, log);
 
     if (job.commitSha && token && repoFullName) {
       await postCommitStatus(
@@ -348,7 +221,193 @@ async function runWorkerScreenshotGeneration(
   }
 }
 
-function safeSnapshotFilename(filename: string): string | null {
+export interface RawCaptureResult {
+  screenshots: Record<string, Array<{ filename: string; data: string }>>;
+  descriptions?: Record<string, string>;
+  config?: Record<string, string>;
+  xcresultLogs?: Array<{ filename: string; data?: string }>;
+}
+
+export async function writeRawScreenshots(
+  jobId: string,
+  outputDir: string,
+  screenshots: Record<string, Array<{ filename: string; data: string }>>,
+  log: (msg: string) => void,
+): Promise<{ screenshotUrls: string[]; detectedLocales: string[] }> {
+  const screenshotUrls: string[] = [];
+  const detectedLocales: string[] = [];
+
+  for (const [locale, images] of Object.entries(screenshots)) {
+    const normalizedLoc = normalizeLocale(locale);
+
+    if (!normalizedLoc) {
+      log(`[capture] Skipping invalid locale: ${locale}`);
+      continue;
+    }
+
+    await fs.promises.mkdir(path.join(outputDir, "raw", normalizedLoc), { recursive: true });
+
+    for (const img of images) {
+      const safeFilename = safeSnapshotFilename(img.filename);
+
+      if (!safeFilename) {
+        log(`[capture] Skipping suspicious filename: ${img.filename}`);
+        continue;
+      }
+
+      await fs.promises.writeFile(
+        path.join(outputDir, "raw", normalizedLoc, safeFilename),
+        Buffer.from(img.data, "base64"),
+      );
+      screenshotUrls.push(`/screenshots/${jobId}/raw/${normalizedLoc}/${safeFilename}`);
+    }
+
+    detectedLocales.push(normalizedLoc);
+  }
+
+  log(
+    `[capture] Saved ${screenshotUrls.length} screenshot${screenshotUrls.length === 1 ? "" : "s"} from worker: ${screenshotUrls.join(", ")} (outputDir=${outputDir})`,
+  );
+
+  return { screenshotUrls, detectedLocales };
+}
+
+export async function finishScreenshotCapture(
+  jobId: string,
+  job: ScreenshotJobWithApp,
+  outputDir: string,
+  result: RawCaptureResult,
+  logs: string[],
+  log: (msg: string) => void,
+): Promise<{ screenshotUrls: string[] }> {
+  const { screenshotUrls, detectedLocales } = await writeRawScreenshots(jobId, outputDir, result.screenshots, log);
+
+  if (result.xcresultLogs && result.xcresultLogs.length > 0) {
+    await fs.promises.mkdir(path.join(outputDir, "logs"), { recursive: true });
+    let saved = 0;
+
+    for (const archive of result.xcresultLogs) {
+      const safeFilename = safeSnapshotFilename(archive.filename);
+
+      if (!safeFilename) {
+        log(`[capture] Skipping suspicious xcresult filename: ${archive.filename}`);
+        continue;
+      }
+
+      if (!archive.data) {
+        log(`[capture] Skipping xcresult ${safeFilename}: no data (download failed)`);
+        continue;
+      }
+
+      await fs.promises.writeFile(path.join(outputDir, "logs", safeFilename), Buffer.from(archive.data, "base64"));
+      saved += 1;
+    }
+
+    log(`[capture] Saved ${saved} xcresult archive(s)`);
+  }
+
+  const descriptions = result.descriptions ?? {};
+  const frameConfig = result.config ?? {};
+  const filenameKeys = [
+    ...new Set(
+      Object.values(result.screenshots)
+        .flat()
+        .map(({ filename }) => {
+          const base =
+            filename.replace(/\.[^.]+$/, "").match(/^(.+?)(?:_[a-z]{2}(?:-[A-Z]{2})?_)/)?.[1] ??
+            filename.replace(/\.[^.]+$/, "");
+
+          return Object.keys(descriptions).find((k) => base === k || base.startsWith(k + "_")) ?? base;
+        }),
+    ),
+  ];
+
+  const effectiveDescriptions: Record<string, string> = { ...descriptions };
+
+  for (const key of filenameKeys) {
+    if (!effectiveDescriptions[key]) effectiveDescriptions[key] = key.replace(/_/g, " ");
+  }
+
+  const hasDescriptions = Object.keys(effectiveDescriptions).length > 0;
+  let sublines: ScreenshotSublines = {};
+
+  const targetVersionLocales = await resolveLatestVersionLocales(job, log);
+  const targetLocales =
+    targetVersionLocales.length > 0
+      ? targetVersionLocales.map((loc) => loc.locale)
+      : detectedLocales.length > 0
+        ? detectedLocales
+        : ["en-US"];
+
+  const versionLocaleMap = Object.fromEntries(targetVersionLocales.map((loc) => [loc.locale, loc]));
+
+  log(`[framing] Target locales: ${targetLocales.join(", ")}`);
+
+  const pinnedTitles = toDescriptionKeyedTitles(parseTitlesMap(job.app.defaultScreenshotTitles));
+
+  if (Object.keys(pinnedTitles).length > 0) {
+    sublines = pinnedTitles;
+    log(`[framing] Using pinned default titles for ${Object.keys(pinnedTitles).length} locale(s)`);
+  } else if (hasDescriptions && screenshotUrls.length > 0) {
+    log(
+      `[framing] Generating AI sublines for ${Object.keys(effectiveDescriptions).length} screen${Object.keys(effectiveDescriptions).length === 1 ? "" : "s"}...`,
+    );
+    try {
+      const sublinesTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Subline generation timed out after 5 minutes")), 5 * 60_000),
+      );
+
+      sublines = await Promise.race([
+        generateScreenshotSublines(job.appId, effectiveDescriptions, targetLocales, targetVersionLocales),
+        sublinesTimeout,
+      ]);
+      log(
+        `[framing] AI sublines generated for ${Object.keys(sublines).length} locale${Object.keys(sublines).length === 1 ? "" : "s"}`,
+      );
+    } catch (sublineErr) {
+      const sublineMsg = sublineErr instanceof Error ? sublineErr.message : String(sublineErr);
+
+      log(`[framing] Subline generation failed (non-fatal): ${sublineMsg}`);
+    }
+  }
+
+  await prisma.screenshotJob.update({
+    where: { id: jobId },
+    data: {
+      screenshotUrls,
+      ...(hasDescriptions && {
+        screenshotDescriptions: effectiveDescriptions as Prisma.InputJsonValue,
+        screenshotSublines: sublines as Prisma.InputJsonValue,
+      }),
+    },
+  });
+
+  await frameScreenshots(
+    jobId,
+    job,
+    outputDir,
+    effectiveDescriptions,
+    hasDescriptions,
+    sublines,
+    frameConfig,
+    targetLocales,
+    versionLocaleMap,
+    log,
+  );
+
+  await prisma.screenshotJob.update({
+    where: { id: jobId },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      logs: JSON.stringify(logs),
+    },
+  });
+
+  return { screenshotUrls };
+}
+
+export function safeSnapshotFilename(filename: string): string | null {
   const basename = path.basename(filename);
 
   return basename && SAFE_FILENAME_RE.test(basename) ? basename : null;

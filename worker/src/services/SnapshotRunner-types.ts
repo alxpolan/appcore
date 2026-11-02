@@ -1,6 +1,7 @@
 export interface SnapshotParams {
-  repoUrl: string;
-  accessToken: string;
+  repoUrl?: string;
+  accessToken?: string;
+  localRepoDir?: string;
   branch?: string;
   appName: string;
   iosDir?: string;
@@ -8,6 +9,7 @@ export interface SnapshotParams {
   envVars?: Record<string, string>;
   splitIndex?: number;
   splitCount?: number;
+  maxConcurrency?: number;
 }
 
 interface CaptureSubstitution {

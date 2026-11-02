@@ -25,6 +25,7 @@ import { appleAdsRouter } from "./api/apple-ads";
 import { googleAdsRouter, googleAdsOAuthCallbackRouter } from "./api/google-ads";
 import { activityRouter } from "./api/activity";
 import { revenueCatRouter } from "./api/revenuecat";
+import { screenshotLocalCaptureRouter } from "./api/screenshot-local-capture";
 import { requireAuth, loadTeamRole, requireWriteRole, demoGuard } from "./auth";
 import { mcpAuth, createMcpHandler } from "./mcp";
 import pushRouter from "./api/push";
@@ -95,6 +96,8 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), asyn
     res.status(400).json({ error: String(err) });
   }
 });
+
+app.use("/api/screenshots", screenshotLocalCaptureRouter);
 
 app.use(express.json({ limit: "25mb" }));
 

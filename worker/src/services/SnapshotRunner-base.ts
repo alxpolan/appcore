@@ -267,6 +267,47 @@ export abstract class SnapshotRunnerBase {
     return snapDevices;
   }
 
+  protected async cloneDeviceInstances(baseUdid: string, count: number): Promise<string[]> {
+    if (count <= 1) return [baseUdid];
+
+    const { stdout } = await execAsync("xcrun simctl list devices --json", { timeout: 10_000 });
+    const data = JSON.parse(stdout) as Record<string, unknown>;
+    const allDevices = Object.values(data.devices as Record<string, unknown[]>).flat() as Array<{
+      udid: string;
+      name: string;
+    }>;
+
+    const base = allDevices.find((d) => d.udid === baseUdid);
+
+    if (!base) return [baseUdid];
+
+    const udids = [baseUdid];
+
+    for (let i = 2; i <= count; i++) {
+      const cloneName = `${base.name} Parallel ${i}`;
+      const existing = allDevices.find((d) => d.name === cloneName);
+
+      if (existing) {
+        udids.push(existing.udid);
+        continue;
+      }
+
+      try {
+        const { stdout: newUdid } = await execAsync(`xcrun simctl clone "${baseUdid}" "${cloneName}"`, {
+          timeout: 60_000,
+        });
+
+        udids.push(newUdid.trim());
+      } catch (err) {
+        this.push(
+          `[capture] Warning: could not clone simulator "${cloneName}" for parallelism: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    return udids;
+  }
+
   protected async bootSimulators(snapDevices: string[], appearance: "light" | "dark"): Promise<void> {
     for (const udid of snapDevices.filter((d) => UDID_RE.test(d))) {
       try {
