@@ -857,9 +857,11 @@ model ScreenshotJob {
   activeRevisionId       String?
   revisions              ScreenshotRevision[]
   draft                  ScreenshotStudioDraft?
+  studioRender           ScreenshotStudioRender?
   startedAt              DateTime?
   completedAt            DateTime?
   createdAt              DateTime  @default(now())
+  archived               Boolean   @default(false)
 
   @@index([appId, createdAt])
   @@index([commitSha])
@@ -880,6 +882,7 @@ model ScreenshotStylePreset {
   titleOffsetX Int      @default(0)
   titleOffsetY Int      @default(0)
   titleScale   Float    @default(1)
+  titleLineHeight Float @default(1.2)
   deviceScale  Float    @default(1)
   titleBoxW    Int      @default(0)
   titleBoxH    Int      @default(0)
@@ -907,12 +910,26 @@ model ScreenshotRevision {
   @@index([jobId])
 }
 
+model ScreenshotStudioRender {
+  jobId       String        @id
+  job         ScreenshotJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  operationId String        @unique
+  status      String        @default("RUNNING")
+  progress    Json
+  result      Json?
+  error       String?
+  startedAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  completedAt DateTime?
+}
+
 model ScreenshotStudioDraft {
   jobId     String        @id
   job       ScreenshotJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   style     Json?
   styles    Json?
   titles    Json?
+  order     Json?
   updatedBy String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt

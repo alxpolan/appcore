@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { logger, prisma } from "../../config";
 import { requireAuth, loadTeamRole, requireWriteRole } from "../auth";
 import { resolveInternalAppId } from "../lib/resolve-app";
-import { getEffectiveFramed, writeEffectiveFramed } from "../../services/screenshot-studio";
+import { getEffectiveFramed, writeEffectiveFramed, reorderFramedScreenshots, studioBasename } from "../../services/screenshot-studio";
 import { attachScreenshotJobs, listCppProposals } from "../../services/cpp-proposals";
 import { githubRouter } from "./github-oauth";
 
@@ -102,31 +102,44 @@ githubRouter.patch("/screenshots/framed/:jobId/reorder", writeAuth, async (req: 
 
     const existingSet = new Set(existing);
 
-    if (urls.length !== existing.length || !urls.every((u) => existingSet.has(u))) {
+    if (urls.length !== existing.length || new Set(urls).size !== existingSet.size || !urls.every((u) => existingSet.has(u))) {
       res.status(400).json({ error: "urls must be a permutation of the existing screenshots" });
       return;
     }
 
-    const updated = { ...framedByLocale, [locale]: urls };
-
-    if (allLocales) {
-      const basename = (u: string) => decodeURIComponent(u.split("/").pop() ?? u);
-      const orderIndex = new Map(urls.map((u, i) => [basename(u), i]));
-
-      for (const [loc, locUrls] of Object.entries(framedByLocale)) {
-        if (loc === locale) continue;
-        updated[loc] = locUrls
-          .map((u, i) => ({ u, i, key: orderIndex.get(basename(u)) ?? Number.MAX_SAFE_INTEGER }))
-          .sort((a, b) => a.key - b.key || a.i - b.i)
-          .map((entry) => entry.u);
-      }
-    }
+    const updated = reorderFramedScreenshots(framedByLocale, locale, urls.map(studioBasename), allLocales);
 
     await writeEffectiveFramed(jobId, updated);
 
     res.json({ ok: true });
   } catch (err: any) {
     logger.error(`Reorder framed screenshots error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+githubRouter.patch("/screenshots/framed/:jobId/archive", writeAuth, async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId as string;
+    const { archived } = req.body as { archived?: boolean };
+
+    if (typeof archived !== "boolean") {
+      res.status(400).json({ error: "archived must be a boolean" });
+      return;
+    }
+
+    const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
+
+    if (!job) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
+    await prisma.screenshotJob.update({ where: { id: jobId }, data: { archived } });
+
+    res.json({ ok: true, archived });
+  } catch (err: any) {
+    logger.error(`Archive framed job error: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });
@@ -199,12 +212,14 @@ githubRouter.get("/screenshots/framed-history/:appId", requireAuth, async (req: 
     const kind = req.query.kind === "cpp" || req.query.kind === "real" ? req.query.kind : "all";
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 5));
     const offset = Math.max(0, Number(req.query.offset) || 0);
+    const archived = req.query.archived === "true";
 
     const jobs = await prisma.screenshotJob.findMany({
       where: {
         appId: internalAppId,
         status: "COMPLETED",
         framedByLocale: { not: Prisma.JsonNull },
+        archived,
         ...(kind === "cpp" ? { branch: "cpp" } : kind === "real" ? { branch: { not: "cpp" } } : {}),
       },
       orderBy: { createdAt: "desc" },

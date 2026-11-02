@@ -1,0 +1,1 @@
+ALTER TABLE "ScreenshotJob" ADD COLUMN "archived" BOOLEAN NOT NULL DEFAULT false;

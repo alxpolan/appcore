@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  Archive,
+  ArchiveRestore,
   Camera,
   ChevronDown,
   ChevronLeft,
@@ -349,10 +351,11 @@ function StudioGallery({
   const [extraJobs, setExtraJobs] = useState<FramedJob[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const { data, loading, refetch } = useApi<{ jobs: FramedJob[]; hasMore: boolean }>(
-    `/github/screenshots/framed-history/${appId}?kind=real&limit=${GALLERY_PAGE_SIZE}&offset=0`,
-    [appId, reloadToken],
+    `/github/screenshots/framed-history/${appId}?kind=real&limit=${GALLERY_PAGE_SIZE}&offset=0${showArchived ? "&archived=true" : ""}`,
+    [appId, reloadToken, showArchived],
   );
 
   useEffect(() => {
@@ -370,6 +373,7 @@ function StudioGallery({
         kind: "real",
         limit: GALLERY_PAGE_SIZE,
         offset: jobs.length,
+        ...(showArchived ? { archived: "true" } : {}),
       });
 
       setExtraJobs((prev) => [...prev, ...res.jobs]);
@@ -398,18 +402,39 @@ function StudioGallery({
 
   return (
     <>
+      <div className="flex justify-end mb-3">
+        <button
+          type="button"
+          onClick={() => setShowArchived((v) => !v)}
+          className={`text-[12px] font-medium ${textSecondary} hover:text-[#595DD2] transition-colors`}
+        >
+          {showArchived ? "Show active runs" : "Show archived runs"}
+        </button>
+      </div>
+
       {jobs.length === 0 && (
         <div className={`${cardCls} mb-5 text-center py-10`}>
           <Camera className="w-6 h-6 mx-auto mb-2 text-gray-300 dark:text-[#3a4050]" />
-          <div className={`text-sm font-medium ${textPrimary} mb-1`}>No screenshots yet</div>
+          <div className={`text-sm font-medium ${textPrimary} mb-1`}>
+            {showArchived ? "No archived runs" : "No screenshots yet"}
+          </div>
           <p className={`text-[13px] ${textSecondary}`}>
-            Hit Generate Screenshots to start your first run. Results show up here once it completes.
+            {showArchived
+              ? "Runs you archive show up here."
+              : "Hit Generate Screenshots to start your first run. Results show up here once it completes."}
           </p>
         </div>
       )}
 
       {jobs.map((job, index) => (
-        <RunResults key={job.id} job={job} isLatest={index === 0} addToast={addToast} onChanged={refetchAll} />
+        <RunResults
+          key={job.id}
+          job={job}
+          isLatest={index === 0 && !showArchived}
+          archived={showArchived}
+          addToast={addToast}
+          onChanged={refetchAll}
+        />
       ))}
 
       {hasMore && (
@@ -426,11 +451,13 @@ function StudioGallery({
 function RunResults({
   job,
   isLatest,
+  archived,
   addToast,
   onChanged,
 }: {
   job: FramedJob;
   isLatest: boolean;
+  archived: boolean;
   addToast: Props["addToast"];
   onChanged: () => void;
 }) {
@@ -447,6 +474,7 @@ function RunResults({
   const [pendingDelete, setPendingDelete] = useState<{ jobId: string; url: string } | null>(null);
   const [savingDelete, setSavingDelete] = useState<"one" | "all" | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const handleDuplicate = async () => {
     setDuplicating(true);
@@ -461,6 +489,20 @@ function RunResults({
       addToast(`Duplicate failed: ${err.message}`, "error");
     } finally {
       setDuplicating(false);
+    }
+  };
+
+  const handleToggleArchive = async () => {
+    setArchiving(true);
+
+    try {
+      await apiPatch(`/github/screenshots/framed/${job.id}/archive`, { archived: !archived });
+      addToast(archived ? "Run unarchived" : "Run archived", "success");
+      onChanged();
+    } catch (err: any) {
+      addToast(`Failed to update: ${err.message}`, "error");
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -670,6 +712,12 @@ function RunResults({
             )}
             {effectiveLocale && locales.length > 1 && (
               <LocaleDropdown locales={locales} value={effectiveLocale} onChange={setActiveLocale} />
+            )}
+            {canWrite && (
+              <button type="button" onClick={handleToggleArchive} disabled={archiving} className={btnSecSm}>
+                {archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                {archiving ? "Saving…" : archived ? "Unarchive" : "Archive"}
+              </button>
             )}
           </div>
         </div>
