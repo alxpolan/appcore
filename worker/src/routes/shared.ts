@@ -1,10 +1,32 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
 export const execAsync = promisify(exec);
+export const execFileAsync = promisify(execFile);
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+
+      results[index] = await fn(items[index]);
+    }
+  });
+
+  await Promise.all(workers);
+
+  return results;
+}
 
 export function findConfigFile(dir: string, maxDepth = 4): string | null {
   if (maxDepth <= 0) return null;

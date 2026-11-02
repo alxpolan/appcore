@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
-import { execAsync } from "./shared";
+import { execAsync, execFileAsync } from "./shared";
 
 export type ShiftFrameLayout = "center" | "top" | "bottom";
 
@@ -12,6 +12,8 @@ export interface ShiftFrameContext {
   offset: { x: number; y: number };
   titleOffset: { x: number; y: number };
   titleScale: number;
+  titleBaseFontSize?: number;
+  titleLineHeight?: number;
   deviceScale: number;
   titleBoxW: number;
   titleBoxH: number;
@@ -229,13 +231,20 @@ export async function renderLine(
 ): Promise<RenderedLine | null> {
   const bin = await resolveMagickBin();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const lineFile = path.join(tmpDir, `line-${id}.txt`);
   const pngFile = path.join(tmpDir, `line-${id}.png`);
 
-  fs.writeFileSync(lineFile, text, "utf8");
-  await execAsync(
-    `"${bin}" -background none -fill "${textColor}" -font "${fontPath}" -pointsize ${fontSize} "label:@${lineFile}" "${pngFile}"`,
-  );
+  await execFileAsync(bin, [
+    "-background",
+    "none",
+    "-fill",
+    textColor,
+    "-font",
+    fontPath,
+    "-pointsize",
+    String(fontSize),
+    `label:${text}`,
+    pngFile,
+  ]);
 
   const rendered = await fs.promises.readFile(pngFile);
 
@@ -396,17 +405,11 @@ async function wrapWordsBalanced(
     shortlist.push(greedy);
   }
 
-  const measured = new Map<string, number>();
-
-  for (const lines of shortlist) {
-    for (const line of lines) {
-      if (measured.has(line)) continue;
-
-      const ink = await renderLine(line, fontPath, textColor, fontSize, tmpDir);
-
-      measured.set(line, ink?.w ?? 0);
-    }
-  }
+  const uniqueLines = [...new Set(shortlist.flat())];
+  const widths = await Promise.all(
+    uniqueLines.map((line) => renderLine(line, fontPath, textColor, fontSize, tmpDir)),
+  );
+  const measured = new Map(uniqueLines.map((line, index) => [line, widths[index]?.w ?? 0]));
 
   return chooseBalancedLines(shortlist, (line) => measured.get(line) ?? 0, maxWidth, greedy);
 }
@@ -427,6 +430,7 @@ export async function fitTitleToBox(args: {
   maxWidth: number;
   maxHeight: number;
   baseFontSize: number;
+  lineHeight?: number;
   tmpDir: string;
 }): Promise<FittedTitle> {
   const words = args.text.trim().split(/\s+/).filter(Boolean);
@@ -438,7 +442,7 @@ export async function fitTitleToBox(args: {
   let lines = await wrapWordsBalanced(words, args.fontPath, args.textColor, fontSize, args.maxWidth, args.tmpDir);
 
   while (true) {
-    const blockHeight = lines.length * fontSize * TITLE_LINE_HEIGHT;
+    const blockHeight = lines.length * fontSize * (args.lineHeight ?? TITLE_LINE_HEIGHT);
     const tooTall = args.maxHeight > 0 && blockHeight > args.maxHeight;
     const tooManyLines = lines.length > MAX_AUTO_LINES;
 
@@ -491,7 +495,7 @@ async function renderBoxTitle(
   bandCenterY: number,
 ): Promise<Array<{ input: Buffer; left: number; top: number }>> {
   const hasCustomLines = ctx.titleLines.length > 0;
-  const baseFontSize = TITLE_BASE_SIZE * ctx.titleScale;
+  const baseFontSize = (ctx.titleBaseFontSize ?? TITLE_BASE_SIZE) * ctx.titleScale;
 
   const fitted = hasCustomLines
     ? { lines: ctx.titleLines, fontSize: baseFontSize, fits: true }
@@ -502,6 +506,7 @@ async function renderBoxTitle(
         maxWidth: ctx.titleBoxW,
         maxHeight: ctx.titleBoxH,
         baseFontSize,
+        lineHeight: ctx.titleLineHeight,
         tmpDir: ctx.tmpDir,
       });
 
@@ -511,30 +516,30 @@ async function renderBoxTitle(
 
   const lines = fitted.lines;
   const size = fitted.fontSize;
-  const step = size * TITLE_LINE_HEIGHT;
+  const step = size * (ctx.titleLineHeight ?? TITLE_LINE_HEIGHT);
   const boxH = ctx.titleBoxH > 0 ? ctx.titleBoxH : lines.length * step;
   const boxTop = bandCenterY - boxH / 2 + ctx.titleOffset.y;
   const cx = work.w / 2 + ctx.titleOffset.x;
   const boxLeft = cx - ctx.titleBoxW / 2;
-  const placed: Array<{ input: Buffer; left: number; top: number }> = [];
+  const placed = await Promise.all(
+    lines.map(async (line, i) => {
+      const ink = await renderLine(line, ctx.fontPath, ctx.textColor, size, ctx.tmpDir);
 
-  for (let i = 0; i < lines.length; i++) {
-    const ink = await renderLine(lines[i], ctx.fontPath, ctx.textColor, size, ctx.tmpDir);
+      if (!ink) return null;
 
-    if (!ink) continue;
+      const x = Math.round(cx - ink.w / 2);
+      const y = Math.round(boxTop + i * step + (step - ink.h) / 2);
+      const clip = clipLineToBox(ink.w, ink.h, x, y, boxLeft, boxTop, ctx.titleBoxW, boxH);
 
-    const x = Math.round(cx - ink.w / 2);
-    const y = Math.round(boxTop + i * step + (step - ink.h) / 2);
-    const clip = clipLineToBox(ink.w, ink.h, x, y, boxLeft, boxTop, ctx.titleBoxW, boxH);
+      if (!clip) return null;
 
-    if (!clip) continue;
+      const visible = await sharp(ink.buf).extract(clip).toBuffer();
 
-    const visible = await sharp(ink.buf).extract(clip).toBuffer();
+      return { input: visible, left: x + clip.left, top: y + clip.top };
+    }),
+  );
 
-    placed.push({ input: visible, left: x + clip.left, top: y + clip.top });
-  }
-
-  return placed;
+  return placed.filter((item): item is { input: Buffer; left: number; top: number } => item !== null);
 }
 
 export async function recompositeShiftedFrame(ctx: ShiftFrameContext): Promise<Buffer> {

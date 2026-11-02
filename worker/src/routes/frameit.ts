@@ -14,6 +14,7 @@ import {
   type FrameitDevice,
 } from "./frameit-devices";
 import { frameitPad, frameitSpace, renderBaseFrame, renderDeviceLayer } from "./frameit-native";
+import { mapWithConcurrency } from "./shared";
 
 export const frameitRouter = Router();
 
@@ -87,6 +88,7 @@ interface FrameitRequest {
     titleOffsetX?: number;
     titleOffsetY?: number;
     titleScale?: number;
+    titleLineHeight?: number;
     deviceScale?: number;
     titleBoxW?: number;
     titleBoxH?: number;
@@ -147,6 +149,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     const titleByBase = new Map<string, string>();
     const offsetByBase = new Map<string, { x: number; y: number }>();
     const titleOffsetByBase = new Map<string, { x: number; y: number }>();
+    const titleLineHeightByBase = new Map<string, number>();
     const titleScaleByBase = new Map<string, number>();
     const deviceScaleByBase = new Map<string, number>();
     const rotationByBase = new Map<string, number>();
@@ -186,6 +189,8 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         x: normalizeOffset(img.titleOffsetX),
         y: normalizeOffset(img.titleOffsetY),
       });
+      titleLineHeightByBase.set(basename, typeof img.titleLineHeight === "number" && Number.isFinite(img.titleLineHeight)
+        ? Math.max(1, Math.min(2.5, Math.round(img.titleLineHeight * 100) / 100)) : 1.2);
       titleScaleByBase.set(basename, normalizeScale(img.titleScale, 0.2, 3));
       deviceScaleByBase.set(basename, normalizeScale(img.deviceScale, 0.2, 2));
       rotationByBase.set(basename, normalizeRotation(img.rotation));
@@ -262,39 +267,45 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       return loaded;
     };
 
-    const uniformBasesByDevice = new Map<string, string[]>();
+    const basesByDevice = new Map<string, string[]>();
 
     for (const img of images) {
       const basename = img.filename.replace(/\.[^.]+$/, "");
-
-      if (boxChanged.has(basename)) continue;
-
       const device = deviceByBase.get(basename)!;
-      const list = uniformBasesByDevice.get(device.bezelFile) ?? [];
+      const list = basesByDevice.get(device.bezelFile) ?? [];
 
       list.push(basename);
-      uniformBasesByDevice.set(device.bezelFile, list);
+      basesByDevice.set(device.bezelFile, list);
     }
+
+    const titleFitBoxFor = (base: string): { maxWidth: number; maxHeight: number } => {
+      const box = titleBoxByBase.get(base);
+
+      if (box && box.w > 0) return { maxWidth: box.w, maxHeight: box.h };
+
+      const work = workDimsByBase.get(base)!;
+
+      return { maxWidth: work.w - frameitPad(work) * 2, maxHeight: frameitSpace(work) };
+    };
 
     const titleBaseFontSizeByBase = new Map<string, number>();
 
-    for (const bases of uniformBasesByDevice.values()) {
-      const work = workDimsByBase.get(bases[0])!;
-      const maxWidth = work.w - frameitPad(work) * 2;
-      const maxHeight = frameitSpace(work);
-
+    for (const bases of basesByDevice.values()) {
       const fitted = await Promise.all(
-        bases.map((base) =>
-          fitTitleToBox({
+        bases.map((base) => {
+          const { maxWidth, maxHeight } = titleFitBoxFor(base);
+
+          return fitTitleToBox({
             text: titleByBase.get(base) ?? " ",
             fontPath: fontSourcePath,
             textColor,
             maxWidth,
             maxHeight,
+            lineHeight: titleLineHeightByBase.get(base),
             baseFontSize: TITLE_BASE_SIZE,
             tmpDir,
-          }),
-        ),
+          });
+        }),
       );
 
       const sharedFontSize = Math.min(...fitted.map((f) => f.fontSize));
@@ -303,8 +314,9 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
     }
 
     const framedByBase = new Map<string, Buffer>();
+    const renderConcurrency = Math.max(2, Math.min(4, os.cpus().length));
 
-    for (const img of images) {
+    await mapWithConcurrency(images, renderConcurrency, async (img) => {
       const basename = img.filename.replace(/\.[^.]+$/, "");
       const work = workDimsByBase.get(basename)!;
       const device = deviceByBase.get(basename)!;
@@ -317,6 +329,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         work,
         layout: layoutByBase.get(basename) ?? "center",
         title: renderTitle,
+        titleLineHeight: titleLineHeightByBase.get(basename),
         textColor,
         fontPath: fontSourcePath,
         background,
@@ -327,7 +340,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
       });
 
       framedByBase.set(basename, framed);
-    }
+    });
 
     const bezelAllowlist = new Set(await listBezelFiles());
 
@@ -431,6 +444,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         offset: offsetByBase.get(base) ?? { x: 0, y: 0 },
         titleOffset: titleOffsetByBase.get(base) ?? { x: 0, y: 0 },
         titleScale: titleScaleByBase.get(base) ?? 1,
+        titleLineHeight: titleLineHeightByBase.get(base),
         deviceScale: deviceScaleByBase.get(base) ?? 1,
         rotation: rotationByBase.get(base) ?? 0,
         titleRotation: titleRotationByBase.get(base) ?? 0,
@@ -438,6 +452,7 @@ frameitRouter.post("/frameit", async (req: Request, res: Response) => {
         titleBoxH: titleBoxByBase.get(base)?.h ?? 0,
         titleLines: titleLinesByBase.get(base) ?? [],
         title: titleByBase.get(base) ?? " ",
+        titleBaseFontSize: titleBaseFontSizeByBase.get(base),
         fontPath: fontSourcePath,
         tmpDir,
         textColor,
