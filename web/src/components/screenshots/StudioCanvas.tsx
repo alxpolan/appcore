@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Copy, Redo2, Undo2 } from "lucide-react";
+import { ChevronDown, Copy, Redo2, Trash2, Undo2 } from "lucide-react";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { getLocaleFlag, getLocaleName } from "../../utils/localeUtils";
-import type { StudioBezels, StudioItem, StudioLayer, StudioOverlay, StudioStyle } from "./studioApi";
+import type { StudioApplyMode, StudioBezels, StudioItem, StudioLayer, StudioOverlay, StudioStyle } from "./studioApi";
 import { resolveStudioDeleteTarget } from "./studioApi";
 import {
   TITLE_BASE_SIZE,
@@ -31,15 +31,13 @@ interface StudioCanvasProps {
   layer: StudioLayer | null;
   disabled: boolean;
   onGeometryChange: (patch: Partial<StudioStyle>) => void;
-  onApplyToAll: () => void;
+  onApply: (mode: StudioApplyMode) => void;
   onSelectLayer: (layer: StudioLayer | null) => void;
-  index: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
   locales: string[];
   activeLocale: string;
   onLocaleChange: (locale: string) => void;
+  deletingLocales: boolean;
+  onDeleteLocales: (locales: string[]) => void;
   overlays: StudioOverlay[];
   selectedOverlayId: string | null;
   onSelectOverlay: (id: string | null) => void;
@@ -104,14 +102,57 @@ function LocaleFlag({ locale }: { locale: string }) {
   );
 }
 
+function ApplyDropdown({ disabled, onApply }: { disabled: boolean; onApply: (mode: StudioApplyMode) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
+
+  const options: Array<[StudioApplyMode, string]> = [
+    ["device-locale", "This device, this language"],
+    ["screen-all", "This screenshot, all languages"],
+    ["device-all", "This device, all languages"],
+  ];
+
+  return (
+    <div ref={ref} className="relative" onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+        title="Copy this screenshot's positions and sizes"
+        className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-[12px] font-medium ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
+      >
+        <Copy className="w-3.5 h-3.5" /> Apply to… <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+      {open && !disabled && (
+        <div role="menu" aria-label="Apply positions and sizes" className={`absolute left-0 top-full mt-1.5 z-50 min-w-[250px] rounded-xl border ${borderDefault} bg-white dark:bg-[#1c2028] shadow-lg py-1`}>
+          {options.map(([mode, label]) => (
+            <button key={mode} type="button" role="menuitem" onClick={() => { onApply(mode); close(); }}
+              className={`w-full text-left px-3.5 py-2 text-[12px] ${textSecondary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38]`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LocaleDropdown({
   locales,
   value,
   onChange,
+  deleting,
+  onDelete,
 }: {
   locales: string[];
   value: string;
   onChange: (locale: string) => void;
+  deleting: boolean;
+  onDelete: (locales: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -134,23 +175,51 @@ function LocaleDropdown({
 
       {open && (
         <div
-          className={`absolute right-0 top-full mt-1.5 z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[200px] max-h-[320px] overflow-auto`}
+          className={`absolute right-0 top-full mt-1.5 z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[240px] max-h-[360px] overflow-auto`}
         >
-          {locales.map((locale) => (
+          {locales.length > 1 && (
             <button
-              key={locale}
               type="button"
+              disabled={deleting}
               onClick={() => {
-                onChange(locale);
+                onDelete(locales.filter((l) => l !== value));
                 setOpen(false);
               }}
-              className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left ${
-                value === locale ? "font-semibold" : ""
-              }`}
+              className={`w-full px-3.5 py-2 text-[12px] font-medium ${textSecondary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left border-b ${borderDefault} disabled:opacity-50`}
             >
-              <LocaleFlag locale={locale} />
-              {getLocaleName(locale)}
+              Keep only {getLocaleName(value)} — delete {locales.length - 1} other{locales.length - 1 === 1 ? "" : "s"}
             </button>
+          )}
+          {locales.map((locale) => (
+            <div
+              key={locale}
+              className="w-full flex items-center gap-1 hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(locale);
+                  setOpen(false);
+                }}
+                className={`flex-1 min-w-0 flex items-center gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} text-left ${
+                  value === locale ? "font-semibold" : ""
+                }`}
+              >
+                <LocaleFlag locale={locale} />
+                {getLocaleName(locale)}
+              </button>
+              {locales.length > 1 && (
+                <button
+                  type="button"
+                  disabled={deleting}
+                  title={`Delete ${getLocaleName(locale)}`}
+                  onClick={() => onDelete([locale])}
+                  className={`w-7 h-7 mr-1.5 shrink-0 flex items-center justify-center rounded-lg ${textMuted} hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -182,15 +251,13 @@ export default function StudioCanvas({
   layer,
   disabled,
   onGeometryChange,
-  onApplyToAll,
+  onApply,
   onSelectLayer,
-  index,
-  total,
-  onPrev,
-  onNext,
   locales,
   activeLocale,
   onLocaleChange,
+  deletingLocales,
+  onDeleteLocales,
   overlays,
   selectedOverlayId,
   onSelectOverlay,
@@ -226,24 +293,18 @@ export default function StudioCanvas({
 
   const [guides, setGuides] = useState<GuideLines | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string>("move");
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const panRef = useRef(pan);
-  const zoomRef = useRef(zoom);
+  const [view, setView] = useState<canvasGeom.CanvasViewport>({ pan: { x: 0, y: 0 }, zoom: 1 });
+  const viewRef = useRef(view);
+  const { pan, zoom } = view;
   const rawUrl = item?.rawUrl ?? null;
+  const updateView = useCallback((next: canvasGeom.CanvasViewport) => {
+    viewRef.current = next;
+    setView(next);
+  }, []);
 
   useEffect(() => {
-    panRef.current = pan;
-  }, [pan]);
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  useEffect(() => {
-    setPan({ x: 0, y: 0 });
-    setZoom(1);
-  }, [item?.basename]);
+    updateView({ pan: { x: 0, y: 0 }, zoom: 1 });
+  }, [item?.basename, updateView]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -255,26 +316,25 @@ export default function StudioCanvas({
 
       if (e.ctrlKey) {
         const rect = el.getBoundingClientRect();
-        const cx = e.clientX - rect.left;
-        const cy = e.clientY - rect.top;
-        const prevZoom = zoomRef.current;
-        const nextZoom = Math.max(0.25, Math.min(4, prevZoom * (1 - e.deltaY * 0.01)));
-        const prevPan = panRef.current;
-
-        setZoom(nextZoom);
-        setPan({
-          x: cx - ((cx - prevPan.x) / prevZoom) * nextZoom,
-          y: cy - ((cy - prevPan.y) / prevZoom) * nextZoom,
-        });
+        const current = viewRef.current;
+        const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1);
+        const nextZoom = current.zoom * Math.exp(-delta * 0.01);
+        updateView(canvasGeom.zoomCanvasAtPoint(
+          current,
+          { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          { x: e.clientX, y: e.clientY },
+          nextZoom,
+        ));
       } else {
-        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+        const current = viewRef.current;
+        updateView({ ...current, pan: { x: current.pan.x - e.deltaX, y: current.pan.y - e.deltaY } });
       }
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
 
     return () => el.removeEventListener("wheel", onWheel);
-  }, [rawUrl]);
+  }, [rawUrl, updateView]);
 
   const [, setResizeTick] = useState(0);
 
@@ -640,7 +700,10 @@ export default function StudioCanvas({
     }
 
     if (drag.mode === "pan") {
-      setPan({ x: drag.origPanX + (e.clientX - drag.startClientX), y: drag.origPanY + (e.clientY - drag.startClientY) });
+      updateView({ ...viewRef.current, pan: {
+        x: drag.origPanX + (e.clientX - drag.startClientX),
+        y: drag.origPanY + (e.clientY - drag.startClientY),
+      } });
 
       return;
     }
@@ -981,7 +1044,7 @@ export default function StudioCanvas({
     if (!measurer) return null;
 
     if (style.titleBoxW > 0) {
-      const step = TITLE_BASE_SIZE * style.titleScale * TITLE_LINE_HEIGHT;
+      const step = TITLE_BASE_SIZE * style.titleScale * (style.titleLineHeight ?? TITLE_LINE_HEIGHT);
       const lines = wrapTitleLines(measurer, text.trim(), family, TITLE_BASE_SIZE * style.titleScale, style.titleBoxW);
 
       if (lines.length === 0) return null;
@@ -1229,27 +1292,7 @@ export default function StudioCanvas({
     <div className="relative h-full">
       <div className="absolute top-4 inset-x-4 lg:inset-x-7 z-10 flex items-center justify-between gap-2 flex-wrap pointer-events-none">
         <div className="flex items-center gap-1.5 pointer-events-auto">
-          <button type="button" onClick={onPrev} disabled={total < 2} title="Previous screenshot" className={floatBtnCls}>
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button type="button" onClick={onNext} disabled={total < 2} title="Next screenshot" className={floatBtnCls}>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-          <span
-            className={`text-[12px] ${textMuted} ml-1 font-mono rounded-lg border ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm px-2 py-[7px]`}
-          >
-            {total === 0 ? "0 / 0" : `${index + 1} / ${total}`}
-          </span>
-          <button
-            type="button"
-            onClick={onApplyToAll}
-            disabled={disabled || total < 2}
-            title="Apply this screenshot's positions and sizes to all screenshots of this set"
-            className={`ml-2 inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-[12px] font-medium ${borderDefault} bg-white dark:bg-[#1c2028] shadow-sm ${textSecondary} hover:text-[#595DD2] transition-colors disabled:opacity-40`}
-          >
-            <Copy className="w-3.5 h-3.5" />
-            Apply to all
-          </button>
+          <ApplyDropdown disabled={disabled || !item} onApply={onApply} />
           <button type="button" onClick={onUndo} disabled={disabled || !canUndo} title="Undo change (Cmd+Z)" className={floatBtnCls}>
             <Undo2 className="w-4 h-4" />
           </button>
@@ -1264,7 +1307,13 @@ export default function StudioCanvas({
           </button>
         </div>
         <div className="flex items-center gap-1.5 pointer-events-auto">
-          <LocaleDropdown locales={locales} value={activeLocale} onChange={onLocaleChange} />
+          <LocaleDropdown
+            locales={locales}
+            value={activeLocale}
+            onChange={onLocaleChange}
+            deleting={deletingLocales}
+            onDelete={onDeleteLocales}
+          />
         </div>
       </div>
 
@@ -1289,8 +1338,7 @@ export default function StudioCanvas({
           onDoubleClick={(e) => {
             if (pickTarget(e.clientX, e.clientY)) return;
 
-            setPan({ x: 0, y: 0 });
-            setZoom(1);
+            updateView({ pan: { x: 0, y: 0 }, zoom: 1 });
           }}
           onDragOver={(e) => {
             if (disabled) return;
@@ -1315,12 +1363,15 @@ export default function StudioCanvas({
         >
           <div
             className="absolute -inset-[200%] bg-[radial-gradient(rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:20px_20px]"
-            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "center" }}
           />
           <canvas
             ref={canvasRef}
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "center",
+              maxHeight: "calc(100% - 112px)",
+              maxWidth: "calc(100% - 48px)",
               pointerEvents: "none",
             }}
             className="relative max-h-full max-w-full rounded object-contain shadow-lg"

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import { apiGet, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import { borderDefault, cardCls, inputCls, textMuted, textPrimary } from "../../styles";
 import { getLocaleName } from "../../utils/localeUtils";
 import { DEVICES } from "../../utils/screenshotUtils";
+import { applyStudioGeometry } from "./studioApply";
 import StudioLayers from "./StudioLayers";
 import StudioCanvas from "./StudioCanvas";
 import StudioInspector from "./StudioInspector";
@@ -17,12 +18,15 @@ import {
   STUDIO_GEOMETRY_KEYS,
   revisionLabel,
   studioApi,
+  type LocaleStylesMap,
+  type StudioApplyMode,
   type StudioBezels,
   type StudioData,
   type StudioLayer,
   type StudioOverlay,
   type StudioPresetInfo,
   type StudioProgressEvent,
+  type StudioRenderState,
   type StudioSaveLocale,
   type StudioStyle,
 } from "./studioApi";
@@ -35,7 +39,7 @@ type TitleDrafts = Record<string, Record<string, string>>;
 
 interface StudioSnapshot {
   style: StudioStyle;
-  shotOverrides: Record<string, Partial<StudioStyle>>;
+  shotOverrides: LocaleStylesMap;
   titles: TitleDrafts;
 }
 
@@ -65,20 +69,32 @@ export default function Studio({ addToast }: Props) {
   const [selectedBasename, setSelectedBasename] = useState<string | null>(null);
   const [selectedLayer, setSelectedLayer] = useState<StudioLayer | null>("caption");
   const [style, setStyle] = useState<StudioStyle | null>(null);
-  const [shotOverrides, setShotOverrides] = useState<Record<string, Partial<StudioStyle>>>({});
+  const [shotOverrides, setShotOverrides] = useState<LocaleStylesMap>({});
   const [titles, setTitles] = useState<TitleDrafts>({});
-  const [scope, setScope] = useState<"one" | "all">("all");
   const [revName, setRevName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [localSaving, setSaving] = useState(false);
+  const [renderState, setRenderState] = useState<StudioRenderState | null>(null);
+  const saving = localSaving || renderState?.status === "RUNNING";
+  const localSavingRef = useRef(localSaving);
+  localSavingRef.current = localSaving;
+  const observedRenderRef = useRef<string | null>(null);
   const [progress, setProgress] = useState<StudioProgressEvent | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [deletingLocales, setDeletingLocales] = useState(false);
   const [savingPreset, setSavingPreset] = useState(false);
   const [renamingSet, setRenamingSet] = useState(false);
   const [setName, setSetName] = useState("");
   const [savingSetName, setSavingSetName] = useState(false);
-  const draftAppliedRef = useRef<string | null>(null);
+  const loadedBaselineRef = useRef<string | null>(null);
+  const draftVersionRef = useRef<string | null>(null);
+  const draftPendingRef = useRef(false);
+  const draftRequestRef = useRef(false);
+  const localSnapshotRef = useRef("");
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [draftReloadTick, setDraftReloadTick] = useState(0);
+  const [draftOrder, setDraftOrder] = useState<Record<string, string[]>>({});
   const draftSavedRef = useRef(false);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [bezels, setBezels] = useState<StudioBezels | null>(null);
@@ -87,15 +103,62 @@ export default function Studio({ addToast }: Props) {
   const lastPushRef = useRef(0);
   const [, setHistoryTick] = useState(0);
 
+  useEffect(() => {
+    if (!jobId) return;
+    let live = true;
+    let pending = false;
+    observedRenderRef.current = null;
+    setRenderState(null);
+    const poll = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const { render } = await studioApi.getRenderStatus(jobId);
+        if (!live) return;
+        setRenderState(render);
+        if (render?.status === "RUNNING") {
+          observedRenderRef.current = render.operationId;
+        } else if (render && observedRenderRef.current === render.operationId) {
+          observedRenderRef.current = null;
+          refetch();
+          if (!localSavingRef.current) {
+            if (render.status === "FAILED") addToast(`Save failed: ${render.error ?? "Render failed"}`, "error");
+            else if (render.result) addToast(`Saved ${revisionLabel(render.result.revision)} (${render.result.modes.worker} rendered)`, "success");
+          }
+        }
+      } catch { /* Keep the last known progress while the connection recovers. */ }
+      finally { pending = false; }
+    };
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, 1500);
+    const focus = () => { void poll(); };
+    window.addEventListener("focus", focus);
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener("focus", focus); };
+  }, [jobId, refetch, addToast]);
+
   const baselineKey = data
     ? `${data.job.id}:${data.activeRevisionId ?? "orig"}:${data.revisions.length}:${data.presets.length}`
     : null;
 
+  const baselineStyles = useMemo<LocaleStylesMap>(
+    () => Object.fromEntries((data?.locales ?? []).map((l) => [l.locale, l.styles ?? {}])),
+    [data],
+  );
+
   useEffect(() => {
     if (!data) return;
 
+    const remoteVersion = data.draft?.updatedAt ?? null;
+    const baselineChanged = loadedBaselineRef.current !== baselineKey;
+    if (!baselineChanged && remoteVersion === draftVersionRef.current) return;
+    if (loadedBaselineRef.current?.startsWith(`${data.job.id}:`) && (draftPendingRef.current || draftRequestRef.current)) return;
+    loadedBaselineRef.current = baselineKey;
+    draftPendingRef.current = false;
+    setDraftConflict(false);
+    draftVersionRef.current = remoteVersion;
+    setDraftOrder(data.draft?.order ?? {});
     setStyle(data.style);
-    setShotOverrides(data.styles ?? {});
+    setShotOverrides(baselineStyles);
 
     const draftTitles: TitleDrafts = {};
 
@@ -103,11 +166,13 @@ export default function Studio({ addToast }: Props) {
       draftTitles[locale.locale] = Object.fromEntries(locale.items.map((item) => [item.basename, item.title]));
     }
 
-    if (data.draft && draftAppliedRef.current !== data.job.id) {
-      draftAppliedRef.current = data.job.id;
+    if (data.draft) {
       draftSavedRef.current = true;
       setStyle(data.draft.style);
-      setShotOverrides(data.draft.styles);
+      const draftStyles = data.draft.styles;
+      setShotOverrides(Object.fromEntries(data.locales.map((l) => [
+        l.locale, draftStyles[l.locale] ?? draftStyles["*"] ?? baselineStyles[l.locale],
+      ])));
 
       const merged: TitleDrafts = { ...draftTitles };
 
@@ -131,9 +196,22 @@ export default function Studio({ addToast }: Props) {
 
       setActiveLocale(fromUrl ?? data.locales[0]?.locale ?? null);
     }
-  }, [baselineKey]);
+  }, [baselineKey, data?.draft?.updatedAt, draftReloadTick]);
+
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden && !draftRequestRef.current && !saving) refetch(); };
+    const timer = window.setInterval(refresh, 2000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [refetch, saving]);
 
   const localeData = data?.locales.find((l) => l.locale === activeLocale) ?? data?.locales[0] ?? null;
+
+  const localeOverrides = shotOverrides[localeData?.locale ?? ""] ?? {};
+  const setLocaleOverrides = (next: Record<string, Partial<StudioStyle>>) => {
+    if (!localeData) return;
+    setShotOverrides({ ...shotOverrides, [localeData.locale]: next });
+  };
 
   const orderedItems = useMemo(() => {
     const items = localeData?.items ?? [];
@@ -143,8 +221,10 @@ export default function Studio({ addToast }: Props) {
       return idx === -1 ? 99 : idx;
     };
 
-    return [...items].sort((a, b) => deviceOrder(a.deviceLabel) - deviceOrder(b.deviceLabel));
-  }, [localeData]);
+    const order = new Map((draftOrder[localeData?.locale ?? ""] ?? []).map((base, index) => [base, index]));
+    return [...items].sort((a, b) => deviceOrder(a.deviceLabel) - deviceOrder(b.deviceLabel) ||
+      (order.get(a.basename) ?? items.indexOf(a)) - (order.get(b.basename) ?? items.indexOf(b)));
+  }, [localeData, draftOrder]);
 
   useEffect(() => {
     if (orderedItems.length === 0) return;
@@ -161,8 +241,8 @@ export default function Studio({ addToast }: Props) {
   const effectiveShot: StudioStyle | null = useMemo(() => {
     if (!style) return null;
 
-    return { ...style, ...(selectedBasename ? (shotOverrides[selectedBasename] ?? {}) : {}) };
-  }, [style, shotOverrides, selectedBasename]);
+    return { ...style, ...(selectedBasename ? (localeOverrides[selectedBasename] ?? {}) : {}) };
+  }, [style, localeOverrides, selectedBasename]);
 
   const selectedOverlay = useMemo(
     () => effectiveShot?.overlays.find((overlay) => overlay.id === selectedOverlayId) ?? null,
@@ -178,37 +258,29 @@ export default function Studio({ addToast }: Props) {
     return options.find((option) => option.file === file)?.color ?? null;
   }, [effectiveShot, bezels]);
 
-  const allBasenames = useMemo(() => {
-    const bases = new Set<string>();
-
-    for (const locale of data?.locales ?? []) {
-      for (const item of locale.items) bases.add(item.basename);
-    }
-
-    return [...bases];
-  }, [data]);
-
   const dirty = useMemo(() => {
     if (!data || !style) return false;
 
-    if (JSON.stringify(style) !== JSON.stringify(data.style)) return true;
-    if (JSON.stringify(shotOverrides) !== JSON.stringify(data.styles ?? {})) return true;
-
     for (const locale of data.locales) {
+      if (draftOrder[locale.locale] && JSON.stringify(draftOrder[locale.locale]) !== JSON.stringify(locale.items.map((item) => item.basename))) return true;
       for (const item of locale.items) {
         if ((titles[locale.locale]?.[item.basename] ?? item.title) !== item.title) return true;
+        const before = { ...data.style, ...baselineStyles[locale.locale]?.[item.basename] };
+        const after = { ...style, ...shotOverrides[locale.locale]?.[item.basename] };
+        if (JSON.stringify(before) !== JSON.stringify(after)) return true;
       }
     }
 
     return false;
-  }, [data, style, titles, shotOverrides]);
+  }, [data, style, titles, shotOverrides, baselineStyles, draftOrder]);
 
-  const pushHistory = () => {
+  const pushHistory = (force = false) => {
     if (!style) return;
+    draftPendingRef.current = true;
 
     const now = Date.now();
 
-    if (now - lastPushRef.current < 800) return;
+    if (!force && now - lastPushRef.current < 800) return;
 
     lastPushRef.current = now;
     pastRef.current.push({ style, shotOverrides, titles });
@@ -224,6 +296,7 @@ export default function Studio({ addToast }: Props) {
 
     if (!prev || !style) return;
 
+    draftPendingRef.current = true;
     futureRef.current.push({ style, shotOverrides, titles });
     setStyle(prev.style);
     setShotOverrides(prev.shotOverrides);
@@ -236,6 +309,7 @@ export default function Studio({ addToast }: Props) {
 
     if (!next || !style) return;
 
+    draftPendingRef.current = true;
     pastRef.current.push({ style, shotOverrides, titles });
     setStyle(next.style);
     setShotOverrides(next.shotOverrides);
@@ -290,59 +364,52 @@ export default function Studio({ addToast }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  useEffect(() => {
-    if (!jobId || !data || !style || saving || !dirty) return;
+  const draftBody = { style, styles: shotOverrides, titles, order: draftOrder };
+  localSnapshotRef.current = JSON.stringify(draftBody);
 
-    const timer = setTimeout(() => {
-      studioApi
-        .saveDraft(jobId, { style, styles: shotOverrides, titles })
-        .then(
-          () => {
-            draftSavedRef.current = true;
-          },
-          (err: Error) => {
-            addToast(`Draft save failed: ${err.message}`, "error");
-          },
-        );
+  useEffect(() => {
+    if (!jobId || !data || !style || saving || !dirty || draftConflict || !draftPendingRef.current) return;
+    const snapshot = JSON.stringify({ style, styles: shotOverrides, titles, order: draftOrder });
+    const timer = setTimeout(async () => {
+      if (draftRequestRef.current) return;
+      draftRequestRef.current = true;
+      try {
+        const { draft } = await studioApi.saveDraft(jobId, {
+          style, styles: shotOverrides, titles, order: draftOrder, expectedUpdatedAt: draftVersionRef.current,
+        });
+        draftVersionRef.current = draft.updatedAt;
+        draftSavedRef.current = true;
+        if (snapshot === localSnapshotRef.current) draftPendingRef.current = false;
+      } catch (err) {
+        if ((err as Error).message.includes("Draft changed")) setDraftConflict(true);
+        addToast(`Draft save failed: ${(err as Error).message}`, "error");
+      } finally { draftRequestRef.current = false; }
     }, 400);
-
     return () => clearTimeout(timer);
-  }, [jobId, data, style, shotOverrides, titles, saving, dirty, addToast]);
+  }, [jobId, data, style, shotOverrides, titles, draftOrder, saving, dirty, draftConflict, addToast]);
 
   useEffect(() => {
-    if (!jobId || !dirty) return;
-
+    if (!jobId || !dirty || !draftPendingRef.current || draftConflict) return;
     const flush = () => {
       fetch(`/api/github/screenshots/studio/${jobId}/draft`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style, styles: shotOverrides, titles }),
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style, styles: shotOverrides, titles, order: draftOrder, expectedUpdatedAt: draftVersionRef.current }),
         keepalive: true,
       }).catch(() => {});
     };
-
     window.addEventListener("pagehide", flush);
-    window.addEventListener("beforeunload", flush);
-
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      window.removeEventListener("beforeunload", flush);
-    };
-  }, [jobId, dirty, style, shotOverrides, titles]);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [jobId, dirty, style, shotOverrides, titles, draftOrder, draftConflict]);
 
   useEffect(() => {
-    if (!jobId || dirty || saving || !draftSavedRef.current) return;
-
-    studioApi
-      .deleteDraft(jobId)
-      .then(
-        () => {
-          draftSavedRef.current = false;
-        },
-        () => {},
-      );
-  }, [jobId, dirty, saving]);
+    if (!jobId || dirty || saving || draftConflict || !draftSavedRef.current || !draftPendingRef.current) return;
+    studioApi.deleteDraft(jobId, draftVersionRef.current ?? undefined).then(() => {
+      draftSavedRef.current = false;
+      draftVersionRef.current = null;
+      draftPendingRef.current = false;
+      refetch();
+    }, () => {});
+  }, [jobId, dirty, saving, draftConflict, refetch]);
 
   const showPrev = () => {
     if (orderedItems.length < 2) return;
@@ -380,9 +447,9 @@ export default function Studio({ addToast }: Props) {
       if (patch[key] !== undefined) sink[key] = patch[key];
     }
 
-    const merged = { ...(shotOverrides[selectedBasename] ?? {}), ...geoPatch };
+    const merged = { ...(localeOverrides[selectedBasename] ?? {}), ...geoPatch };
     const effective = { ...DEFAULT_STUDIO_GEOMETRY, ...merged };
-    const next = { ...shotOverrides };
+    const next = { ...localeOverrides };
 
     if (JSON.stringify(effective) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
       delete next[selectedBasename];
@@ -390,7 +457,7 @@ export default function Studio({ addToast }: Props) {
       next[selectedBasename] = merged;
     }
 
-    setShotOverrides(next);
+    setLocaleOverrides(next);
   };
 
   const handleDesignChange = (patch: Partial<StudioStyle>) => {
@@ -409,29 +476,13 @@ export default function Studio({ addToast }: Props) {
     setStyle({ ...style, ...designPatch });
   };
 
-  const handleApplyToAll = () => {
-    if (!style || !selectedBasename || !effectiveShot) return;
+  const handleApply = (mode: StudioApplyMode) => {
+    if (!data || !localeData || !selectedItem || !effectiveShot) return;
 
-    pushHistory();
-
-    const source: Partial<StudioStyle> = {};
-    const sink = source as Record<string, unknown>;
-
-    for (const key of STUDIO_APPLY_GEOMETRY_KEYS) sink[key] = effectiveShot[key];
-
-    if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...source }) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
-      setShotOverrides({});
-      addToast("Cleared custom positions for all screenshots", "success");
-
-      return;
-    }
-
-    const next: Record<string, Partial<StudioStyle>> = {};
-
-    for (const base of allBasenames) next[base] = { ...source };
-
+    pushHistory(true);
+    const next = applyStudioGeometry(shotOverrides, data.locales, localeData.locale, selectedItem, effectiveShot, mode);
     setShotOverrides(next);
-    addToast(`Applied to all ${allBasenames.length} screenshots`, "success");
+    addToast("Applied positions and sizes to the selected screenshots", "success");
   };
 
   const handleSelectLayer = (layer: StudioLayer | null) => {
@@ -452,7 +503,7 @@ export default function Studio({ addToast }: Props) {
   };
 
   const replaceShotOverlays = (basename: string, list: StudioOverlay[]) => {
-    const next = { ...shotOverrides };
+    const next = { ...localeOverrides };
     const merged = { ...(next[basename] ?? {}) };
 
     if (list.length > 0) merged.overlays = list;
@@ -461,7 +512,7 @@ export default function Studio({ addToast }: Props) {
     if (Object.keys(merged).length === 0) delete next[basename];
     else next[basename] = merged;
 
-    setShotOverrides(next);
+    setLocaleOverrides(next);
   };
 
   const handleShotPatch = (patch: Partial<StudioStyle>) => {
@@ -469,7 +520,7 @@ export default function Studio({ addToast }: Props) {
 
     pushHistory();
 
-    const next = { ...shotOverrides };
+    const next = { ...localeOverrides };
     const merged = { ...(next[selectedBasename] ?? {}), ...patch };
 
     if (!merged.deviceFrame) delete merged.deviceFrame;
@@ -477,7 +528,7 @@ export default function Studio({ addToast }: Props) {
     if (Object.keys(merged).length === 0) delete next[selectedBasename];
     else next[selectedBasename] = merged;
 
-    setShotOverrides(next);
+    setLocaleOverrides(next);
   };
 
   const handleOverlayPatch = (id: string, patch: Partial<StudioOverlay>) => {
@@ -501,9 +552,6 @@ export default function Studio({ addToast }: Props) {
 
     if (selectedOverlayId === id) setSelectedOverlayId(null);
 
-    if (jobId) {
-      studioApi.deleteOverlay(jobId, id).catch(() => {});
-    }
   };
 
   const handleOverlaysAdd = (list: StudioOverlay[]) => {
@@ -568,34 +616,29 @@ export default function Studio({ addToast }: Props) {
   );
 
   const handleSave = async () => {
-    if (!jobId || !data || !style || saving) return;
+    if (!jobId || !data || !style || saving || draftConflict) return;
 
+    if (draftRequestRef.current) { addToast("Draft is being saved; please try again in a moment.", "info"); return; }
     setSaving(true);
     setProgress(null);
+    let savedDraftAt: string | null = null;
 
     try {
-      const targetLocales =
-        scope === "all" ? data.locales : data.locales.filter((l) => l.locale === localeData?.locale);
-
-      const commonStyles: Record<string, Partial<StudioStyle>> = {};
-
-      for (const [base, patch] of Object.entries(shotOverrides)) {
-        const rest = { ...patch };
-        delete rest.titleLines;
-
-        if (JSON.stringify({ ...DEFAULT_STUDIO_GEOMETRY, ...rest }) !== JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
-          commonStyles[base] = rest;
-        }
-      }
-
+      const { draft } = await studioApi.saveDraft(jobId, {
+        style, styles: shotOverrides, titles, order: draftOrder, expectedUpdatedAt: draftVersionRef.current,
+      });
+      draftVersionRef.current = draft.updatedAt;
+      savedDraftAt = draft.updatedAt;
+      const savedSnapshot = JSON.stringify({ style, styles: shotOverrides, titles, order: draftOrder });
+      if (savedSnapshot === localSnapshotRef.current) draftPendingRef.current = false;
       await ensureStudioFont(style.font);
 
       const payload: Record<string, StudioSaveLocale> = {};
 
-      for (const l of targetLocales) {
+      for (const l of data.locales) {
         const titlesForLocale = titles[l.locale] ?? {};
 
-        payload[l.locale] = { titles: titlesForLocale, styles: commonStyles, titleLines: {} };
+        payload[l.locale] = { titles: titlesForLocale, styles: shotOverrides[l.locale] ?? {}, titleLines: {} };
       }
 
       const result = await studioApi.saveRevisionStream(
@@ -604,15 +647,33 @@ export default function Studio({ addToast }: Props) {
           name: revName.trim() || undefined,
           style,
           locales: payload,
+          order: draftOrder,
+          draftUpdatedAt: draftVersionRef.current ?? undefined,
         },
         setProgress,
       );
 
+      if (draftVersionRef.current === draft.updatedAt) draftVersionRef.current = null;
+      draftSavedRef.current = false;
+      observedRenderRef.current = null;
+      setRenderState(null);
       const skipped = result.skipped.length > 0 ? `, ${result.skipped.length} skipped` : "";
       addToast(`Saved ${revisionLabel(result.revision)} (${result.modes.worker} rendered${skipped})`, "success");
       refetch();
     } catch (err: any) {
-      addToast(`Save failed: ${err.message}`, "error");
+      if (err.message.includes("Draft changed")) setDraftConflict(true);
+      try {
+        const { render } = await studioApi.getRenderStatus(jobId);
+        if (render?.status === "RUNNING") {
+          setRenderState(render);
+          observedRenderRef.current = render.operationId;
+          addToast("Rendering continues in the background. Progress will reconnect automatically.", "info");
+        } else if (render?.status === "SUCCEEDED" && render.result && savedDraftAt && render.startedAt >= savedDraftAt) {
+          observedRenderRef.current = null;
+          refetch();
+          addToast(`Saved ${revisionLabel(render.result.revision)}`, "success");
+        } else addToast(`Save failed: ${err.message}`, "error");
+      } catch { addToast(`Save failed: ${err.message}`, "error"); }
     } finally {
       setSaving(false);
       setProgress(null);
@@ -667,6 +728,29 @@ export default function Studio({ addToast }: Props) {
     }
   };
 
+  const handleDeleteLocales = async (locales: string[]) => {
+    if (!jobId || locales.length === 0) return;
+
+    const label = locales.length === 1 ? getLocaleName(locales[0]) : `${locales.length} locales`;
+
+    if (!confirm(`Delete ${label}? This removes their screenshots and can't be undone.`)) return;
+
+    setDeletingLocales(true);
+
+    try {
+      await studioApi.deleteLocales(jobId, locales);
+      addToast(`Deleted ${label}`, "success");
+
+      if (locales.includes(activeLocale ?? "")) setActiveLocale(null);
+
+      refetch();
+    } catch (err: any) {
+      addToast(`Delete failed: ${err.message}`, "error");
+    } finally {
+      setDeletingLocales(false);
+    }
+  };
+
   const handleRenameSet = async () => {
     if (!jobId || savingSetName) return;
 
@@ -704,16 +788,7 @@ export default function Studio({ addToast }: Props) {
 
       for (const key of STUDIO_APPLY_GEOMETRY_KEYS) sink[key] = preset[key];
 
-      const effective = { ...DEFAULT_STUDIO_GEOMETRY, ...geo };
-      const next = { ...shotOverrides };
-
-      if (JSON.stringify(effective) === JSON.stringify(DEFAULT_STUDIO_GEOMETRY)) {
-        delete next[selectedBasename];
-      } else {
-        next[selectedBasename] = geo;
-      }
-
-      setShotOverrides(next);
+      setLocaleOverrides({ ...localeOverrides, [selectedBasename]: { ...localeOverrides[selectedBasename], ...geo } });
     }
 
     addToast(`Applied preset ${preset.name}`, "success");
@@ -854,7 +929,7 @@ export default function Studio({ addToast }: Props) {
         </div>
 
         <StudioRevisions
-          disabled={!canWrite}
+          disabled={!canWrite || draftConflict}
           revisions={data.revisions}
           activeRevisionId={data.activeRevisionId}
           activatingId={activatingId}
@@ -865,20 +940,25 @@ export default function Studio({ addToast }: Props) {
           settingDefaultId={settingDefaultId}
           onSetDefault={handleSetDefault}
           dirty={dirty}
-          scope={scope}
-          onScopeChange={setScope}
-          activeLocaleName={getLocaleName(localeData.locale)}
-          localeCount={data.locales.length}
           revName={revName}
           onRevNameChange={setRevName}
           onSave={handleSave}
           saving={saving}
-          progress={progress}
+          progress={progress ?? (renderState?.status === "RUNNING" ? renderState.progress : null)}
         />
       </div>
 
+      {draftConflict && (
+        <div role="alert" className="px-6 py-2 text-sm bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          The shared draft changed in another session. Your local changes are still visible; saving is paused.
+          <button type="button" className="ml-3 underline font-medium" onClick={() => {
+            draftPendingRef.current = false; loadedBaselineRef.current = null; setDraftConflict(false); setDraftReloadTick((tick) => tick + 1); refetch();
+          }}>Load shared draft</button>
+        </div>
+      )}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-        <aside className={`lg:w-[264px] lg:shrink-0 lg:h-full lg:overflow-y-auto px-4 py-4 lg:border-r ${borderDefault}`}>
+        <aside className={`flex flex-col lg:w-[264px] lg:shrink-0 lg:h-full lg:overflow-hidden px-4 pt-4 pb-3 lg:border-r ${borderDefault}`}>
+        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-4">
         <StudioLayers
           item={selectedItem}
           title={selectedTitle}
@@ -889,13 +969,39 @@ export default function Studio({ addToast }: Props) {
           titles={titles[localeData.locale] ?? {}}
           selectedBasename={selectedBasename}
           onSelectScreenshot={handleSelectScreenshot}
-          shotOverrides={shotOverrides}
+          shotOverrides={localeOverrides}
           overlays={effectiveShot.overlays}
           selectedOverlayId={selectedOverlayId}
           onSelectOverlay={handleSelectOverlay}
           onDeleteOverlay={handleOverlayDelete}
           frameLabel={frameLabel}
         />
+        </div>
+        <nav aria-label="Screenshot navigation" className={`flex items-center justify-between gap-3 shrink-0 pt-3 border-t ${borderDefault}`}>
+          <button
+            type="button"
+            onClick={showPrev}
+            disabled={orderedItems.length < 2}
+            aria-label="Previous screenshot"
+            title="Previous screenshot"
+            className={`w-9 h-9 flex items-center justify-center rounded-xl border ${borderDefault} ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/5 transition-colors disabled:opacity-40`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span aria-live="polite" aria-atomic="true" className={`text-[12px] font-mono ${textMuted}`}>
+            {orderedItems.length === 0 ? "0 / 0" : `${Math.max(0, selectedIndex) + 1} / ${orderedItems.length}`}
+          </span>
+          <button
+            type="button"
+            onClick={showNext}
+            disabled={orderedItems.length < 2}
+            aria-label="Next screenshot"
+            title="Next screenshot"
+            className={`w-9 h-9 flex items-center justify-center rounded-xl border ${borderDefault} ${textMuted} hover:text-[#595DD2] hover:bg-[#595DD2]/5 transition-colors disabled:opacity-40`}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </nav>
         </aside>
         <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto">
         <StudioCanvas
@@ -905,15 +1011,13 @@ export default function Studio({ addToast }: Props) {
           layer={selectedLayer}
           disabled={!canWrite}
           onGeometryChange={handleGeometryChange}
-          onApplyToAll={handleApplyToAll}
+          onApply={handleApply}
           onSelectLayer={handleSelectLayer}
-          index={Math.max(0, selectedIndex)}
-          total={orderedItems.length}
-          onPrev={showPrev}
-          onNext={showNext}
           locales={data.locales.map((l) => l.locale)}
           activeLocale={localeData.locale}
           onLocaleChange={setActiveLocale}
+          deletingLocales={deletingLocales}
+          onDeleteLocales={handleDeleteLocales}
           overlays={effectiveShot.overlays}
           selectedOverlayId={selectedOverlayId}
           onSelectOverlay={handleSelectOverlay}

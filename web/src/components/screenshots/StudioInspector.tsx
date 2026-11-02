@@ -234,7 +234,11 @@ function ScaleSlider({
   max,
   onChange,
   disabled,
+  resetValue = 1,
+  resetTitle = "Reset size",
 }: {
+  resetValue?: number;
+  resetTitle?: string;
   value: number;
   min: number;
   max: number;
@@ -259,8 +263,8 @@ function ScaleSlider({
       <button
         type="button"
         disabled={disabled}
-        title="Reset size"
-        onClick={() => onChange(1)}
+        title={resetTitle}
+        onClick={() => onChange(resetValue)}
         className={`w-7 h-7 flex items-center justify-center rounded-lg ${textMuted} hover:text-[#595DD2] transition-colors disabled:opacity-40 shrink-0`}
       >
         <RotateCcw className="w-3.5 h-3.5" />
@@ -462,6 +466,17 @@ export default function StudioInspector({
               min={0.2}
               max={3}
               onChange={(titleScale) => patchStyle({ titleScale })}
+              disabled={disabled}
+            />
+          </Section>
+          <Section label="Line spacing">
+            <ScaleSlider
+              value={style.titleLineHeight ?? 1.2}
+              min={1}
+              max={2.5}
+              resetValue={1.2}
+              resetTitle="Reset line spacing"
+              onChange={(titleLineHeight) => patchStyle({ titleLineHeight })}
               disabled={disabled}
             />
           </Section>

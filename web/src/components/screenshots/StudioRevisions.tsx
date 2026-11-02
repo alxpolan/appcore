@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, History, Pin, Save, Trash2, X } from "lucide-react";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { borderDefault, btnPrimary, inputCls, textMuted, textPrimary, textSecondary } from "../../styles";
@@ -17,10 +17,6 @@ export interface StudioRevisionsProps {
   settingDefaultId: string | null;
   onSetDefault: (revisionId: string) => void;
   dirty: boolean;
-  scope: "one" | "all";
-  onScopeChange: (scope: "one" | "all") => void;
-  activeLocaleName: string;
-  localeCount: number;
   revName: string;
   onRevNameChange: (name: string) => void;
   onSave: () => void;
@@ -40,10 +36,6 @@ export default function StudioRevisions({
   settingDefaultId,
   onSetDefault,
   dirty,
-  scope,
-  onScopeChange,
-  activeLocaleName,
-  localeCount,
   revName,
   onRevNameChange,
   onSave,
@@ -55,6 +47,7 @@ export default function StudioRevisions({
   const close = useCallback(() => setOpen(false), []);
 
   useClickOutside(ref, close);
+  useEffect(() => { if (saving) setOpen(true); }, [saving]);
 
   const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   const current =
@@ -63,7 +56,7 @@ export default function StudioRevisions({
       : "";
   const activeRevision = revisions.find((rev) => rev.id === activeRevisionId) ?? null;
   const triggerLabel = saving
-    ? "Rendering…"
+    ? `Rendering…${progress && progress.total > 0 ? ` ${pct}%` : ""}`
     : dirty
       ? "Unsaved changes"
       : activeRevision
@@ -109,7 +102,7 @@ export default function StudioRevisions({
                 >
                   <button
                     type="button"
-                    disabled={disabled || active || activatingId !== null}
+                    disabled={disabled || saving || active || activatingId !== null}
                     onClick={() => onActivate(rev.id)}
                     title={active ? "Active revision" : `Switch to ${revisionLabel(rev)}`}
                     className="hover:text-[#595DD2] transition-colors disabled:opacity-70 disabled:cursor-default"
@@ -119,7 +112,7 @@ export default function StudioRevisions({
                   {!disabled && (
                     <button
                       type="button"
-                      disabled={settingDefaultId !== null || deletingId !== null}
+                      disabled={saving || settingDefaultId !== null || deletingId !== null}
                       onClick={() => onSetDefault(rev.id)}
                       title={isDefault ? "Default for future renders" : `Set ${revisionLabel(rev)} as default for future renders`}
                       className={`w-6 h-6 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
@@ -136,7 +129,7 @@ export default function StudioRevisions({
                   {!disabled && (
                     <button
                       type="button"
-                      disabled={deletingId !== null}
+                      disabled={saving || deletingId !== null}
                       onClick={() => onDelete(rev)}
                       title={active ? "Delete the active revision" : `Delete ${revisionLabel(rev)}`}
                       className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
@@ -157,35 +150,11 @@ export default function StudioRevisions({
 
           {!disabled && (
             <div className={`flex flex-col gap-2 pt-3 border-t ${borderDefault}`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className={`inline-flex rounded-xl border ${borderDefault} p-0.5 gap-0.5 bg-[#fafbfc] dark:bg-[#252b38]`}>
-                  <button
-                    type="button"
-                    onClick={() => onScopeChange("one")}
-                    className={`px-3 py-[5px] rounded-lg text-[12px] font-medium transition-all ${
-                      scope === "one" ? "bg-white dark:bg-[#1c2028] shadow-sm text-[#595DD2]" : textSecondary
-                    }`}
-                  >
-                    {activeLocaleName} only
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onScopeChange("all")}
-                    disabled={localeCount < 2}
-                    title={localeCount < 2 ? "This run has a single locale" : `Save all ${localeCount} locales`}
-                    className={`px-3 py-[5px] rounded-lg text-[12px] font-medium transition-all disabled:opacity-50 ${
-                      scope === "all" ? "bg-white dark:bg-[#1c2028] shadow-sm text-[#595DD2]" : textSecondary
-                    }`}
-                  >
-                    All locales
-                  </button>
-                </div>
-              </div>
-
               <input
                 type="text"
                 value={revName}
                 maxLength={40}
+                disabled={saving}
                 placeholder="Revision name (optional)"
                 onChange={(e) => onRevNameChange(e.target.value)}
                 className={`${inputCls} !py-[6px]`}
@@ -195,22 +164,21 @@ export default function StudioRevisions({
                 {saving ? <div className="spinner !w-3.5 !h-3.5" /> : <Save className="w-4 h-4" />}
                 {saving ? "Rendering…" : dirty ? "Save revision" : "No changes"}
               </button>
-
-              {saving && progress && progress.total > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <div className="h-1.5 rounded-full bg-gray-200 dark:bg-[#2a3040] overflow-hidden">
-                    <div className="h-full bg-[#595DD2] transition-all duration-300" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className={`text-[12px] ${textPrimary}`}>
-                    Rendering {progress.locale ? getLocaleName(progress.locale) : "…"}
-                    {current} · {progress.done}/{progress.total}
-                  </span>
-                </div>
-              )}
-              {saving && (!progress || progress.total === 0) && (
-                <span className={`text-[12px] ${textPrimary}`}>Starting render…</span>
-              )}
             </div>
+          )}
+          {saving && progress && progress.total > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="h-1.5 rounded-full bg-gray-200 dark:bg-[#2a3040] overflow-hidden">
+                <div className="h-full bg-[#595DD2] transition-all duration-300" style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`text-[12px] ${textPrimary}`}>
+                Rendering {progress.locale ? getLocaleName(progress.locale) : "…"}
+                {current} · {progress.done}/{progress.total}
+              </span>
+            </div>
+          )}
+          {saving && (!progress || progress.total === 0) && (
+            <span className={`text-[12px] ${textPrimary}`}>Starting render…</span>
           )}
         </div>
       )}

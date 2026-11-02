@@ -5,6 +5,9 @@ import { resolveInternalAppId } from "../lib/resolve-app";
 import {
   createStudioPreset,
   deleteStudioDraft,
+  StudioDraftConflictError,
+  getStudioDraft,
+  deleteStudioLocales,
   deleteStudioOverlay,
   deleteStudioPreset,
   deleteStudioRevision,
@@ -12,6 +15,7 @@ import {
   duplicateStudioOverlay,
   getFrameBezelImage,
   getStudioData,
+  getStudioRenderStatus,
   listShotBezels,
   listStudioPresets,
   normalizeStudioStyle,
@@ -73,27 +77,35 @@ studioRouter.get("/screenshots/studio/:jobId", requireAuth, async (req: Request,
   }
 });
 
+studioRouter.get("/screenshots/studio/:jobId/render", requireAuth, async (req: Request, res: Response) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ render: await getStudioRenderStatus(req.params.jobId as string) });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 studioRouter.post("/screenshots/studio/:jobId/revisions", writeAuth, async (req: Request, res: Response) => {
   try {
     const { name, style } = req.body as { name?: string; style?: unknown };
     const normalizedLocales = parseRevisionLocales(req.body);
+    if (req.body.draftUpdatedAt) {
+      const draft = await getStudioDraft(req.params.jobId as string);
+      if (draft?.updatedAt.toISOString() !== req.body.draftUpdatedAt) throw new StudioDraftConflictError();
+    }
 
     if (!normalizedLocales) {
       res.status(400).json({ error: "locales is required" });
       return;
     }
 
-    res.json(
-      await renderStudioRevision({
-        jobId: req.params.jobId as string,
-        name,
-        style: normalizeStudioStyle(style),
-        locales: normalizedLocales,
-        pusher: req.user?.userId ?? null,
-      }),
-    );
+    const result = await renderStudioRevision({
+      jobId: req.params.jobId as string, name, style: normalizeStudioStyle(style),
+      locales: normalizedLocales, order: req.body.order, pusher: req.user?.userId ?? null,
+    });
+    if (req.body.draftUpdatedAt) await deleteStudioDraft(req.params.jobId as string, req.body.draftUpdatedAt);
+    res.json(result);
   } catch (err: any) {
-    const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+    const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
 
     logger.error(`studio revision error: ${err.message}`);
     res.status(status).json({ error: err.message });
@@ -104,6 +116,10 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
   try {
     const { name, style } = req.body as { name?: string; style?: unknown };
     const normalizedLocales = parseRevisionLocales(req.body);
+    if (req.body.draftUpdatedAt) {
+      const draft = await getStudioDraft(req.params.jobId as string);
+      if (draft?.updatedAt.toISOString() !== req.body.draftUpdatedAt) throw new StudioDraftConflictError();
+    }
 
     if (!normalizedLocales) {
       res.status(400).json({ error: "locales is required" });
@@ -141,10 +157,12 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
         name,
         style: normalizeStudioStyle(style),
         locales: normalizedLocales,
+        order: req.body.order,
         onProgress: (event) => write(event),
         pusher: req.user?.userId ?? null,
       });
 
+      if (req.body.draftUpdatedAt) await deleteStudioDraft(req.params.jobId as string, req.body.draftUpdatedAt);
       write({ result });
     } catch (err: any) {
       logger.error(`studio revision stream error: ${err.message}`);
@@ -155,7 +173,7 @@ studioRouter.post("/screenshots/studio/:jobId/revisions/stream", writeAuth, asyn
     }
   } catch (err: any) {
     if (!res.headersSent) {
-      const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+      const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
 
       logger.error(`studio revision stream error: ${err.message}`);
       res.status(status).json({ error: err.message });
@@ -192,10 +210,10 @@ studioRouter.post("/screenshots/studio/:jobId/duplicate", writeAuth, async (req:
 studioRouter.put("/screenshots/studio/:jobId/draft", writeAuth, async (req: Request, res: Response) => {
   try {
     res.json({
-      draft: await saveStudioDraft(req.params.jobId as string, req.body, req.user?.userId ?? null),
+      draft: await saveStudioDraft(req.params.jobId as string, req.body, req.user?.userId ?? null, req.body.expectedUpdatedAt),
     });
   } catch (err: any) {
-    const status = err.message.includes("not found") ? 404 : 500;
+    const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") ? 404 : 500;
 
     logger.error(`studio draft save error: ${err.message}`);
     res.status(status).json({ error: err.message });
@@ -204,7 +222,7 @@ studioRouter.put("/screenshots/studio/:jobId/draft", writeAuth, async (req: Requ
 
 studioRouter.delete("/screenshots/studio/:jobId/draft", writeAuth, async (req: Request, res: Response) => {
   try {
-    await deleteStudioDraft(req.params.jobId as string);
+    await deleteStudioDraft(req.params.jobId as string, req.body?.expectedUpdatedAt);
     res.json({ ok: true });
   } catch (err: any) {
     logger.error(`studio draft delete error: ${err.message}`);
@@ -216,7 +234,7 @@ studioRouter.get("/screenshots/studio/:jobId/bezels/:basename", requireAuth, asy
   try {
     res.json(await listShotBezels(req.params.jobId as string, req.params.basename as string));
   } catch (err: any) {
-    const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+    const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
 
     logger.error(`studio bezels error: ${err.message}`);
     res.status(status).json({ error: err.message });
@@ -229,7 +247,7 @@ studioRouter.post("/screenshots/studio/:jobId/overlays", writeAuth, async (req: 
 
     res.json({ overlay: await saveStudioOverlay(req.params.jobId as string, data) });
   } catch (err: any) {
-    const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+    const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
 
     logger.error(`studio overlay save error: ${err.message}`);
     res.status(status).json({ error: err.message });
@@ -274,13 +292,31 @@ studioRouter.post(
     try {
       res.json({ overlay: await duplicateStudioOverlay(req.params.jobId as string, req.params.overlayId as string) });
     } catch (err: any) {
-      const status = err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
+      const status = err instanceof StudioDraftConflictError ? 409 : err.message.includes("not found") || err.message.includes("Invalid") ? 404 : 500;
 
       logger.error(`studio overlay duplicate error: ${err.message}`);
       res.status(status).json({ error: err.message });
     }
   },
 );
+
+studioRouter.delete("/screenshots/studio/:jobId/locales", writeAuth, async (req: Request, res: Response) => {
+  try {
+    const { locales } = req.body as { locales?: unknown };
+
+    if (!Array.isArray(locales) || locales.length === 0 || !locales.every((l) => typeof l === "string")) {
+      res.status(400).json({ error: "locales must be a non-empty array of strings" });
+      return;
+    }
+
+    res.json(await deleteStudioLocales(req.params.jobId as string, locales));
+  } catch (err: any) {
+    const status = err.message.includes("not found") || err.message.includes("Cannot delete all") ? 400 : 500;
+
+    logger.error(`studio locale delete error: ${err.message}`);
+    res.status(status).json({ error: err.message });
+  }
+});
 
 studioRouter.patch("/screenshots/studio/:jobId/active-revision", writeAuth, async (req: Request, res: Response) => {
   try {

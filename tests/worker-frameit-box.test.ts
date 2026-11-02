@@ -111,6 +111,24 @@ describe("studio complex: failed batches name their shots", () => {
     }
   });
 
+  it("passes custom caption line spacing to the render worker", async () => {
+    tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "studio-spacing-"));
+    const srcDir = path.join(tmpDir, "raw");
+    await fs.promises.mkdir(srcDir);
+    await fs.promises.writeFile(path.join(srcDir, "shot.png"), "raw-bytes");
+    let spacing: number | undefined;
+    workerClient.frameit = (async ({ images }) => {
+      spacing = images[0].titleLineHeight;
+      return { ok: true, framedImages: [{ filename: "shot.png", data: Buffer.from("framed").toString("base64") }] };
+    }) as typeof workerClient.frameit;
+    await frameComplexBatch({
+      srcDir, outDir: path.join(tmpDir, "out"),
+      shots: [{ filename: "shot.png", base: "shot", style: { ...DEFAULT_STUDIO_STYLE, titleLineHeight: 1.8 } }],
+      titles: new Map([["shot", "Two line caption"]]), style: DEFAULT_STUDIO_STYLE,
+    });
+    assert.equal(spacing, 1.8);
+  });
+
   it("includes locale and basenames in worker errors", async () => {
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "studio-complex-"));
     const srcDir = path.join(tmpDir, "raw", "en-US");

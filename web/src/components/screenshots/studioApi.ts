@@ -21,6 +21,7 @@ export interface StudioStyle {
   titleOffsetX: number;
   titleOffsetY: number;
   titleScale: number;
+  titleLineHeight: number;
   deviceScale: number;
   titleBoxW: number;
   titleBoxH: number;
@@ -37,6 +38,7 @@ export const STUDIO_GEOMETRY_KEYS = [
   "titleOffsetX",
   "titleOffsetY",
   "titleScale",
+  "titleLineHeight",
   "deviceScale",
   "titleBoxW",
   "titleBoxH",
@@ -51,6 +53,7 @@ export const DEFAULT_STUDIO_GEOMETRY: Pick<StudioStyle, (typeof STUDIO_GEOMETRY_
   titleOffsetX: 0,
   titleOffsetY: 0,
   titleScale: 1,
+  titleLineHeight: 1.2,
   deviceScale: 1,
   titleBoxW: 0,
   titleBoxH: 0,
@@ -109,9 +112,13 @@ export interface StudioItem {
   hasRaw: boolean;
 }
 
+export type LocaleStylesMap = Record<string, Record<string, Partial<StudioStyle>>>;
+export type { StudioApplyMode } from "../../../../src/services/screenshot-studio/geometry";
+
 export interface StudioLocaleData {
   locale: string;
   items: StudioItem[];
+  styles: Record<string, Partial<StudioStyle>>;
 }
 
 export interface StudioRevisionInfo {
@@ -138,7 +145,6 @@ export interface StudioData {
     createdAt: string;
   };
   style: StudioStyle;
-  styles: Record<string, Partial<StudioStyle>>;
   locales: StudioLocaleData[];
   revisions: StudioRevisionInfo[];
   activeRevisionId: string | null;
@@ -155,8 +161,9 @@ export interface StudioSaveLocale {
 
 export interface StudioDraft {
   style: StudioStyle;
-  styles: Record<string, Partial<StudioStyle>>;
+  styles: LocaleStylesMap;
   titles: Record<string, Record<string, string>>;
+  order: Record<string, string[]>;
   updatedBy: string | null;
   updatedAt: string;
 }
@@ -166,6 +173,17 @@ export interface StudioSaveResponse {
   modes: { worker: number };
   skipped: string[];
   jobId: string;
+}
+
+export interface StudioRenderState {
+  operationId: string;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED";
+  progress: StudioProgressEvent;
+  result: StudioSaveResponse | null;
+  error: string | null;
+  startedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 }
 
 export interface StudioProgressEvent {
@@ -199,10 +217,11 @@ async function studioRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const studioApi = {
+  getRenderStatus: (jobId: string) => studioRequest<{ render: StudioRenderState | null }>(`/github/screenshots/studio/${jobId}/render`),
   getData: (jobId: string) => studioRequest<StudioData>(`/github/screenshots/studio/${jobId}`),
   saveRevisionStream: async (
     jobId: string,
-    payload: { name?: string; style: StudioStyle; locales: Record<string, StudioSaveLocale> },
+    payload: { name?: string; style: StudioStyle; locales: Record<string, StudioSaveLocale>; order?: Record<string, string[]>; draftUpdatedAt?: string },
     onEvent: (event: StudioProgressEvent) => void,
   ): Promise<StudioSaveResponse> => {
     const res = await fetch(`/api/github/screenshots/studio/${jobId}/revisions/stream`, {
@@ -253,7 +272,7 @@ export const studioApi = {
   },
   saveRevision: (
     jobId: string,
-    payload: { name?: string; style: StudioStyle; locales: Record<string, StudioSaveLocale> },
+    payload: { name?: string; style: StudioStyle; locales: Record<string, StudioSaveLocale>; order?: Record<string, string[]>; draftUpdatedAt?: string },
   ) =>
     studioRequest<StudioSaveResponse>(`/github/screenshots/studio/${jobId}/revisions`, {
       method: "POST",
@@ -306,12 +325,17 @@ export const studioApi = {
     ),
   saveDraft: (
     jobId: string,
-    draft: { style: StudioStyle; styles: Record<string, Partial<StudioStyle>>; titles: Record<string, Record<string, string>> },
+    draft: { style: StudioStyle; styles: LocaleStylesMap; titles: Record<string, Record<string, string>>; order?: Record<string, string[]>; expectedUpdatedAt?: string | null },
   ) =>
     studioRequest<{ draft: StudioDraft }>(`/github/screenshots/studio/${jobId}/draft`, {
       method: "PUT",
       body: JSON.stringify(draft),
     }),
-  deleteDraft: (jobId: string) =>
-    studioRequest<{ ok: boolean }>(`/github/screenshots/studio/${jobId}/draft`, { method: "DELETE" }),
+  deleteDraft: (jobId: string, expectedUpdatedAt?: string) =>
+    studioRequest<{ ok: boolean }>(`/github/screenshots/studio/${jobId}/draft`, { method: "DELETE", body: JSON.stringify({ expectedUpdatedAt }) }),
+  deleteLocales: (jobId: string, locales: string[]) =>
+    studioRequest<{ remainingLocales: string[] }>(`/github/screenshots/studio/${jobId}/locales`, {
+      method: "DELETE",
+      body: JSON.stringify({ locales }),
+    }),
 };

@@ -291,13 +291,14 @@ export function fitTitleBlock(
   boxW: number,
   boxH: number,
   baseSize: number,
+  lineHeight = TITLE_LINE_HEIGHT,
 ): FittedTitleBlock {
   const minSize = Math.max(24, Math.round(baseSize * MIN_FONT_RATIO));
   let size = baseSize;
   let lines = wrapTitleLines(ctx, text, family, size, boxW);
 
   while (true) {
-    const blockH = lines.length * size * TITLE_LINE_HEIGHT;
+    const blockH = lines.length * size * lineHeight;
     const tooTall = boxH > 0 && blockH > boxH;
     const tooManyLines = lines.length > MAX_AUTO_LINES;
 
@@ -319,6 +320,7 @@ export function measureTitleBlock(
   titleScale: number,
   boxW = 0,
   boxH = 0,
+  lineHeight = TITLE_LINE_HEIGHT,
 ): TitleMetrics {
   if (!measureCtx) {
     measureCtx = document.createElement("canvas").getContext("2d");
@@ -330,8 +332,8 @@ export function measureTitleBlock(
 
   if (boxW > 0) {
     const baseSize = TITLE_BASE_SIZE * titleScale;
-    const fitted = fitTitleBlock(measureCtx, title.trim(), studioFontFamily(font), boxW, boxH, baseSize);
-    const step = fitted.size * TITLE_LINE_HEIGHT;
+    const fitted = fitTitleBlock(measureCtx, title.trim(), studioFontFamily(font), boxW, boxH, baseSize, lineHeight);
+    const step = fitted.size * lineHeight;
     const h = boxH > 0 ? boxH : fitted.lines.length * step;
 
     return { size: fitted.size, w: boxW, h, ascent: step / 2 };
@@ -414,8 +416,8 @@ export async function drawStudioPreview(canvas: HTMLCanvasElement, draw: StudioP
       const fitted =
         text === " "
           ? { lines: [], size: baseSize }
-          : fitTitleBlock(ctx, text, family, style.titleBoxW, style.titleBoxH, baseSize);
-      const step = fitted.size * TITLE_LINE_HEIGHT;
+          : fitTitleBlock(ctx, text, family, style.titleBoxW, style.titleBoxH, baseSize, style.titleLineHeight ?? TITLE_LINE_HEIGHT);
+      const step = fitted.size * (style.titleLineHeight ?? TITLE_LINE_HEIGHT);
       const boxH = style.titleBoxH > 0 ? style.titleBoxH : fitted.lines.length * step;
       const boxTop = bandCenterY - boxH / 2 + style.titleOffsetY;
       const cx = workW / 2 + style.titleOffsetX;
