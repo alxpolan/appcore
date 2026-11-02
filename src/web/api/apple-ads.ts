@@ -8,6 +8,7 @@ import { appleAdsKeyMissing, appleAdsKeyCreds } from "./apple-ads-helpers";
 import { appleAdsGroupsRouter } from "./apple-ads-groups";
 import { appleAdsCampaignsRouter } from "./apple-ads-campaigns";
 import { appleAdsInsightsRouter } from "./apple-ads-insights";
+import { appleAdsCppRouter } from "./apple-ads-cpp";
 
 export const appleAdsRouter = Router();
 
@@ -228,3 +229,4 @@ appleAdsRouter.post("/disconnect", async (req, res) => {
 appleAdsRouter.use(appleAdsGroupsRouter);
 appleAdsRouter.use(appleAdsCampaignsRouter);
 appleAdsRouter.use(appleAdsInsightsRouter);
+appleAdsRouter.use(appleAdsCppRouter);

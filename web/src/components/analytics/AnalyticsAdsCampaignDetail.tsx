@@ -26,6 +26,7 @@ import {
 import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import CppProposals from "../cpp/CppProposals";
+import AdGroupCppSettings from "./AdGroupCppSettings";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
@@ -736,7 +737,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
                           <td colSpan={11} className="px-5 py-4">
-                            <div className="mb-3">
+                            <div className="mb-3 flex items-center gap-3 flex-wrap">
                               <button
                                 onClick={() => setNegativesModal({ scope: "adGroup", id: g.id, name: g.name })}
                                 className={btnSecSm}
@@ -749,6 +750,14 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                                   </span>
                                 )}
                               </button>
+                            </div>
+                            <div className="mb-3">
+                              <AdGroupCppSettings
+                                campaignId={campaignId}
+                                adGroupId={g.id}
+                                canWrite={canWrite}
+                                addToast={addToast}
+                              />
                             </div>
                             <div className={`text-[12px] font-semibold ${textPrimary} mb-2 flex items-center justify-between gap-2`}>
                               <span>
