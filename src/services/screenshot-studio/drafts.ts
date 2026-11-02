@@ -6,12 +6,13 @@ import {
   normalizeStudioStyle,
   type StudioStyle,
 } from "./style";
-import { parseTitlesMap } from "./revisions";
+import { parseLocaleStyles, parseTitlesMap, type LocaleStylesMap } from "./revisions";
 
 export interface StudioDraft {
   style: StudioStyle;
-  styles: Record<string, Partial<StudioStyle>>;
+  styles: LocaleStylesMap;
   titles: Record<string, Record<string, string>>;
+  order: Record<string, string[]>;
   updatedBy: string | null;
   updatedAt: Date;
 }
@@ -48,13 +49,25 @@ function cleanDraftStyles(value: unknown): Record<string, Partial<StudioStyle>> 
   return styles;
 }
 
+export class StudioDraftConflictError extends Error {
+  constructor() { super("Draft changed in another session. Reload it before editing again."); }
+}
+
+function cleanDraftOrder(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([, order]) =>
+    Array.isArray(order) && order.every((base) => typeof base === "string") && new Set(order).size === order.length,
+  )) as Record<string, string[]>;
+}
+
 export function normalizeStudioDraft(value: unknown): StudioDraftBody {
-  const input = (value ?? {}) as { style?: unknown; styles?: unknown; titles?: unknown };
+  const input = (value ?? {}) as { style?: unknown; styles?: unknown; titles?: unknown; order?: unknown };
 
   return {
     style: normalizeStudioStyle(input.style),
-    styles: cleanDraftStyles(input.styles),
+    styles: parseLocaleStyles(input.styles, cleanDraftStyles),
     titles: parseTitlesMap(input.titles),
+    order: cleanDraftOrder(input.order),
   };
 }
 
@@ -63,7 +76,7 @@ export async function getStudioDraft(jobId: string): Promise<StudioDraft | null>
 
   if (!row) return null;
 
-  const body = normalizeStudioDraft({ style: row.style, styles: row.styles, titles: row.titles });
+  const body = normalizeStudioDraft({ style: row.style, styles: row.styles, titles: row.titles, order: row.order });
 
   return { ...body, updatedBy: row.updatedBy, updatedAt: row.updatedAt };
 }
@@ -72,6 +85,7 @@ export async function saveStudioDraft(
   jobId: string,
   value: unknown,
   updatedBy: string | null,
+  expectedUpdatedAt?: string | null,
 ): Promise<StudioDraft> {
   const job = await prisma.screenshotJob.findUnique({ where: { id: jobId }, select: { id: true } });
 
@@ -79,26 +93,44 @@ export async function saveStudioDraft(
 
   const body = normalizeStudioDraft(value);
 
+  const data = {
+    style: body.style as unknown as Prisma.InputJsonValue,
+    styles: body.styles as unknown as Prisma.InputJsonValue,
+    titles: body.titles as unknown as Prisma.InputJsonValue,
+    order: body.order as Prisma.InputJsonValue,
+    updatedBy,
+  };
+  if (expectedUpdatedAt !== undefined) {
+    if (expectedUpdatedAt === null) {
+      try {
+        const row = await prisma.screenshotStudioDraft.create({ data: { jobId, ...data } });
+        return { ...body, updatedBy, updatedAt: row.updatedAt };
+      } catch (err) {
+        if ((err as { code?: string }).code === "P2002") throw new StudioDraftConflictError();
+        throw err;
+      }
+    }
+    const expected = new Date(expectedUpdatedAt);
+    if (!Number.isFinite(expected.getTime())) throw new StudioDraftConflictError();
+    const updatedAt = new Date(Math.max(Date.now(), expected.getTime() + 1));
+    const result = await prisma.screenshotStudioDraft.updateMany({
+      where: { jobId, updatedAt: expected }, data: { ...data, updatedAt },
+    });
+    if (result.count !== 1) throw new StudioDraftConflictError();
+    return { ...body, updatedBy, updatedAt };
+  }
+
   const row = await prisma.screenshotStudioDraft.upsert({
     where: { jobId },
-    create: {
-      jobId,
-      style: body.style as unknown as Prisma.InputJsonValue,
-      styles: body.styles as unknown as Prisma.InputJsonValue,
-      titles: body.titles as unknown as Prisma.InputJsonValue,
-      updatedBy,
-    },
-    update: {
-      style: body.style as unknown as Prisma.InputJsonValue,
-      styles: body.styles as unknown as Prisma.InputJsonValue,
-      titles: body.titles as unknown as Prisma.InputJsonValue,
-      updatedBy,
-    },
+    create: { jobId, ...data },
+    update: data,
   });
 
   return { ...body, updatedBy: row.updatedBy, updatedAt: row.updatedAt };
 }
 
-export async function deleteStudioDraft(jobId: string): Promise<void> {
-  await prisma.screenshotStudioDraft.deleteMany({ where: { jobId } });
+export async function deleteStudioDraft(jobId: string, expectedUpdatedAt?: string): Promise<void> {
+  await prisma.screenshotStudioDraft.deleteMany({
+    where: { jobId, ...(expectedUpdatedAt ? { updatedAt: new Date(expectedUpdatedAt) } : {}) },
+  });
 }

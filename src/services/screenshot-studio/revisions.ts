@@ -3,7 +3,7 @@ import path from "path";
 import { prisma } from "../../config";
 import { Prisma } from "@prisma/client";
 import type { ScreenshotStylePreset } from "@prisma/client";
-import { normalizeStudioStyle, normalizeTitleLines, storedShotStyles, type StudioStyle } from "./style";
+import { DEFAULT_STUDIO_STYLE, normalizeStudioStyle, normalizeTitleLines, storedShotStyles, type StudioStyle } from "./style";
 
 function parseStoredTitleLines(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -47,6 +47,43 @@ export function asFramedMap(value: unknown): FramedMap {
   }
 
   return out;
+}
+
+export type LocaleStylesMap = Record<string, Record<string, Partial<StudioStyle>>>;
+
+const LEGACY_WILDCARD_LOCALE = "*";
+const STYLE_PATCH_KEYS = new Set<string>(Object.keys(DEFAULT_STUDIO_STYLE));
+
+function looksLikeStylePatch(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  return Object.keys(value as Record<string, unknown>).some((key) => STYLE_PATCH_KEYS.has(key));
+}
+
+// Legacy flat styles apply to every locale until a save materializes locale-specific snapshots.
+export function parseLocaleStyles(value: unknown, cleanStyles = storedShotStyles): LocaleStylesMap {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const isLegacyFlat = entries.some(([, patch]) => looksLikeStylePatch(patch));
+
+  if (isLegacyFlat) {
+    return { [LEGACY_WILDCARD_LOCALE]: cleanStyles(value) };
+  }
+
+  const out: LocaleStylesMap = {};
+
+  for (const [locale, byBasename] of entries) {
+    if (!byBasename || typeof byBasename !== "object" || Array.isArray(byBasename)) continue;
+
+    out[locale] = cleanStyles(byBasename);
+  }
+
+  return out;
+}
+
+export function effectiveLocaleStyles(map: LocaleStylesMap, locale: string): Record<string, Partial<StudioStyle>> {
+  return map[locale] ?? map[LEGACY_WILDCARD_LOCALE] ?? {};
 }
 
 export function parseTitlesMap(value: unknown): Record<string, Record<string, string>> {
@@ -161,11 +198,12 @@ export async function ensureStudioOriginal(jobId: string): Promise<StudioRevisio
 
   const job = await prisma.screenshotJob.findUnique({
     where: { id: jobId },
-    select: { framedByLocale: true, screenshotStyle: true },
+    select: { framedByLocale: true, screenshotStyle: true, screenshotShotStyles: true },
   });
 
   if (!job) throw new Error(`Screenshot job ${jobId} not found`);
 
+  const shotStyles = parseLocaleStyles(job.screenshotShotStyles);
   const created = await prisma.screenshotRevision.create({
     data: {
       jobId,
@@ -173,6 +211,11 @@ export async function ensureStudioOriginal(jobId: string): Promise<StudioRevisio
       name: "Original",
       framedByLocale: (job.framedByLocale ?? {}) as Prisma.InputJsonValue,
       style: (job.screenshotStyle ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      styles: Object.fromEntries(
+        Object.keys(asFramedMap(job.framedByLocale)).map((locale) => [
+          locale, effectiveLocaleStyles(shotStyles, locale),
+        ]),
+      ) as Prisma.InputJsonValue,
     },
   });
 
@@ -202,7 +245,7 @@ export async function createStudioRevision(args: {
   framedByLocale: FramedMap;
   style?: StudioStyle;
   titles?: Record<string, Record<string, string>>;
-  styles?: Record<string, Partial<StudioStyle>>;
+  styles?: LocaleStylesMap;
 }): Promise<StudioRevisionInfo> {
   const created = await prisma.screenshotRevision.create({
     data: {
@@ -295,7 +338,7 @@ export async function setAppDefaultFromRevision(
 
   style.titleLines = [];
 
-  const styles = storedShotStyles(revision.styles);
+  const styles = parseLocaleStyles(revision.styles);
   const titles = parseTitlesMap(revision.titles);
 
   await prisma.app.update({
@@ -354,6 +397,124 @@ export async function deleteStudioRevision(
   return { jobId: revision.jobId, activeRevisionId: fallback?.id ?? null };
 }
 
+export async function deleteStudioLocales(jobId: string, locales: string[]): Promise<{ remainingLocales: string[] }> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(jobId) || locales.length === 0 ||
+      locales.some((locale) => !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(locale))) {
+    throw new Error("Invalid job or locales");
+  }
+  const toDelete = new Set(locales);
+
+  const job = await prisma.screenshotJob.findUnique({
+    where: { id: jobId },
+    select: { framedByLocale: true, screenshotSublines: true, screenshotUrls: true, screenshotShotStyles: true },
+  });
+
+  if (!job) throw new Error(`Screenshot job ${jobId} not found`);
+
+  const effective = await getEffectiveFramed(jobId);
+  const availableLocales = Object.keys(effective.framedByLocale);
+  if (locales.some((locale) => !availableLocales.includes(locale))) throw new Error("Requested locale not found in this job");
+  const framedByLocale = asFramedMap(job.framedByLocale);
+  const remainingLocales = availableLocales.filter((locale) => !toDelete.has(locale));
+
+  if (remainingLocales.length === 0) {
+    throw new Error("Cannot delete all locales — at least one must remain");
+  }
+
+  const sublines = parseTitlesMap(job.screenshotSublines);
+  const shotStyles = parseLocaleStyles(job.screenshotShotStyles);
+
+  for (const locale of toDelete) {
+    delete framedByLocale[locale];
+    delete sublines[locale];
+    delete shotStyles[locale];
+  }
+
+  const screenshotUrls = job.screenshotUrls.filter(
+    (url) => ![...toDelete].some((locale) => url.includes(`/raw/${locale}/`)),
+  );
+
+  await prisma.screenshotJob.update({
+    where: { id: jobId },
+    data: {
+      framedByLocale: framedByLocale as Prisma.InputJsonValue,
+      screenshotSublines: sublines as Prisma.InputJsonValue,
+      screenshotShotStyles: shotStyles as Prisma.InputJsonValue,
+      screenshotUrls,
+    },
+  });
+
+  const revisions = await prisma.screenshotRevision.findMany({
+    where: { jobId },
+    select: { id: true, rev: true, framedByLocale: true, titles: true, styles: true },
+  });
+
+  for (const revision of revisions) {
+    const revFramed = asFramedMap(revision.framedByLocale);
+    const revTitles = parseTitlesMap(revision.titles);
+    const revStyles = parseLocaleStyles(revision.styles);
+    let changed = false;
+
+    for (const locale of toDelete) {
+      if (locale in revFramed) {
+        delete revFramed[locale];
+        changed = true;
+      }
+
+      if (locale in revTitles) {
+        delete revTitles[locale];
+        changed = true;
+      }
+      if (locale in revStyles) {
+        delete revStyles[locale];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await prisma.screenshotRevision.update({
+        where: { id: revision.id },
+        data: {
+          framedByLocale: revFramed as Prisma.InputJsonValue,
+          titles: revTitles as Prisma.InputJsonValue,
+          styles: revStyles as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    const revDir = path.join(process.cwd(), "screenshots", jobId, "studio", `rev${revision.rev}`);
+
+    for (const locale of toDelete) {
+      fs.rmSync(path.join(revDir, locale), { recursive: true, force: true });
+    }
+  }
+
+  const draft = await prisma.screenshotStudioDraft.findUnique({ where: { jobId } });
+  if (draft) {
+    const draftStyles = parseLocaleStyles(draft.styles);
+    const draftTitles = parseTitlesMap(draft.titles);
+    const draftOrder = { ...((draft.order ?? {}) as Record<string, string[]>) };
+    for (const locale of toDelete) {
+      delete draftStyles[locale];
+      delete draftTitles[locale];
+      delete draftOrder[locale];
+    }
+    await prisma.screenshotStudioDraft.updateMany({
+      where: { jobId },
+      data: { styles: draftStyles as Prisma.InputJsonValue, titles: draftTitles as Prisma.InputJsonValue, order: draftOrder as Prisma.InputJsonValue },
+    });
+  }
+
+  const jobDir = path.join(process.cwd(), "screenshots", jobId);
+
+  for (const locale of toDelete) {
+    fs.rmSync(path.join(jobDir, "raw", locale), { recursive: true, force: true });
+    fs.rmSync(path.join(jobDir, "framed", locale), { recursive: true, force: true });
+  }
+
+  return { remainingLocales };
+}
+
 export function asPresetInfo(row: ScreenshotStylePreset): StudioPresetInfo {
   return {
     id: row.id,
@@ -370,6 +531,7 @@ export function asPresetInfo(row: ScreenshotStylePreset): StudioPresetInfo {
       titleOffsetX: row.titleOffsetX,
       titleOffsetY: row.titleOffsetY,
       titleScale: row.titleScale,
+      titleLineHeight: row.titleLineHeight,
       deviceScale: row.deviceScale,
       titleBoxW: row.titleBoxW,
       titleBoxH: row.titleBoxH,
@@ -413,6 +575,7 @@ export async function createStudioPreset(
         titleOffsetX: stored.titleOffsetX,
         titleOffsetY: stored.titleOffsetY,
         titleScale: stored.titleScale,
+        titleLineHeight: stored.titleLineHeight,
         deviceScale: stored.deviceScale,
         titleBoxW: stored.titleBoxW,
         titleBoxH: stored.titleBoxH,
@@ -450,6 +613,7 @@ export async function updateStudioPreset(
     titleOffsetX?: number;
     titleOffsetY?: number;
     titleScale?: number;
+    titleLineHeight?: number;
     deviceScale?: number;
     titleBoxW?: number;
     titleBoxH?: number;
@@ -477,6 +641,7 @@ export async function updateStudioPreset(
     data.titleOffsetX = merged.titleOffsetX;
     data.titleOffsetY = merged.titleOffsetY;
     data.titleScale = merged.titleScale;
+    data.titleLineHeight = merged.titleLineHeight;
     data.deviceScale = merged.deviceScale;
     data.titleBoxW = merged.titleBoxW;
     data.titleBoxH = merged.titleBoxH;

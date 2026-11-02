@@ -23,7 +23,17 @@ describe("studio draft normalization", () => {
       },
     });
 
-    assert.deepEqual(draft.styles, { "shot__a.png": { offsetX: 5 } });
+    assert.deepEqual(draft.styles, { "*": { "shot__a.png": { offsetX: 5 } } });
+  });
+
+  it("round-trips different geometry for the same screenshot in different languages", () => {
+    const styles = {
+      "en-US": { "shot.png": { offsetX: 5, deviceScale: 1.2 } },
+      "de-DE": { "shot.png": { offsetX: 0, deviceScale: 1 } },
+    };
+    const draft = normalizeStudioDraft({ styles });
+    assert.deepEqual(draft.styles, styles);
+    assert.deepEqual(normalizeStudioDraft(JSON.parse(JSON.stringify(draft))).styles, styles);
   });
 
   it("keeps only string titles per locale", () => {
