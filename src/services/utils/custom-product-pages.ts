@@ -1,3 +1,7 @@
+import { createHash } from "crypto";
+import axios from "./http";
+import type { AppStoreConnectClient } from "../appstore-connect";
+
 export const CPP_VERSION_EDITABLE_STATES = new Set(["PREPARE_FOR_SUBMISSION", "REJECTED"]);
 
 export function isEditableCppVersionState(state: string | null | undefined): boolean {
@@ -211,4 +215,23 @@ export function buildScreenshotAssetUrl(templateUrl: string, w: number, h: numbe
     .replace("{h}", String(h))
     .replace("{c}", "bb")
     .replace("{f}", "jpg");
+}
+
+export async function uploadFileToSet(
+  asc: AppStoreConnectClient,
+  setId: string,
+  fileName: string,
+  fileBytes: Buffer,
+): Promise<void> {
+  const reserved = await asc.reserveScreenshot(setId, fileName, fileBytes.length);
+
+  for (const op of reserved.attributes.uploadOperations) {
+    const chunk = fileBytes.subarray(op.offset, op.offset + op.length);
+
+    await axios.put(op.url, chunk, {
+      headers: Object.fromEntries(op.requestHeaders.map((header) => [header.name, header.value])),
+    });
+  }
+
+  await asc.commitScreenshot(reserved.id, createHash("md5").update(fileBytes).digest("hex"));
 }

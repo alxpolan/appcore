@@ -1,8 +1,6 @@
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
-import axios from "../utils/http";
-import { createHash } from "crypto";
 import { prisma } from "../../config";
 import type { CppProposal } from "@prisma/client";
 import type { AppStoreConnectClient } from "../appstore-connect";
@@ -12,6 +10,7 @@ import {
   findCppLocalizationsToRemove,
   findEditableCppVersion,
   pendingCppScreenshots,
+  uploadFileToSet,
 } from "../utils/custom-product-pages";
 import { asFramedMap } from "../screenshot-studio/revisions";
 import {
@@ -28,25 +27,6 @@ const CPP_SCREENSHOT_TIMEOUT_MS = 15 * 60 * 1000;
 
 export function cppPageName(campaignName: string | null, label: string): string {
   return `${campaignName ?? "Campaign"} - ${label}`.slice(0, 80);
-}
-
-async function uploadFileToSet(
-  asc: AppStoreConnectClient,
-  setId: string,
-  fileName: string,
-  fileBytes: Buffer,
-): Promise<void> {
-  const reserved = await asc.reserveScreenshot(setId, fileName, fileBytes.length);
-
-  for (const op of reserved.attributes.uploadOperations) {
-    const chunk = fileBytes.subarray(op.offset, op.offset + op.length);
-
-    await axios.put(op.url, chunk, {
-      headers: Object.fromEntries(op.requestHeaders.map((header) => [header.name, header.value])),
-    });
-  }
-
-  await asc.commitScreenshot(reserved.id, createHash("md5").update(fileBytes).digest("hex"));
 }
 
 async function waitForCppScreenshotsComplete(
