@@ -11,6 +11,8 @@ import {
   Frame,
   GitBranch,
   Languages,
+  LayoutGrid,
+  List,
   Lock,
   MonitorSmartphone,
   Play,
@@ -22,6 +24,7 @@ import {
 } from "lucide-react";
 import { useApi, apiGet, apiPost, apiPatch, apiDelete, getActiveBundleId } from "../hooks/useApi";
 import { studioApi } from "./screenshots/studioApi";
+import ScreenshotRunsTable from "./screenshots/ScreenshotRunsTable";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { RepoLinker, ScreenshotJobsTable } from "./Logs";
@@ -352,6 +355,7 @@ function StudioGallery({
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [viewMode, setViewMode] = useState<"gallery" | "table">("gallery");
 
   const { data, loading, refetch } = useApi<{ jobs: FramedJob[]; hasMore: boolean }>(
     `/github/screenshots/framed-history/${appId}?kind=real&limit=${GALLERY_PAGE_SIZE}&offset=0${showArchived ? "&archived=true" : ""}`,
@@ -402,7 +406,30 @@ function StudioGallery({
 
   return (
     <>
-      <div className="flex justify-end mb-3">
+      <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+        <div
+          className={`inline-flex items-center p-1 rounded-full border ${borderDefault} bg-gray-50/60 dark:bg-[#181c24]`}
+        >
+          <button
+            onClick={() => setViewMode("gallery")}
+            aria-pressed={viewMode === "gallery"}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${
+              viewMode === "gallery" ? "bg-[#595DD2] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : `${textMuted}`
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> Gallery
+          </button>
+          <button
+            onClick={() => setViewMode("table")}
+            aria-pressed={viewMode === "table"}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${
+              viewMode === "table" ? "bg-[#595DD2] text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : `${textMuted}`
+            }`}
+          >
+            <List className="w-3.5 h-3.5" /> Table
+          </button>
+        </div>
+        <div className="flex-1" />
         <button
           type="button"
           onClick={() => setShowArchived((v) => !v)}
@@ -426,16 +453,20 @@ function StudioGallery({
         </div>
       )}
 
-      {jobs.map((job, index) => (
-        <RunResults
-          key={job.id}
-          job={job}
-          isLatest={index === 0 && !showArchived}
-          archived={showArchived}
-          addToast={addToast}
-          onChanged={refetchAll}
-        />
-      ))}
+      {jobs.length > 0 && viewMode === "table" ? (
+        <ScreenshotRunsTable jobs={jobs} archived={showArchived} addToast={addToast} onChanged={refetchAll} />
+      ) : (
+        jobs.map((job, index) => (
+          <RunResults
+            key={job.id}
+            job={job}
+            isLatest={index === 0 && !showArchived}
+            archived={showArchived}
+            addToast={addToast}
+            onChanged={refetchAll}
+          />
+        ))
+      )}
 
       {hasMore && (
         <div className="flex justify-center mb-5">
