@@ -1,5 +1,5 @@
-import axios from "../../services/utils/http";
 import { logger } from "../../config";
+import { toReviewScreenshot, uploadReviewScreenshot } from "../../services/asc-review-screenshots";
 import {
   fetchSubscriptionPrices,
   fetchSubscriptionPriceEqualizations,
@@ -171,29 +171,7 @@ ascRouter.get(
       },
     });
 
-    if (!resp.data) {
-      res.json(null);
-
-      return;
-    }
-
-    const d = resp.data;
-    const asset = d.attributes?.imageAsset ?? null;
-
-    res.json({
-      id: d.id,
-      fileName: d.attributes?.fileName ?? null,
-      fileSize: d.attributes?.fileSize ?? null,
-      assetDeliveryState: d.attributes?.assetDeliveryState ?? null,
-      imageUrl: asset?.templateUrl
-        ? asset.templateUrl
-            .replace("{w}", String(asset.width ?? 320))
-            .replace("{h}", String(asset.height ?? 180))
-            .replace("{f}", "png")
-        : null,
-      width: asset?.width ?? null,
-      height: asset?.height ?? null,
-    });
+    res.json(toReviewScreenshot(resp.data));
   }),
 );
 
@@ -214,35 +192,9 @@ ascRouter.post(
     }
 
     const asc = await ascClientForUser(req.user!.userId);
-
-    const { data: createResp } = await asc.client.post("/subscriptionAppStoreReviewScreenshots", {
-      data: {
-        type: "subscriptionAppStoreReviewScreenshots",
-        attributes: { fileName, fileSize },
-        relationships: {
-          subscription: { data: { type: "subscriptions", id } },
-        },
-      },
-    });
-
-    const screenshotId = createResp.data.id;
-    const uploadOps: any[] = createResp.data.attributes?.uploadOperations ?? [];
-    const fileBytes = Buffer.from(fileData, "base64");
-
-    for (const op of uploadOps) {
-      const chunk = fileBytes.slice(op.offset, op.offset + op.length);
-
-      await axios.put(op.url, chunk, {
-        headers: Object.fromEntries((op.requestHeaders ?? []).map((h: any) => [h.name, h.value])),
-      });
-    }
-
-    await asc.client.patch(`/subscriptionAppStoreReviewScreenshots/${screenshotId}`, {
-      data: {
-        type: "subscriptionAppStoreReviewScreenshots",
-        id: screenshotId,
-        attributes: { uploaded: true },
-      },
+    const screenshotId = await uploadReviewScreenshot(asc, id, {
+      fileName,
+      bytes: Buffer.from(fileData, "base64"),
     });
 
     res.status(201).json({ id: screenshotId, ok: true });
