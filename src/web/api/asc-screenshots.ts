@@ -7,6 +7,16 @@ import {
   toLocalizationSummaries,
 } from "./asc-shared";
 import { ascRouter } from "./asc-versions";
+import {
+  REVIEW_ANSWER_FIELDS,
+  formatReviewAnswers,
+  normalizeReviewAnswers,
+} from "../../services/review-answers";
+import {
+  resolveReviewAttachmentFile,
+  toReviewAttachment,
+  uploadReviewAttachment,
+} from "../../services/asc-review-attachments";
 
 const FROZEN_STATES = new Set(["READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"]);
 
@@ -412,5 +422,219 @@ ascRouter.post(
       reviewerDemoUsername: detail?.demoAccountName ?? "",
       reviewerDemoPassword: detail?.demoAccountPassword ?? "",
     });
+  }),
+);
+
+ascRouter.get(
+  "/versions/review-answers",
+  bundleAccess("query"),
+  handle("getReviewAnswers", async (req, res) => {
+    const versionId = req.query.versionId as string;
+
+    if (!versionId) {
+      res.status(400).json({ error: "versionId required" });
+      return;
+    }
+
+    const dbVersion = await prisma.appStoreVersion.findFirst({
+      where: { id: versionId, bundleId: req.bundleApp!.bundleId },
+      select: { bundleId: true },
+    });
+
+    if (!dbVersion) {
+      res.status(404).json({ error: "Version not found" });
+      return;
+    }
+
+    const stored = await prisma.appReviewAnswers.findUnique({
+      where: { bundleId: dbVersion.bundleId },
+    });
+
+    res.json({ answers: stored?.answers ?? {}, fields: REVIEW_ANSWER_FIELDS });
+  }),
+);
+
+ascRouter.put(
+  "/versions/review-answers",
+  bundleAccess("body"),
+  handle("updateReviewAnswers", async (req, res) => {
+    const { versionId, answers } = req.body as { versionId?: string; answers?: unknown };
+
+    if (!versionId) {
+      res.status(400).json({ error: "versionId required" });
+      return;
+    }
+
+    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    if (!dbVersion) return;
+
+    let normalized: ReturnType<typeof normalizeReviewAnswers>;
+    try {
+      normalized = normalizeReviewAnswers(answers ?? {});
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid review answers" });
+
+      return;
+    }
+
+    await prisma.appReviewAnswers.upsert({
+      where: { bundleId: dbVersion.bundleId },
+      create: { bundleId: dbVersion.bundleId, answers: normalized },
+      update: { answers: normalized },
+    });
+
+    res.json({ ok: true, answers: normalized });
+  }),
+);
+
+ascRouter.post(
+  "/versions/review-answers/attach",
+  bundleAccess("body"),
+  handle("attachReviewAnswers", async (req, res) => {
+    const { versionId } = req.body as { versionId?: string };
+
+    if (!versionId) {
+      res.status(400).json({ error: "versionId required" });
+      return;
+    }
+
+    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    if (!dbVersion) return;
+
+    const stored = await prisma.appReviewAnswers.findUnique({
+      where: { bundleId: dbVersion.bundleId },
+    });
+    const notes = formatReviewAnswers((stored?.answers as Record<string, string>) ?? {});
+
+    if (!notes) {
+      res.status(400).json({ error: "No review answers saved for this app yet" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const detail = await asc.getReviewDetail(versionId);
+    const newDetailId = await asc.upsertReviewDetail(versionId, detail?.id ?? dbVersion.reviewDetailId ?? null, {
+      firstName: detail?.firstName ?? "",
+      lastName: detail?.lastName ?? "",
+      phone: detail?.phone ?? "",
+      email: detail?.email ?? "",
+      demoAccountRequired: detail?.demoAccountRequired ?? false,
+      demoAccountName: detail?.demoAccountName,
+      demoAccountPassword: detail?.demoAccountPassword,
+      notes,
+    });
+
+    await prisma.appStoreVersion.update({
+      where: { id: versionId },
+      data: { reviewDetailId: newDetailId },
+    });
+
+    res.json({ ok: true, notes });
+  }),
+);
+
+async function resolveVersionReviewDetailId(
+  asc: Awaited<ReturnType<typeof ascClientForUser>>,
+  versionId: string,
+  cachedDetailId: string | null,
+): Promise<string | null> {
+  if (cachedDetailId) return cachedDetailId;
+
+  const detail = await asc.getReviewDetail(versionId);
+
+  return detail?.id ?? null;
+}
+
+ascRouter.get(
+  "/versions/review-attachments",
+  bundleAccess("query"),
+  handle("listReviewAttachments", async (req, res) => {
+    const versionId = req.query.versionId as string;
+
+    if (!versionId) {
+      res.status(400).json({ error: "versionId required" });
+      return;
+    }
+
+    const dbVersion = await prisma.appStoreVersion.findFirst({
+      where: { id: versionId, bundleId: req.bundleApp!.bundleId },
+      select: { reviewDetailId: true },
+    });
+
+    if (!dbVersion) {
+      res.status(404).json({ error: "Version not found" });
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const detailId = await resolveVersionReviewDetailId(asc, versionId, dbVersion.reviewDetailId);
+
+    if (!detailId) {
+      res.json([]);
+
+      return;
+    }
+
+    const { data: resp } = await asc.client.get(`/appStoreReviewDetails/${detailId}/appStoreReviewAttachments`, {
+      params: { "fields[appStoreReviewAttachments]": "fileName,fileSize,assetDeliveryState", limit: 200 },
+    });
+
+    res.json((resp.data ?? []).map(toReviewAttachment));
+  }),
+);
+
+ascRouter.post(
+  "/versions/review-attachments",
+  bundleAccess("body"),
+  handle("uploadReviewAttachment", async (req, res) => {
+    const { versionId, fileName, fileDataUrl, fileUrl } = req.body as {
+      versionId?: string;
+      fileName?: string;
+      fileDataUrl?: string;
+      fileUrl?: string;
+    };
+
+    if (!versionId) {
+      res.status(400).json({ error: "versionId required" });
+      return;
+    }
+
+    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    if (!dbVersion) return;
+
+    let file: Awaited<ReturnType<typeof resolveReviewAttachmentFile>>;
+    try {
+      file = await resolveReviewAttachmentFile({ fileDataUrl, fileUrl, fileName });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid attachment file" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const detailId = await resolveVersionReviewDetailId(asc, versionId, dbVersion.reviewDetailId);
+
+    if (!detailId) {
+      res.status(400).json({ error: "Save reviewer info first so Apple has a review detail to attach to" });
+
+      return;
+    }
+
+    const attachmentId = await uploadReviewAttachment(asc, detailId, file);
+
+    res.status(201).json({ id: attachmentId, ok: true });
+  }),
+);
+
+ascRouter.delete(
+  "/versions/review-attachments/:id",
+  handle("deleteReviewAttachment", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+
+    await asc.client.delete(`/appStoreReviewAttachments/${id}`);
+
+    res.json({ ok: true });
   }),
 );

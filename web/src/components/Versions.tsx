@@ -18,6 +18,7 @@ import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { ConnectedScreenshotsPanel } from "./screenshots/ConnectedScreenshotsPanel";
 import AgeRatingPanel from "./AgeRatingPanel";
+import ReviewAnswersPanel from "./ReviewAnswersPanel";
 import {
   Send,
   ChevronDown,
@@ -2201,6 +2202,7 @@ export default function Versions({ addToast }: Props) {
         ) : null}
 
         {data.versionId && <ReviewerInfoPanel data={data} addToast={addToast} onRefetch={refetch} />}
+        {data.versionId && <ReviewAnswersPanel versionId={data.versionId} addToast={addToast} />}
       </fieldset>
     </div>
   );

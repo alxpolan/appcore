@@ -1045,6 +1045,12 @@ model AppStoreVersion {
   @@index([bundleId, syncedAt])
 }
 
+model AppReviewAnswers {
+  bundleId  String   @unique
+  answers   Json
+  updatedAt DateTime @updatedAt
+}
+
 model AppStoreVersionLocalization {
   id                     String          @id @default(cuid())
   versionId              String

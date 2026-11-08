@@ -330,6 +330,7 @@ export class AppStoreConnectClient extends AppStoreConnectCore {
       demoAccountRequired: boolean;
       demoAccountName?: string;
       demoAccountPassword?: string;
+      notes?: string;
     },
   ): Promise<string> {
     const attributes: Record<string, any> = {
@@ -339,6 +340,8 @@ export class AppStoreConnectClient extends AppStoreConnectCore {
       contactEmail: info.email,
       demoAccountRequired: info.demoAccountRequired,
     };
+
+    if (info.notes !== undefined) attributes.notes = info.notes;
 
     if (info.demoAccountRequired) {
       attributes.demoAccountName = info.demoAccountName ?? "";

@@ -1110,6 +1110,13 @@ export interface RetentionOfferPrice {
   pricePointId: string | null;
 }
 
+export interface ReviewAttachment {
+  id: string;
+  fileName: string | null;
+  fileSize: number | null;
+  assetDeliveryState: string | null;
+}
+
 export interface SubscriptionWinBackOffer {
   id: string;
   referenceName: string;
