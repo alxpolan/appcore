@@ -1,6 +1,11 @@
 import { ascClientForUser, handle } from "./asc-shared";
 import { fetchSubscriptionPrices } from "../../services/asc-subscription-prices";
 import { buildIntroductoryOfferBody, toIntroductoryOffer } from "../../services/asc-introductory-offers";
+import {
+  buildRetentionOfferBody,
+  buildRetentionOfferUpdateBody,
+  toRetentionOffer,
+} from "../../services/asc-retention-offers";
 import { ascRouter } from "./asc-versions";
 
 ascRouter.post(
@@ -530,6 +535,169 @@ ascRouter.delete(
     const asc = await ascClientForUser(req.user!.userId);
 
     await asc.client.delete(`/subscriptionIntroductoryOffers/${id}`);
+
+    res.json({ ok: true });
+  }),
+);
+
+ascRouter.get(
+  "/subscriptions/:id/retention-offers",
+  handle("listRetentionOffers", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.get(`/subscriptions/${id}/retentionOffers`, {
+      params: {
+        "fields[retentionOffers]":
+          "referenceName,offerId,duration,offerMode,periodCount,customerEligibilityPaidSubscriptionDurationInMonths,customerEligibilityWaitBetweenOffersInMonths,targetSubscriptionPlanType",
+        limit: 200,
+      },
+    });
+
+    res.json((resp.data ?? []).map(toRetentionOffer));
+  }),
+);
+
+ascRouter.get(
+  "/subscriptions/retention-offers/:id/prices",
+  handle("listRetentionOfferPrices", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.get(`/retentionOffers/${id}/prices`, {
+      params: {
+        include: "territory,subscriptionPricePoint",
+        "fields[retentionOfferPrices]": "territory,subscriptionPricePoint",
+        "fields[territories]": "currency",
+        "fields[subscriptionPricePoints]": "customerPrice,proceeds,territory",
+        limit: 200,
+      },
+    });
+
+    const included: any[] = resp.included ?? [];
+    const terrMap = new Map<string, any>(
+      included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
+    );
+
+    const ppMap = new Map<string, any>(
+      included.filter((i: any) => i.type === "subscriptionPricePoints").map((pp: any) => [pp.id, pp]),
+    );
+
+    res.json(
+      (resp.data ?? []).map((p: any) => {
+        const terrId = p.relationships?.territory?.data?.id ?? null;
+        const ppId = p.relationships?.subscriptionPricePoint?.data?.id ?? null;
+        const terr = terrId ? terrMap.get(terrId) : null;
+        const pp = ppId ? ppMap.get(ppId) : null;
+
+        return {
+          id: p.id,
+          territory: terrId,
+          currency: terr?.attributes?.currency ?? null,
+          customerPrice: pp?.attributes?.customerPrice ?? null,
+          proceeds: pp?.attributes?.proceeds ?? null,
+          pricePointId: ppId,
+        };
+      }),
+    );
+  }),
+);
+
+ascRouter.post(
+  "/subscriptions/retention-offers",
+  handle("createRetentionOffer", async (req, res) => {
+    const {
+      subscriptionId,
+      referenceName,
+      offerId,
+      duration,
+      offerMode,
+      periodCount,
+      customerEligibilityPaidSubscriptionDurationInMonths,
+      customerEligibilityWaitBetweenOffersInMonths,
+      targetSubscriptionPlanType,
+      priceIds,
+    } = req.body as {
+      subscriptionId?: string;
+      referenceName?: string;
+      offerId?: string;
+      duration?: string;
+      offerMode?: string;
+      periodCount?: number;
+      customerEligibilityPaidSubscriptionDurationInMonths?: number;
+      customerEligibilityWaitBetweenOffersInMonths?: number | null;
+      targetSubscriptionPlanType?: string | null;
+      priceIds?: string[];
+    };
+
+    if (!subscriptionId) {
+      res.status(400).json({ error: "subscriptionId is required" });
+      return;
+    }
+
+    let body: ReturnType<typeof buildRetentionOfferBody>;
+    try {
+      body = buildRetentionOfferBody({
+        subscriptionId,
+        referenceName: referenceName ?? "",
+        offerId: offerId ?? "",
+        duration: duration ?? "",
+        offerMode: offerMode ?? "",
+        periodCount: periodCount ?? 0,
+        customerEligibilityPaidSubscriptionDurationInMonths:
+          customerEligibilityPaidSubscriptionDurationInMonths ?? 0,
+        customerEligibilityWaitBetweenOffersInMonths,
+        targetSubscriptionPlanType,
+        priceIds: priceIds ?? [],
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid retention offer" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.post("/retentionOffers", body);
+
+    res.status(201).json(toRetentionOffer(resp.data));
+  }),
+);
+
+ascRouter.patch(
+  "/subscriptions/retention-offers/:id",
+  handle("updateRetentionOffer", async (req, res) => {
+    const { id } = req.params;
+    const { customerEligibilityPaidSubscriptionDurationInMonths, customerEligibilityWaitBetweenOffersInMonths } =
+      req.body as {
+        customerEligibilityPaidSubscriptionDurationInMonths?: number | null;
+        customerEligibilityWaitBetweenOffersInMonths?: number | null;
+      };
+
+    let body: ReturnType<typeof buildRetentionOfferUpdateBody>;
+    try {
+      body = buildRetentionOfferUpdateBody({
+        id,
+        customerEligibilityPaidSubscriptionDurationInMonths,
+        customerEligibilityWaitBetweenOffersInMonths,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid retention offer" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.patch(`/retentionOffers/${id}`, body);
+
+    res.json(toRetentionOffer(resp.data));
+  }),
+);
+
+ascRouter.delete(
+  "/subscriptions/retention-offers/:id",
+  handle("deleteRetentionOffer", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+
+    await asc.client.delete(`/retentionOffers/${id}`);
 
     res.json({ ok: true });
   }),

@@ -1088,6 +1088,28 @@ export interface SubscriptionIntroductoryOffer {
   endDate: string | null;
 }
 
+export interface SubscriptionRetentionOffer {
+  id: string;
+  referenceName: string;
+  offerId: string;
+  duration: string;
+  offerMode: string;
+  periodCount: number;
+  customerEligibilityPaidSubscriptionDurationInMonths: number;
+  customerEligibilityWaitBetweenOffersInMonths: number | null;
+  targetSubscriptionPlanType: string | null;
+  priceIds: string[];
+}
+
+export interface RetentionOfferPrice {
+  id: string;
+  territory: string | null;
+  currency: string | null;
+  customerPrice: string | null;
+  proceeds: string | null;
+  pricePointId: string | null;
+}
+
 export interface ProductItem {
   id: string;
   name: string;

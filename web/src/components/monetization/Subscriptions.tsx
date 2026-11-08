@@ -15,6 +15,7 @@ import {
   Upload,
   Sparkles,
   Clock,
+  Undo2,
 } from "lucide-react";
 import { authHeaders, getActiveBundleId } from "../../hooks/useApi";
 import {
@@ -44,6 +45,7 @@ import type {
 import { territoryFlagSrc } from "../../utils/territoryFlags";
 import SmartPricingModal from "./SmartPricingModal";
 import TrialPanel from "./TrialPanel";
+import RetentionPanel from "./RetentionPanel";
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -1373,7 +1375,9 @@ function DetailView({ sub, group, bundleId, onBack, onUpdated, onDeleted, addToa
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"localizations" | "pricing" | "trial" | "review">("localizations");
+  const [activeTab, setActiveTab] = useState<"localizations" | "pricing" | "trial" | "retention" | "review">(
+    "localizations",
+  );
 
   const handleUpdate = async (form: SubFormState) => {
     setSaving(true);
@@ -1577,6 +1581,16 @@ function DetailView({ sub, group, bundleId, onBack, onUpdated, onDeleted, addToa
                 <Clock className="w-3.5 h-3.5" /> Trial
               </button>
               <button
+                onClick={() => setActiveTab("retention")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+                  activeTab === "retention"
+                    ? `bg-[#f3f4f6] dark:bg-[#252b38] ${textPrimary}`
+                    : `${textSecondary} hover:text-[#111827] dark:hover:text-[#e8eaf0]`
+                }`}
+              >
+                <Undo2 className="w-3.5 h-3.5" /> Retention
+              </button>
+              <button
                 onClick={() => setActiveTab("review")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
                   activeTab === "review"
@@ -1593,6 +1607,8 @@ function DetailView({ sub, group, bundleId, onBack, onUpdated, onDeleted, addToa
               <PricingPanel subscriptionId={sub.id} addToast={addToast} />
             ) : activeTab === "trial" ? (
               <TrialPanel subscriptionId={sub.id} addToast={addToast} />
+            ) : activeTab === "retention" ? (
+              <RetentionPanel subscriptionId={sub.id} addToast={addToast} />
             ) : (
               <ReviewPanel
                 subscriptionId={sub.id}
