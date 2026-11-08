@@ -1,5 +1,10 @@
 import { prisma } from "../../config";
-import { bundleAccess, loadVersionInBundle, loadVersionLocalizationInBundle } from "../auth";
+import {
+  bundleAccess,
+  loadVersionInBundle,
+  loadVersionLocalizationInBundle,
+  verifyAppOwnershipByBundleId,
+} from "../auth";
 import {
   CACHE_TTL_MS,
   ascClientForUser,
@@ -427,7 +432,6 @@ ascRouter.post(
 
 ascRouter.get(
   "/versions/review-answers",
-  bundleAccess("query"),
   handle("getReviewAnswers", async (req, res) => {
     const versionId = req.query.versionId as string;
 
@@ -436,15 +440,8 @@ ascRouter.get(
       return;
     }
 
-    const dbVersion = await prisma.appStoreVersion.findFirst({
-      where: { id: versionId, bundleId: req.bundleApp!.bundleId },
-      select: { bundleId: true },
-    });
-
-    if (!dbVersion) {
-      res.status(404).json({ error: "Version not found" });
-      return;
-    }
+    const dbVersion = await loadOwnedVersionById(req, res, versionId);
+    if (!dbVersion) return;
 
     const stored = await prisma.appReviewAnswers.findUnique({
       where: { bundleId: dbVersion.bundleId },
@@ -456,7 +453,6 @@ ascRouter.get(
 
 ascRouter.put(
   "/versions/review-answers",
-  bundleAccess("body"),
   handle("updateReviewAnswers", async (req, res) => {
     const { versionId, answers } = req.body as { versionId?: string; answers?: unknown };
 
@@ -465,7 +461,7 @@ ascRouter.put(
       return;
     }
 
-    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    const dbVersion = await loadOwnedVersionById(req, res, versionId);
     if (!dbVersion) return;
 
     let normalized: ReturnType<typeof normalizeReviewAnswers>;
@@ -489,7 +485,6 @@ ascRouter.put(
 
 ascRouter.post(
   "/versions/review-answers/attach",
-  bundleAccess("body"),
   handle("attachReviewAnswers", async (req, res) => {
     const { versionId } = req.body as { versionId?: string };
 
@@ -498,7 +493,7 @@ ascRouter.post(
       return;
     }
 
-    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    const dbVersion = await loadOwnedVersionById(req, res, versionId);
     if (!dbVersion) return;
 
     const stored = await prisma.appReviewAnswers.findUnique({
@@ -534,6 +529,21 @@ ascRouter.post(
   }),
 );
 
+async function loadOwnedVersionById(req: any, res: any, versionId: string) {
+  const dbVersion = await prisma.appStoreVersion.findUnique({ where: { id: versionId } });
+
+  if (!dbVersion) {
+    res.status(404).json({ error: "Version not found" });
+
+    return null;
+  }
+
+  const app = await verifyAppOwnershipByBundleId(req, res, dbVersion.bundleId);
+  if (!app) return null;
+
+  return dbVersion;
+}
+
 async function resolveVersionReviewDetailId(
   asc: Awaited<ReturnType<typeof ascClientForUser>>,
   versionId: string,
@@ -548,7 +558,6 @@ async function resolveVersionReviewDetailId(
 
 ascRouter.get(
   "/versions/review-attachments",
-  bundleAccess("query"),
   handle("listReviewAttachments", async (req, res) => {
     const versionId = req.query.versionId as string;
 
@@ -557,15 +566,8 @@ ascRouter.get(
       return;
     }
 
-    const dbVersion = await prisma.appStoreVersion.findFirst({
-      where: { id: versionId, bundleId: req.bundleApp!.bundleId },
-      select: { reviewDetailId: true },
-    });
-
-    if (!dbVersion) {
-      res.status(404).json({ error: "Version not found" });
-      return;
-    }
+    const dbVersion = await loadOwnedVersionById(req, res, versionId);
+    if (!dbVersion) return;
 
     const asc = await ascClientForUser(req.user!.userId);
     const detailId = await resolveVersionReviewDetailId(asc, versionId, dbVersion.reviewDetailId);
@@ -586,7 +588,6 @@ ascRouter.get(
 
 ascRouter.post(
   "/versions/review-attachments",
-  bundleAccess("body"),
   handle("uploadReviewAttachment", async (req, res) => {
     const { versionId, fileName, fileDataUrl, fileUrl } = req.body as {
       versionId?: string;
@@ -600,7 +601,7 @@ ascRouter.post(
       return;
     }
 
-    const dbVersion = await loadVersionInBundle(res, versionId, req.bundleApp!.bundleId);
+    const dbVersion = await loadOwnedVersionById(req, res, versionId);
     if (!dbVersion) return;
 
     let file: Awaited<ReturnType<typeof resolveReviewAttachmentFile>>;
