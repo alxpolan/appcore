@@ -6,6 +6,11 @@ import {
   buildRetentionOfferUpdateBody,
   toRetentionOffer,
 } from "../../services/asc-retention-offers";
+import {
+  buildWinBackOfferBody,
+  buildWinBackOfferUpdateBody,
+  toWinBackOffer,
+} from "../../services/asc-win-back-offers";
 import { ascRouter } from "./asc-versions";
 
 ascRouter.post(
@@ -698,6 +703,207 @@ ascRouter.delete(
     const asc = await ascClientForUser(req.user!.userId);
 
     await asc.client.delete(`/retentionOffers/${id}`);
+
+    res.json({ ok: true });
+  }),
+);
+
+ascRouter.get(
+  "/subscriptions/:id/win-back-offers",
+  handle("listWinBackOffers", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.get(`/subscriptions/${id}/winBackOffers`, {
+      params: {
+        "fields[winBackOffers]":
+          "referenceName,offerId,duration,offerMode,periodCount,customerEligibilityPaidSubscriptionDurationInMonths,customerEligibilityTimeSinceLastSubscribedInMonths,customerEligibilityWaitBetweenOffersInMonths,targetSubscriptionPlanType,startDate,endDate,priority,promotionIntent",
+        limit: 200,
+      },
+    });
+
+    res.json((resp.data ?? []).map(toWinBackOffer));
+  }),
+);
+
+ascRouter.get(
+  "/subscriptions/win-back-offers/:id/prices",
+  handle("listWinBackOfferPrices", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.get(`/winBackOffers/${id}/prices`, {
+      params: {
+        include: "territory,subscriptionPricePoint",
+        "fields[winBackOfferPrices]": "territory,subscriptionPricePoint",
+        "fields[territories]": "currency",
+        "fields[subscriptionPricePoints]": "customerPrice,proceeds,territory",
+        limit: 200,
+      },
+    });
+
+    const included: any[] = resp.included ?? [];
+    const terrMap = new Map<string, any>(
+      included.filter((i: any) => i.type === "territories").map((t: any) => [t.id, t]),
+    );
+
+    const ppMap = new Map<string, any>(
+      included.filter((i: any) => i.type === "subscriptionPricePoints").map((pp: any) => [pp.id, pp]),
+    );
+
+    res.json(
+      (resp.data ?? []).map((p: any) => {
+        const terrId = p.relationships?.territory?.data?.id ?? null;
+        const ppId = p.relationships?.subscriptionPricePoint?.data?.id ?? null;
+        const terr = terrId ? terrMap.get(terrId) : null;
+        const pp = ppId ? ppMap.get(ppId) : null;
+
+        return {
+          id: p.id,
+          territory: terrId,
+          currency: terr?.attributes?.currency ?? null,
+          customerPrice: pp?.attributes?.customerPrice ?? null,
+          proceeds: pp?.attributes?.proceeds ?? null,
+          pricePointId: ppId,
+        };
+      }),
+    );
+  }),
+);
+
+ascRouter.post(
+  "/subscriptions/win-back-offers",
+  handle("createWinBackOffer", async (req, res) => {
+    const {
+      subscriptionId,
+      referenceName,
+      offerId,
+      duration,
+      offerMode,
+      periodCount,
+      customerEligibilityPaidSubscriptionDurationInMonths,
+      customerEligibilityTimeSinceLastSubscribedMinMonths,
+      customerEligibilityTimeSinceLastSubscribedMaxMonths,
+      customerEligibilityWaitBetweenOffersInMonths,
+      targetSubscriptionPlanType,
+      startDate,
+      endDate,
+      priority,
+      promotionIntent,
+      priceIds,
+    } = req.body as {
+      subscriptionId?: string;
+      referenceName?: string;
+      offerId?: string;
+      duration?: string;
+      offerMode?: string;
+      periodCount?: number;
+      customerEligibilityPaidSubscriptionDurationInMonths?: number;
+      customerEligibilityTimeSinceLastSubscribedMinMonths?: number;
+      customerEligibilityTimeSinceLastSubscribedMaxMonths?: number;
+      customerEligibilityWaitBetweenOffersInMonths?: number | null;
+      targetSubscriptionPlanType?: string | null;
+      startDate?: string;
+      endDate?: string | null;
+      priority?: string;
+      promotionIntent?: string | null;
+      priceIds?: string[];
+    };
+
+    if (!subscriptionId) {
+      res.status(400).json({ error: "subscriptionId is required" });
+      return;
+    }
+
+    let body: ReturnType<typeof buildWinBackOfferBody>;
+    try {
+      body = buildWinBackOfferBody({
+        subscriptionId,
+        referenceName: referenceName ?? "",
+        offerId: offerId ?? "",
+        duration: duration ?? "",
+        offerMode: offerMode ?? "",
+        periodCount: periodCount ?? 0,
+        customerEligibilityPaidSubscriptionDurationInMonths:
+          customerEligibilityPaidSubscriptionDurationInMonths ?? 0,
+        customerEligibilityTimeSinceLastSubscribedMinMonths,
+        customerEligibilityTimeSinceLastSubscribedMaxMonths,
+        customerEligibilityWaitBetweenOffersInMonths,
+        targetSubscriptionPlanType,
+        startDate: startDate ?? "",
+        endDate,
+        priority: priority ?? "",
+        promotionIntent,
+        priceIds: priceIds ?? [],
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid win-back offer" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.post("/winBackOffers", body);
+
+    res.status(201).json(toWinBackOffer(resp.data));
+  }),
+);
+
+ascRouter.patch(
+  "/subscriptions/win-back-offers/:id",
+  handle("updateWinBackOffer", async (req, res) => {
+    const { id } = req.params;
+    const {
+      customerEligibilityPaidSubscriptionDurationInMonths,
+      customerEligibilityTimeSinceLastSubscribedMinMonths,
+      customerEligibilityTimeSinceLastSubscribedMaxMonths,
+      customerEligibilityWaitBetweenOffersInMonths,
+      startDate,
+      endDate,
+      priority,
+      promotionIntent,
+    } = req.body as {
+      customerEligibilityPaidSubscriptionDurationInMonths?: number | null;
+      customerEligibilityTimeSinceLastSubscribedMinMonths?: number | null;
+      customerEligibilityTimeSinceLastSubscribedMaxMonths?: number | null;
+      customerEligibilityWaitBetweenOffersInMonths?: number | null;
+      startDate?: string | null;
+      endDate?: string | null;
+      priority?: string | null;
+      promotionIntent?: string | null;
+    };
+
+    let body: ReturnType<typeof buildWinBackOfferUpdateBody>;
+    try {
+      body = buildWinBackOfferUpdateBody({
+        id,
+        customerEligibilityPaidSubscriptionDurationInMonths,
+        customerEligibilityTimeSinceLastSubscribedMinMonths,
+        customerEligibilityTimeSinceLastSubscribedMaxMonths,
+        customerEligibilityWaitBetweenOffersInMonths,
+        startDate,
+        endDate,
+        priority,
+        promotionIntent,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid win-back offer" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.patch(`/winBackOffers/${id}`, body);
+
+    res.json(toWinBackOffer(resp.data));
+  }),
+);
+
+ascRouter.delete(
+  "/subscriptions/win-back-offers/:id",
+  handle("deleteWinBackOffer", async (req, res) => {
+    const { id } = req.params;
+    const asc = await ascClientForUser(req.user!.userId);
+
+    await asc.client.delete(`/winBackOffers/${id}`);
 
     res.json({ ok: true });
   }),

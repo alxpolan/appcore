@@ -1110,6 +1110,25 @@ export interface RetentionOfferPrice {
   pricePointId: string | null;
 }
 
+export interface SubscriptionWinBackOffer {
+  id: string;
+  referenceName: string;
+  offerId: string;
+  duration: string;
+  offerMode: string;
+  periodCount: number;
+  customerEligibilityPaidSubscriptionDurationInMonths: number;
+  customerEligibilityTimeSinceLastSubscribedMinMonths: number | null;
+  customerEligibilityTimeSinceLastSubscribedMaxMonths: number | null;
+  customerEligibilityWaitBetweenOffersInMonths: number | null;
+  targetSubscriptionPlanType: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  priority: string | null;
+  promotionIntent: string | null;
+  priceIds: string[];
+}
+
 export interface ProductItem {
   id: string;
   name: string;
