@@ -21,6 +21,16 @@ async function resolveAdamId(bundleId: string): Promise<string | null> {
   return String(app.trackId);
 }
 
+function irisRouteError(res: any, err: any, fallback: string): void {
+  if (err?.name === "WebSessionExpiredError") {
+    res.status(401).json({ error: "APPLE_SESSION_EXPIRED" });
+
+    return;
+  }
+
+  res.status(400).json({ error: err?.message ?? fallback });
+}
+
 async function catalogIds(session: ReturnType<typeof resolveIrisSession>, adamId: string, url: string) {
   const data = await irisFetch(session, adamId, "GET", url);
 
@@ -60,12 +70,18 @@ ascRouter.get(
       return;
     }
 
-    const [usages, publishState] = await Promise.all([
-      listAppDataUsages(session, adamId),
-      getDataUsagePublishState(session, adamId),
-    ]);
+    try {
+      const [usages, publishState] = await Promise.all([
+        listAppDataUsages(session, adamId),
+        getDataUsagePublishState(session, adamId),
+      ]);
 
-    res.json({ usages, publishState });
+      res.json({ usages, publishState });
+    } catch (err: any) {
+      irisRouteError(res, err, "Could not load data usages");
+
+      return;
+    }
   }),
 );
 
@@ -96,12 +112,18 @@ ascRouter.get(
       return;
     }
 
-    const [categories, purposes] = await Promise.all([
-      listDataUsageCategories(session, adamId),
-      catalogIds(session, adamId, dataUsagePurposesUrl()),
-    ]);
+    try {
+      const [categories, purposes] = await Promise.all([
+        listDataUsageCategories(session, adamId),
+        catalogIds(session, adamId, dataUsagePurposesUrl()),
+      ]);
 
-    res.json({ categories, purposes });
+      res.json({ categories, purposes });
+    } catch (err: any) {
+      irisRouteError(res, err, "Could not load catalogs");
+
+      return;
+    }
   }),
 );
 
@@ -140,7 +162,7 @@ ascRouter.post(
     try {
       res.status(201).json(await createAppDataUsage(session, adamId, categoryId ?? "", purposeId, dataProtectionId));
     } catch (err: any) {
-      res.status(400).json({ error: err.message ?? "Invalid data usage" });
+      irisRouteError(res, err, "Invalid data usage");
 
       return;
     }
@@ -174,8 +196,14 @@ ascRouter.delete(
       return;
     }
 
-    await deleteAppDataUsage(session, adamId, id);
+    try {
+      await deleteAppDataUsage(session, adamId, id);
 
-    res.json({ ok: true });
+      res.json({ ok: true });
+    } catch (err: any) {
+      irisRouteError(res, err, "Could not delete data usage");
+
+      return;
+    }
   }),
 );

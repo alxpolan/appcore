@@ -43,7 +43,23 @@ function groupCategories(categories: AppDataUsageCategory[]) {
     .sort((a, b) => a.groupingId.localeCompare(b.groupingId));
 }
 
+interface SessionStatus {
+  configured: boolean;
+  valid: boolean;
+  checkedAt: string | null;
+  reason: string | null;
+}
+
 export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) {
+  const [session, setSession] = useState<SessionStatus | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginId, setLoginId] = useState<string | null>(null);
+  const [loginStage, setLoginStage] = useState<string | null>(null);
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
+  const [loginCode, setLoginCode] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
   const [usages, setUsages] = useState<AppDataUsage[] | null>(null);
   const [publishState, setPublishState] = useState<DataUsagePublishState | null>(null);
   const [categories, setCategories] = useState<AppDataUsageCategory[]>([]);
@@ -57,8 +73,19 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
 
+  const loadSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/asc/privacy/session", { headers: authHeaders() });
+
+      if (res.ok) setSession(await res.json());
+    } catch {
+      return;
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
+    await loadSession();
     try {
       const [usagesRes, catalogsRes] = await Promise.all([
         fetch(`/api/asc/privacy/data-usages?bundleId=${encodeURIComponent(bundleId)}`, {
@@ -82,10 +109,12 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
       addToast(err.message, "error");
       setUsages([]);
       setUnavailable(err.message);
+
+      if (err.message === "APPLE_SESSION_EXPIRED") await loadSession();
     } finally {
       setLoading(false);
     }
-  }, [bundleId]);
+  }, [bundleId, loadSession]);
 
   useEffect(() => {
     load();
@@ -139,6 +168,183 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
     }
   };
 
+  const pollLogin = useCallback(async (id: string) => {
+    for (let attempt = 0; attempt < 90; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      try {
+        const res = await fetch(`/api/asc/privacy/session/login/${id}`, { headers: authHeaders() });
+
+        if (!res.ok) break;
+        const state = await res.json();
+        setLoginStage(state.stage);
+        setLoginMessage(state.message ?? null);
+
+        if (state.stage === "done" || state.stage === "failed") {
+          if (state.stage === "done") {
+            setShowLogin(false);
+            setLoginPassword("");
+            setLoginCode("");
+            setLoginId(null);
+            await loadSession();
+            await load();
+            addToast("Apple session renewed", "success");
+          } else if (state.message) {
+            addToast(state.message, "error");
+          }
+
+          break;
+        }
+      } catch {
+        break;
+      }
+    }
+
+    setLoginBusy(false);
+  }, [loadSession, load, addToast]);
+
+  const startLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword) return;
+    setLoginBusy(true);
+    setLoginMessage(null);
+    try {
+      const res = await fetch("/api/asc/privacy/session/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ email: loginEmail.trim(), password: loginPassword }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setLoginId(json.id);
+      setLoginStage(json.stage);
+      void pollLogin(json.id);
+    } catch (err: any) {
+      addToast(err.message, "error");
+      setLoginBusy(false);
+    }
+  };
+
+  const submitCode = async () => {
+    if (!loginId || !loginCode.trim()) return;
+    try {
+      const res = await fetch(`/api/asc/privacy/session/login/${loginId}/code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ code: loginCode.trim() }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setLoginCode("");
+    } catch (err: any) {
+      addToast(err.message, "error");
+    }
+  };
+
+  const closeLogin = async () => {
+    if (loginId && loginStage !== "done") {
+      await fetch(`/api/asc/privacy/session/login/${loginId}/cancel`, {
+        method: "POST",
+        headers: authHeaders(),
+      }).catch(() => undefined);
+    }
+
+    setShowLogin(false);
+    setLoginId(null);
+    setLoginStage(null);
+    setLoginPassword("");
+    setLoginCode("");
+    setLoginBusy(false);
+  };
+
+  const openLogin = () => {
+    setLoginId(null);
+    setLoginStage(null);
+    setLoginMessage(null);
+    setLoginPassword("");
+    setLoginCode("");
+    setShowLogin(true);
+  };
+
+  const loginModal = showLogin && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeLogin}>
+      <div
+        className={`w-full max-w-sm rounded-2xl border ${borderDefault} bg-white dark:bg-[#1c2028] p-5 flex flex-col gap-2`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className={`text-[13px] font-semibold ${textPrimary}`}>Bei Apple anmelden</p>
+        <p className={`text-[12px] ${textSecondary}`}>
+          Erneuert die Apple-Web-Session für den Datenschutzbogen. Das Passwort wird nur für diesen Login verwendet
+          und nicht gespeichert.
+        </p>
+        {loginStage == null && (
+          <>
+            <input
+              className={inputCls}
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              placeholder="Apple-ID (E-Mail)"
+              autoComplete="username"
+            />
+            <input
+              className={inputCls}
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              placeholder="Passwort"
+              autoComplete="current-password"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void startLogin();
+              }}
+            />
+          </>
+        )}
+        {loginStage === "2fa" && (
+          <>
+            <p className={`text-[12px] ${textSecondary}`}>
+              {loginMessage ?? "Gib den 6-stelligen Code von deinem vertrauenswürdigen Gerät ein."}
+            </p>
+            <input
+              className={inputCls}
+              value={loginCode}
+              onChange={(e) => setLoginCode(e.target.value)}
+              placeholder="123456"
+              inputMode="numeric"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitCode();
+              }}
+            />
+          </>
+        )}
+        {loginStage != null && loginStage !== "2fa" && (
+          <p className={`text-[12px] ${textSecondary}`}>
+            {loginStage === "password" ? "Melde an…" : (loginMessage ?? loginStage)}
+          </p>
+        )}
+        <div className="flex gap-2 justify-end">
+          <button onClick={closeLogin} className={btnSecSm}>
+            <X className="w-3 h-3" />
+            Abbrechen
+          </button>
+          {loginStage == null && (
+            <button onClick={startLogin} disabled={loginBusy || !loginEmail.trim() || !loginPassword} className={btnSecSm}>
+              {loginBusy ? <div className="spinner !w-3 !h-3" /> : <Check className="w-3 h-3" />}
+              Anmelden
+            </button>
+          )}
+          {loginStage === "2fa" && (
+            <button onClick={submitCode} disabled={!loginCode.trim()} className={btnSecSm}>
+              <Check className="w-3 h-3" />
+              Bestätigen
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   if (loading && !usages) {
     return (
       <div className={`flex items-center gap-1.5 py-4 text-[12px] ${textMuted}`}>
@@ -149,11 +355,18 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
 
   if (unavailable) {
     return (
+      <>
       <div className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl p-5 mb-5`}>
         <h2 className={`text-[13px] font-bold uppercase tracking-widest ${textMuted} mb-1`}>App Privacy</h2>
-        <p className={`text-[13px] ${textSecondary}`}>{unavailable}</p>
+        <p className={`text-[13px] ${textSecondary} mb-3`}>{unavailable}</p>
+        <button onClick={openLogin} className={btnSecSm}>
+          <Check className="w-3 h-3" />
+          Anmelden
+        </button>
       </div>
-    );
+      {loginModal}
+      </>
+  );
   }
 
   return (
@@ -161,6 +374,15 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
       <div className="flex items-center justify-between mb-1">
         <h2 className={`text-[13px] font-bold uppercase tracking-widest ${textMuted}`}>
           App Privacy
+          {session != null && (
+            <span
+              className={`ml-2 text-[11px] font-medium normal-case tracking-normal ${
+                session.valid ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+              }`}
+            >
+              {session.valid ? "Session active" : session.configured ? "Session expired" : "No session"}
+            </span>
+          )}
           {publishState != null && (
             <span
               className={`ml-2 text-[11px] font-medium normal-case tracking-normal ${
@@ -171,14 +393,24 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
             </span>
           )}
         </h2>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {session != null && !session.valid && (
+            <button
+              onClick={openLogin}
+              className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
+            >
+              <Check className="w-3.5 h-3.5" /> Anmelden
+            </button>
+          )}
+          {!showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-1 text-[12px] text-[#595DD2] hover:opacity-80 transition-opacity font-medium"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add
+            </button>
+          )}
+        </div>
       </div>
       <p className={`text-[13px] ${textSecondary} mb-3`}>
         Data usages for the App Store privacy label, managed through Apple&apos;s web API.
@@ -285,6 +517,7 @@ export default function PrivacyPanel({ bundleId, addToast }: PrivacyPanelProps) 
           </div>
         </div>
       )}
+      {loginModal}
     </div>
   );
 }

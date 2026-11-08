@@ -241,6 +241,18 @@ export async function listDataUsageCategories(
   return ((data?.data ?? []) as any[]).map(toDataUsageCategory);
 }
 
+export async function listDataUsagePurposes(session: IrisSession, adamId: string): Promise<string[]> {
+  const data = await irisFetch(session, adamId, "GET", dataUsagePurposesUrl());
+
+  return ((data?.data ?? []) as any[]).map((entry) => {
+    if (typeof entry?.id !== "string") {
+      throw new Error("ASC appDataUsagePurposes response has an entry without an id");
+    }
+
+    return entry.id;
+  });
+}
+
 export async function getDataUsagePublishState(
   session: IrisSession,
   adamId: string,
