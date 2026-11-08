@@ -17,6 +17,7 @@ import type { VersionsData, VersionLocalization, VersionLocalizationSummary, Bui
 import { getLocaleFlag, getLocaleName } from "../utils/localeUtils";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { ConnectedScreenshotsPanel } from "./screenshots/ConnectedScreenshotsPanel";
+import AgeRatingPanel from "./AgeRatingPanel";
 import {
   Send,
   ChevronDown,
@@ -40,6 +41,7 @@ import {
   Copy,
   Hammer,
   Camera,
+  History,
 } from "lucide-react";
 
 type PhaseState = "pending" | "running" | "done" | "skipped" | "failed";
@@ -190,6 +192,7 @@ const FIELD_META: {
   hint?: string;
   maxLength?: number;
   propagable?: boolean;
+  copyFromPrevious?: boolean;
 }[] = [
   {
     key: "name",
@@ -226,6 +229,7 @@ const FIELD_META: {
     type: "textarea",
     hint: "Max 170 characters, can be updated without new version",
     maxLength: 170,
+    copyFromPrevious: true,
   },
   {
     key: "whatsNew",
@@ -233,6 +237,7 @@ const FIELD_META: {
     type: "textarea",
     hint: "Release notes for this version",
     maxLength: 4000,
+    copyFromPrevious: true,
   },
   {
     key: "supportUrl",
@@ -515,6 +520,8 @@ function EditableField({
   onSave,
   onApplyAll,
   propagating,
+  onCopyFromPrevious,
+  copyingFromPrevious,
 }: {
   field: (typeof FIELD_META)[number];
   value: string;
@@ -523,6 +530,8 @@ function EditableField({
   onSave: (field: string, value: string, loc: VersionLocalization) => Promise<void>;
   onApplyAll?: (field: string, value: string) => Promise<void>;
   propagating?: boolean;
+  onCopyFromPrevious?: (field: string) => void;
+  copyingFromPrevious?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -599,6 +608,17 @@ function EditableField({
             >
               {propagating ? <div className="spinner !w-3 !h-3" /> : <Copy className="w-3 h-3" />}
               All languages
+            </button>
+          )}
+          {!editing && isEditable && onCopyFromPrevious && (
+            <button
+              onClick={() => onCopyFromPrevious(field.key)}
+              disabled={copyingFromPrevious}
+              title="Copy this field for every language from the previous version"
+              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] text-[#9ca3af] font-medium hover:text-[#595DD2] disabled:opacity-100"
+            >
+              {copyingFromPrevious ? <div className="spinner !w-3 !h-3" /> : <History className="w-3 h-3" />}
+              Copy from previous version
             </button>
           )}
           {!editing && isEditable && (
@@ -1297,9 +1317,11 @@ export default function Versions({ addToast }: Props) {
   const [data, setData] = useState<VersionsData | null>(null);
   const [activeLocale, setActiveLocale] = useState<string | null>(null);
   const [showAddLocale, setShowAddLocale] = useState(false);
+  const [showAgeRatingEditor, setShowAgeRatingEditor] = useState(false);
   const [addingLocale, setAddingLocale] = useState(false);
   const [removingLocale, setRemovingLocale] = useState<string | null>(null);
   const [propagatingField, setPropagatingField] = useState<string | null>(null);
+  const [copyingField, setCopyingField] = useState<string | null>(null);
   const [visibleLoadingLocale, setVisibleLoadingLocale] = useState<string | null>(null);
   const addLocaleRef = useRef<HTMLDivElement>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -1725,6 +1747,75 @@ export default function Versions({ addToast }: Props) {
     [data, activeLocale, canWrite, addToast],
   );
 
+  const handleCopyFromPrevious = useCallback(
+    async (fieldKey: string) => {
+      const field = fieldKey as "whatsNew" | "promotionalText";
+
+      if (!data?.versionId || !data.versionString || !canWrite) return;
+
+      if (!confirm(`Copy ${field} for every language from the previous version? This overwrites current values.`))
+        return;
+
+      setCopyingField(field);
+
+      try {
+        const prev = await apiGet<{ previousVersionId: string; previousVersionString: string; locales: Record<string, { whatsNew: string; promotionalText: string }> }>(
+          "/asc/versions/previous-locale-fields",
+          { versionString: data.versionString },
+        );
+
+        let ok = 0;
+        let skipped = 0;
+        const failed: string[] = [];
+
+        for (const t of data.localizationSummaries) {
+          const value = prev.locales[t.locale]?.[field]?.trim() ?? "";
+
+          if (!value) {
+            skipped++;
+            continue;
+          }
+
+          try {
+            await apiPatch("/asc/versions/metadata", {
+              bundleId: getActiveBundleId(),
+              versionId: data.versionId,
+              locale: t.locale,
+              appInfoLocalizationId: t.appInfoLocalizationId,
+              versionLocalizationId: t.versionLocalizationId,
+              field,
+              value,
+            });
+            ok++;
+          } catch {
+            failed.push(t.locale);
+          }
+        }
+
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                localizations: current.localizations.map((l) => {
+                  const value = prev.locales[l.locale]?.[field]?.trim();
+
+                  return value ? { ...l, [field]: value } : l;
+                }),
+              }
+            : current,
+        );
+
+        if (failed.length > 0) addToast(`Copied to ${ok}, failed for: ${failed.join(", ")}`, "error");
+        else addToast(`Copied ${field} from ${prev.previousVersionString} to ${ok} language${ok === 1 ? "" : "s"}${skipped > 0 ? ` (${skipped} had nothing to copy)` : ""}`, "success");
+      } catch (err: any) {
+        addToast(`Failed to load previous version: ${err.message}`, "error");
+      } finally {
+        setCopyingField(null);
+      }
+    },
+    [data, canWrite, addToast],
+  );
+
   if (!versionId) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-400 dark:text-[#5c6478]">
@@ -2030,6 +2121,8 @@ export default function Versions({ addToast }: Props) {
                   onSave={handleSave}
                   onApplyAll={field.propagable ? handleApplyAll : undefined}
                   propagating={propagatingField === field.key}
+                  onCopyFromPrevious={field.copyFromPrevious ? handleCopyFromPrevious : undefined}
+                  copyingFromPrevious={copyingField === field.key}
                 />
                 {field.key === "keywords" && (
                   <KeywordBudgetAnalyzer
@@ -2060,30 +2153,39 @@ export default function Versions({ addToast }: Props) {
                     addToast("Copyright updated", "success");
                   }}
                 />
-                {data.ageRating !== undefined && (
-                  <div className="group">
-                    <div
-                      className={`text-[12px] font-semibold ${textSecondary} uppercase tracking-wide mb-1.5 flex items-center gap-2`}
-                    >
-                      Age Rating
-                    </div>
-                    <div className="flex items-center gap-2">
+                <div className="group">
+                  <div
+                    className={`text-[12px] font-semibold ${textSecondary} uppercase tracking-wide mb-1.5 flex items-center gap-2`}
+                  >
+                    Age Rating
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {data.ageRating !== undefined && (
                       <span
                         className={`text-[13px] ${textPrimary} px-3.5 py-[9px] border ${borderDefault} bg-[#fafbfc] dark:bg-[#252b38] rounded-xl`}
                       >
                         {data.ageRating || <span className="text-[#c8cdd3] dark:text-[#3a4050] italic">Not set</span>}
                       </span>
-                      <a
-                        href="https://appstoreconnect.apple.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`text-[11px] ${textMuted} hover:text-[#595DD2] transition-colors`}
-                      >
-                        Edit in ASC ↗
-                      </a>
-                    </div>
+                    )}
+                    <button
+                      onClick={() => setShowAgeRatingEditor((current) => !current)}
+                      className={`text-[11px] ${textMuted} hover:text-[#595DD2] transition-colors`}
+                    >
+                      {showAgeRatingEditor ? "Hide questionnaire" : "Edit questionnaire"}
+                    </button>
+                    <a
+                      href="https://appstoreconnect.apple.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`text-[11px] ${textMuted} hover:text-[#595DD2] transition-colors`}
+                    >
+                      Edit in ASC ↗
+                    </a>
                   </div>
-                )}
+                  {showAgeRatingEditor && (
+                    <AgeRatingPanel bundleId={getActiveBundleId() ?? ""} addToast={addToast} />
+                  )}
+                </div>
               </div>
             </div>
           </div>

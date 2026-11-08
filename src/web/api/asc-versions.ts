@@ -3,11 +3,17 @@ import axios from "../../services/utils/http";
 import { prisma, logger } from "../../config";
 import { requireAuth, bundleAccess, loadVersionInBundle } from "../auth";
 import * as translationTracker from "../../jobs/translation-tracker";
+import {
+  AGE_RATING_FIELDS,
+  buildAgeRatingDeclarationUpdateBody,
+  toAgeRatingDeclaration,
+} from "../../services/asc-age-rating";
 import { runQuickScan } from "./quick-scan";
 import {
   CACHE_TTL_MS,
   EDITABLE_STATES,
   ascClientForUser,
+  compareVersionStringsDesc,
   handle,
   isDemoBundle,
   isFresh,
@@ -215,6 +221,111 @@ ascRouter.get(
         isEditable: EDITABLE_STATES.has(v.attributes.appStoreState),
       })),
     );
+  }),
+);
+
+ascRouter.get(
+  "/age-rating",
+  bundleAccess("query"),
+  handle("getAgeRatingDeclaration", async (req, res) => {
+    const bundleId = req.query.bundleId as string;
+
+    if (!bundleId) {
+      res.status(400).json({ error: "bundleId is required" });
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const app = await asc.getApp(bundleId);
+
+    if (!app) {
+      res.status(404).json({ error: "App not found in App Store Connect" });
+      return;
+    }
+
+    const appInfoId = await asc.getAppInfoId(app.id);
+
+    if (!appInfoId) {
+      res.status(404).json({ error: "No app info found in App Store Connect" });
+      return;
+    }
+
+    const fields = AGE_RATING_FIELDS.map((field) => field.key).join(",");
+    const { data: resp } = await asc.client.get(`/appInfos/${appInfoId}/ageRatingDeclaration`, {
+      params: { "fields[ageRatingDeclarations]": fields },
+    });
+
+    res.json({ ...toAgeRatingDeclaration(resp.data), fields: AGE_RATING_FIELDS });
+  }),
+);
+
+ascRouter.patch(
+  "/age-rating/:id",
+  handle("updateAgeRatingDeclaration", async (req, res) => {
+    const { id } = req.params;
+    const { attributes } = req.body as { attributes?: Record<string, boolean | string | null> };
+
+    let body: ReturnType<typeof buildAgeRatingDeclarationUpdateBody>;
+    try {
+      body = buildAgeRatingDeclarationUpdateBody(id, attributes ?? {});
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Invalid age rating declaration" });
+
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const { data: resp } = await asc.client.patch(`/ageRatingDeclarations/${id}`, body);
+
+    res.json(toAgeRatingDeclaration(resp.data));
+  }),
+);
+
+ascRouter.get(
+  "/versions/previous-locale-fields",
+  bundleAccess("query"),
+  handle("getPreviousVersionLocaleFields", async (req, res) => {
+    const bundleId = req.query.bundleId as string;
+    const currentVersionString = req.query.versionString as string;
+
+    if (!bundleId || !currentVersionString) {
+      res.status(400).json({ error: "bundleId and versionString are required" });
+      return;
+    }
+
+    const asc = await ascClientForUser(req.user!.userId);
+    const app = await asc.getApp(bundleId);
+
+    if (!app) {
+      res.status(404).json({ error: "App not found in App Store Connect" });
+      return;
+    }
+
+    const versions = await asc.listVersions(app.id);
+    const previousVersion = versions
+      .filter((v) => compareVersionStringsDesc(v.attributes.versionString, currentVersionString) > 0)
+      .sort((a, b) => compareVersionStringsDesc(a.attributes.versionString, b.attributes.versionString))[0];
+
+    if (!previousVersion) {
+      res.status(404).json({ error: "No previous version found" });
+      return;
+    }
+
+    const versionLocalizations = await asc.getVersionLocalizations(previousVersion.id);
+    const locales: Record<string, { whatsNew: string; promotionalText: string }> = {};
+
+    for (const vl of versionLocalizations) {
+      locales[vl.attributes.locale] = {
+        whatsNew: vl.attributes.whatsNew ?? "",
+        promotionalText: vl.attributes.promotionalText ?? "",
+      };
+    }
+
+    res.json({
+      previousVersionId: previousVersion.id,
+      previousVersionString: previousVersion.attributes.versionString,
+      locales,
+    });
   }),
 );
 
