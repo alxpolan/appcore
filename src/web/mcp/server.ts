@@ -7,6 +7,7 @@ import { registerAscSubscriptionTools } from "./tools/asc-subscription-tools";
 import { registerAscAgeRatingTools } from "./tools/asc-age-rating-tools";
 import { registerAscReviewAnswersTools } from "./tools/asc-review-answers-tools";
 import { registerAscReviewAttachmentTools } from "./tools/asc-review-attachments-tools";
+import { registerAscPrivacyTools } from "./tools/asc-privacy-tools";
 import { registerAscProductTools } from "./tools/asc-product-tools";
 import { registerAscGameCenterTools } from "./tools/asc-gamecenter-tools";
 import { registerSuggestionTools } from "./tools/suggestion-tools";
@@ -27,6 +28,7 @@ export function createMcpServer(userId: string): McpServer {
   registerAscAgeRatingTools(server, userId);
   registerAscReviewAnswersTools(server, userId);
   registerAscReviewAttachmentTools(server, userId);
+  registerAscPrivacyTools(server, userId);
   registerAscProductTools(server, userId);
   registerAscGameCenterTools(server, userId);
   registerSuggestionTools(server, userId);

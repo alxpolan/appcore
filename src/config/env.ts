@@ -59,6 +59,8 @@ const envSchema = z.object({
   ASC_MAILBOX_IMAP_PASSWORD: z.string().optional(),
   ASC_MAILBOX_PROFILE_DIR: z.string().default("./keys/asc-mailbox-profile"),
   ASC_ANALYTICS_COOKIES: z.string().optional(),
+  ASC_IRIS_TEAM_ID: z.string().optional(),
+  ASC_IRIS_TEAM_TYPE: z.string().optional(),
 });
 
 function loadEnv() {

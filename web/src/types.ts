@@ -1110,6 +1110,25 @@ export interface RetentionOfferPrice {
   pricePointId: string | null;
 }
 
+export interface AppDataUsage {
+  id: string;
+  categoryId: string | null;
+  purposeId: string | null;
+  dataProtectionId: string | null;
+  attributes: Record<string, unknown>;
+}
+
+export interface AppDataUsageCategory {
+  id: string;
+  groupingId: string | null;
+}
+
+export interface DataUsagePublishState {
+  published: boolean;
+  lastPublished: string | null;
+  lastPublishedBy: string | null;
+}
+
 export interface ReviewAttachment {
   id: string;
   fileName: string | null;

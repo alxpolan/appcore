@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useApi, getActiveBundleId, apiDelete, apiPatch, setActiveBundleId } from "../../hooks/useApi";
 import SigningSection from "./SigningSection";
 import SnapshotEnvSection from "./SnapshotEnvSection";
+import PrivacyPanel from "./PrivacyPanel";
 import { RepoLinker } from "../Logs";
 import type { AppItem, GitHubStatus } from "../../types";
 
@@ -39,6 +40,7 @@ export default function AppSettings({ addToast }: Props) {
 
       {activeApp && <SigningSection appId={activeApp.id} addToast={addToast} />}
       {activeApp && <SnapshotEnvSection appId={activeApp.id} addToast={addToast} />}
+      {activeApp && <PrivacyPanel bundleId={activeApp.bundleId} addToast={addToast} />}
       {activeApp && <DangerZone app={activeApp} addToast={addToast} />}
     </div>
   );
