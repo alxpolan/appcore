@@ -61,6 +61,20 @@ export function toLocalizationSummaries(localizations: any[]) {
   });
 }
 
+export function compareVersionStringsDesc(a: string, b: string): number {
+  const aParts = a.split(".").map(Number);
+  const bParts = b.split(".").map(Number);
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aNum = aParts[i] || 0;
+    const bNum = bParts[i] || 0;
+
+    if (aNum !== bNum) return bNum - aNum;
+  }
+
+  return 0;
+}
+
 export function pickInitialLocale(
   localizations: Array<{ locale: string }>,
   requestedLocale?: string,
