@@ -220,11 +220,59 @@ final class APIService {
         return response.campaigns
     }
 
-    func getAppleAdsCampaigns(bundleId: String?) async throws -> [AppleAdsCampaign] {
-        var path = "/api/apple-ads/campaigns"
-        if let bundleId { path += "?bundleId=\(bundleId)" }
-        let response: AppleAdsCampaignsResponse = try await get(path)
+    func getAppleAdsCampaigns() async throws -> [AppleAdsCampaign] {
+        let response: AppleAdsCampaignsResponse = try await get("/api/apple-ads/campaigns")
         return response.campaigns
+    }
+
+    func getAppleAdsDaily() async throws -> [AppleAdsDailyDay] {
+        let response: AppleAdsDailyResponse = try await get("/api/apple-ads/daily")
+        return response.days
+    }
+
+    func getGoogleAdsDaily() async throws -> [GoogleAdsDailyDay] {
+        let response: GoogleAdsDailyResponse = try await get("/api/google-ads/daily")
+        return response.days
+    }
+
+    func getAppleAdsCampaignDetail(campaignId: String) async throws -> [AppleAdsAdGroup] {
+        let response: AppleAdsCampaignDetailResponse = try await get("/api/apple-ads/campaigns/\(campaignId)/details")
+        return response.adGroups
+    }
+
+    func getAppleAdsCampaignDailySpend(campaignId: String) async throws -> [AppleAdsDailyDay] {
+        let response: AppleAdsDailyResponse = try await get("/api/apple-ads/campaigns/\(campaignId)/daily-spend")
+        return response.days
+    }
+
+    func getAppleAdsCampaignCountries(campaignId: String) async throws -> [AppleAdsCountryBreakdown] {
+        let response: AppleAdsCountryBreakdownResponse = try await get("/api/apple-ads/campaigns/\(campaignId)/countries")
+        return response.countries
+    }
+
+    func getAppleAdsCampaignSearchTerms(campaignId: String) async throws -> [AppleAdsSearchTerm] {
+        let response: AppleAdsSearchTermsResponse = try await get("/api/apple-ads/campaigns/\(campaignId)/search-terms")
+        return response.searchTerms
+    }
+
+    func getGoogleAdsCampaignDetail(campaignId: String) async throws -> [GoogleAdsAdGroup] {
+        let response: GoogleAdsCampaignDetailResponse = try await get("/api/google-ads/campaigns/\(campaignId)/details")
+        return response.adGroups
+    }
+
+    func getGoogleAdsCampaignDailySpend(campaignId: String) async throws -> [GoogleAdsDailySpendDay] {
+        let response: GoogleAdsDailySpendResponse = try await get("/api/google-ads/campaigns/\(campaignId)/daily-spend")
+        return response.days
+    }
+
+    func getGoogleAdsCampaignCountries(campaignId: String) async throws -> [GoogleAdsCountryBreakdown] {
+        let response: GoogleAdsCountryBreakdownResponse = try await get("/api/google-ads/campaigns/\(campaignId)/countries")
+        return response.countries
+    }
+
+    func getGoogleAdsCampaignSearchTerms(campaignId: String) async throws -> [GoogleAdsSearchTerm] {
+        let response: GoogleAdsSearchTermsResponse = try await get("/api/google-ads/campaigns/\(campaignId)/search-terms")
+        return response.searchTerms
     }
 
     // MARK: - Product Pages

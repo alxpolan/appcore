@@ -51,6 +51,13 @@ struct MartesoTests {
         #expect(response.campaigns[0].installs == 2)
     }
 
+    @Test func adsCampaignStatusMapping() async throws {
+        #expect(AdsCampaignStatus(rawStatus: "ENABLED") == .enabled)
+        #expect(AdsCampaignStatus(rawStatus: "PAUSED") == .paused)
+        #expect(AdsCampaignStatus(rawStatus: "RUNNING") == .other("RUNNING"))
+        #expect(AdsCampaignStatus(rawStatus: "ENDED") == .other("ENDED"))
+    }
+
     @Test func productPageDecodes() async throws {
         let response = try decode(ProductPagesResponse.self, json: """
         {"pages":[{"id":"p1","name":"Launch","url":null,"visible":true,

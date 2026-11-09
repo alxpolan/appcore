@@ -338,6 +338,175 @@ struct AppleAdsCampaignsResponse: Codable {
     let campaigns: [AppleAdsCampaign]
 }
 
+struct AppleAdsDailyDay: Codable {
+    let date: String
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+}
+
+struct AppleAdsDailyResponse: Codable {
+    let days: [AppleAdsDailyDay]
+    let startDate: String
+    let endDate: String
+}
+
+struct AppleAdsKeyword: Codable, Identifiable {
+    let id: String
+    let adGroupId: String
+    let text: String
+    let matchType: String
+    let status: String
+    let bidAmount: Double?
+    let currency: String?
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+}
+
+struct AppleAdsAdGroup: Codable, Identifiable {
+    let id: String
+    let campaignId: String
+    let name: String
+    let status: String
+    let servingStatus: String
+    let defaultBidAmount: Double?
+    let cpaGoal: Double?
+    let currency: String?
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+    let keywords: [AppleAdsKeyword]?
+}
+
+struct AppleAdsCampaignDetailResponse: Codable {
+    let adGroups: [AppleAdsAdGroup]
+}
+
+struct AppleAdsSearchTerm: Codable, Identifiable {
+    var id: String { "\(adGroupId)-\(searchTerm)" }
+    let searchTerm: String
+    let adGroupId: String
+    let adGroupName: String?
+    let keyword: String?
+    let matchType: String?
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+}
+
+struct AppleAdsSearchTermsResponse: Codable {
+    let searchTerms: [AppleAdsSearchTerm]
+}
+
+struct AppleAdsCountryBreakdown: Codable, Identifiable {
+    var id: String { countryOrRegion }
+    let countryOrRegion: String
+    let spend: Double
+    let impressions: Int
+    let taps: Int
+    let installs: Int
+}
+
+struct AppleAdsCountryBreakdownResponse: Codable {
+    let countries: [AppleAdsCountryBreakdown]
+}
+
+struct GoogleAdsKeyword: Codable, Identifiable {
+    let id: String
+    let adGroupId: String
+    let text: String
+    let matchType: String
+    let status: String
+    let cpcBid: Double?
+    let currency: String?
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+}
+
+struct GoogleAdsAdGroup: Codable, Identifiable {
+    let id: String
+    let campaignId: String
+    let name: String
+    let status: String
+    let defaultCpcBid: Double?
+    let currency: String?
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+    let keywords: [GoogleAdsKeyword]?
+}
+
+struct GoogleAdsCampaignDetailResponse: Codable {
+    let adGroups: [GoogleAdsAdGroup]
+}
+
+struct GoogleAdsSearchTerm: Codable, Identifiable {
+    var id: String { "\(adGroupId)-\(searchTerm)" }
+    let searchTerm: String
+    let adGroupId: String
+    let adGroupName: String?
+    let keywordText: String?
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+}
+
+struct GoogleAdsSearchTermsResponse: Codable {
+    let searchTerms: [GoogleAdsSearchTerm]
+}
+
+struct GoogleAdsCountryBreakdown: Codable, Identifiable {
+    var id: String { countryOrRegion }
+    let countryOrRegion: String
+    let countryName: String?
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+}
+
+struct GoogleAdsCountryBreakdownResponse: Codable {
+    let countries: [GoogleAdsCountryBreakdown]
+}
+
+struct GoogleAdsDailySpendDay: Codable {
+    let date: String
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+}
+
+struct GoogleAdsDailySpendResponse: Codable {
+    let days: [GoogleAdsDailySpendDay]
+    let startDate: String
+    let endDate: String
+}
+
+struct GoogleAdsDailyDay: Codable {
+    let date: String
+    let spend: Double
+    let impressions: Int
+    let clicks: Int
+    let conversions: Double
+    let installs: Int?
+}
+
+struct GoogleAdsDailyResponse: Codable {
+    let days: [GoogleAdsDailyDay]
+    let startDate: String
+    let endDate: String
+}
+
 struct ProductPageVersion: Codable, Identifiable {
     let id: String
     let version: String?

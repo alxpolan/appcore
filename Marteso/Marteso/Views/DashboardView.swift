@@ -229,7 +229,7 @@ struct DashboardView: View {
                 NavigationLink(destination: ScreenshotsView(bundleId: bundleId, apps: apps)) {
                     quickLinkCard(title: "Screenshots", icon: "photo.stack.fill", color: .purple)
                 }
-                NavigationLink(destination: AdsView(bundleId: bundleId)) {
+                NavigationLink(destination: AdsView()) {
                     quickLinkCard(title: "Ads", icon: "megaphone.fill", color: .orange)
                 }
                 NavigationLink(destination: ProductPagesView(bundleId: bundleId)) {

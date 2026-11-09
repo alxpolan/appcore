@@ -1,4 +1,79 @@
 import SwiftUI
+import Charts
+
+// MARK: - Metric Spark Card
+
+struct MetricSparkCard: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let value: String
+    let subtitle: String
+    let trend: [Double]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 17, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundStyle(color)
+
+                Spacer()
+
+                Text(subtitle)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 2)
+
+                Text(value)
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+            .padding(16)
+
+            Spacer(minLength: 8)
+
+            if trend.count >= 2 {
+                Chart(Array(trend.enumerated()), id: \.offset) { index, point in
+                    AreaMark(
+                        x: .value("Day", index),
+                        y: .value("Value", point)
+                    )
+                    .foregroundStyle(
+                        .linearGradient(
+                            colors: [color.opacity(0.45), color.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+
+                    LineMark(
+                        x: .value("Day", index),
+                        y: .value("Value", point)
+                    )
+                    .foregroundStyle(color)
+                    .interpolationMethod(.catmullRom)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartYScale(domain: .automatic(includesZero: false))
+                .frame(width: 150, height: 115)
+                .padding(.trailing, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 170, alignment: .leading)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 28))
+    }
+}
 
 // MARK: - Glass Card
 
