@@ -221,7 +221,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
 
       this.push(`[capture] [${deviceLabel}] ${lang} - running UI tests ...`);
 
-      let testFailed = await this.runXcodebuild(
+      let attempt = await this.runXcodebuild(
         scheme,
         projectArg,
         destination,
@@ -233,10 +233,15 @@ export class SnapshotRunner extends SnapshotRunnerBase {
         envVars,
       );
 
-      if (testFailed) {
+      if (attempt.failed) {
         await shutdownDevice();
+
+        if (UDID_RE.test(device) && SnapshotRunner.isRunnerLaunchFailure(attempt.output)) {
+          await this.eraseDeviceForRetry(device, deviceLabel);
+        }
+
         this.push(`[capture] [${deviceLabel}] ${lang} - retrying after failure ...`);
-        testFailed = await this.runXcodebuild(
+        attempt = await this.runXcodebuild(
           scheme,
           projectArg,
           destination,
@@ -248,6 +253,8 @@ export class SnapshotRunner extends SnapshotRunnerBase {
           envVars,
         );
       }
+
+      const testFailed = attempt.failed;
 
       await shutdownDevice();
 
@@ -286,6 +293,27 @@ export class SnapshotRunner extends SnapshotRunnerBase {
     return screenshots;
   }
 
+  private async eraseDeviceForRetry(device: string, deviceLabel: string): Promise<void> {
+    try {
+      this.push(`[capture] [${deviceLabel}] erasing simulator to recover from runner launch failure ...`);
+      await execAsync(`xcrun simctl shutdown "${device}"`, { timeout: 30_000 }).catch(() => undefined);
+      await this.waitForSimulatorShutdown(device);
+      await execAsync(`xcrun simctl erase "${device}"`, { timeout: 120_000 });
+    } catch (err) {
+      this.push(
+        `[capture] [${deviceLabel}] Warning: could not erase simulator: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  static isRunnerLaunchFailure(output: string | undefined): boolean {
+    if (!output) return false;
+
+    return /failed to launch .*xctrunner|failed to install or launch the test runner|application failed preflight checks/i.test(
+      output,
+    );
+  }
+
   private async runXcodebuild(
     scheme: string,
     projectArg: string,
@@ -296,7 +324,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
     localeId: string,
     deviceLabel: string,
     envVars: Record<string, string> | undefined,
-  ): Promise<boolean> {
+  ): Promise<{ failed: boolean; output: string }> {
     const testStart = Date.now();
 
     try {
@@ -323,7 +351,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
 
       this.push(`[capture] [${deviceLabel}] ${lang}: tests ${failed ? "failed" : "passed"} in ${elapsed}s`);
 
-      return false;
+      return { failed, output: stdout };
     } catch (execErr) {
       const elapsed = Math.round((Date.now() - testStart) / 1000);
       const eOut = execErr as { stdout?: string; stderr?: string };
@@ -336,7 +364,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
       if (allPassed && runnerHung && !realFailures) {
         this.push(`[capture] [${deviceLabel}] ${lang}: tests passed in ${elapsed}s (ignoring post-suite runner hang)`);
 
-        return false;
+        return { failed: false, output: combined };
       }
 
       this.push(`[capture] [${deviceLabel}] ${lang}: tests failed in ${elapsed}s`);
@@ -348,7 +376,7 @@ export class SnapshotRunner extends SnapshotRunnerBase {
         this.push(`[capture]   [${deviceLabel}] ${l.trim()}`);
       }
 
-      return true;
+      return { failed: true, output: combined };
     }
   }
 
