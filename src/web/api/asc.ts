@@ -6,3 +6,5 @@ import "./asc-smart-prices";
 import "./asc-products";
 import "./asc-gamecenter";
 import "./asc-gamecenter-locs";
+import "./asc-privacy";
+import "./asc-session";
