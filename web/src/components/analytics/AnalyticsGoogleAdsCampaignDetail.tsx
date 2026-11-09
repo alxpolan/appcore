@@ -658,27 +658,6 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
       <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
-        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
-          <div className={`text-[16px] font-semibold ${textPrimary}`}>Countries</div>
-        </div>
-        {countriesLoading ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
-        ) : countriesError || !countriesData ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
-            {countriesError ?? "Failed to load country data"}
-          </div>
-        ) : countriesData.countries.length === 0 ? (
-          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No country data for this period.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <CountryStatsTable countries={countriesData.countries} currency={currency} />
-          </div>
-        )}
-      </div>
-
-      <div
-        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
-      >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
           <div className={`text-[16px] font-semibold ${textPrimary}`}>Ad Groups</div>
         </div>
@@ -904,6 +883,30 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Countries</div>
+          <div className={`text-[12px] ${textMuted} mt-0.5`}>
+            Campaign-wide, not per search term — Google Ads doesn't expose a country breakdown at the search-term level
+          </div>
+        </div>
+        {countriesLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : countriesError || !countriesData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {countriesError ?? "Failed to load country data"}
+          </div>
+        ) : countriesData.countries.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>No country data for this period.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <CountryStatsTable countries={countriesData.countries} currency={currency} />
           </div>
         )}
       </div>
