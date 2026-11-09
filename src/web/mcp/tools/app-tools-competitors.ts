@@ -257,9 +257,9 @@ export function registerAppCompetitorsTools(server: McpServer, userId: string) {
           .number()
           .int()
           .min(1)
-          .max(100)
+          .max(200)
           .default(20)
-          .describe("Max recent reviews to include (default 20, max 100)."),
+          .describe("Max recent reviews to include (default 20, max 200)."),
       },
     },
     async ({ bundleId, competitorBundleId, reviewLimit }) => {

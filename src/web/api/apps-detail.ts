@@ -188,7 +188,7 @@ appsRouter.get("/:id/competitor-detail", bundleAccess("query", "bundleId"), asyn
     const reviews = await prisma.competitorReview.findMany({
       where: { appId: app.id },
       orderBy: { reviewedAt: "desc" },
-      take: 50,
+      take: 200,
     });
 
     const latestSummary = await prisma.competitorReviewSummary.findFirst({
