@@ -23,6 +23,7 @@ export abstract class SnapshotRunnerBase {
   protected readonly logs: string[] = [];
   protected readonly errors: string[] = [];
   protected skipTesting: string[] = [];
+  protected onlyTesting: string[] = [];
   protected readonly xcresultLogs: Array<{ filename: string; sizeBytes: number }> = [];
   protected readonly deviceNameMap: Map<string, string> = new Map();
   protected readonly exportSizeMap: Map<string, { width: number; height: number }> = new Map();

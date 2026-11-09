@@ -99,7 +99,8 @@ export class SnapshotRunner extends SnapshotRunnerBase {
       }
     }
 
-    this.skipTesting = [`${scheme}Tests`, `${scheme}UITests/${scheme}UITestsLaunchTests`];
+    this.onlyTesting = [`${scheme}UITests`];
+    this.skipTesting = [`${scheme}UITests/${scheme}UITestsLaunchTests`];
 
     if (configFile) {
       try {
@@ -299,8 +300,11 @@ export class SnapshotRunner extends SnapshotRunnerBase {
     const testStart = Date.now();
 
     try {
+      const onlyArgs = this.onlyTesting.map((t) => `-only-testing:"${t.replace(/[^a-zA-Z0-9 _./\-]/g, "")}"`).join(" ");
       const skipArgs = this.skipTesting.map((t) => `-skip-testing:"${t.replace(/[^a-zA-Z0-9 _./\-]/g, "")}"`).join(" ");
-      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO ${skipArgs} build test`;
+      const packagesAlreadyResolved = fs.existsSync(path.join(derivedDataPath, "SourcePackages", "checkouts"));
+      const resolutionArgs = packagesAlreadyResolved ? "-disableAutomaticPackageResolution" : "";
+      const xcodebuildCmd = `xcodebuild ${projectArg} -scheme "${scheme}" ${destination} -derivedDataPath "${derivedDataPath}" -parallel-testing-enabled NO ${resolutionArgs} ${onlyArgs} ${skipArgs} build test`;
 
       const { stdout } = await execAsync(`${xcodebuildCmd} 2>&1`, {
         cwd: workDir,
