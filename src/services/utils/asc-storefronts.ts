@@ -1,3 +1,5 @@
+import { ALPHA2_TO_ALPHA3 } from "./territory-codes";
+
 const STOREFRONT_TO_TERRITORY: Record<string, string> = {
   "143610": "AF",
   "143575": "AL",
@@ -184,4 +186,20 @@ export function storefrontToTerritory(key: string | null | undefined): string | 
 
 export function storefrontCount(): number {
   return Object.keys(STOREFRONT_TO_TERRITORY).length;
+}
+
+export function allReviewTerritories(): string[] {
+  const territories = new Set<string>();
+
+  for (const alpha2 of Object.values(STOREFRONT_TO_TERRITORY)) {
+    const alpha3 = ALPHA2_TO_ALPHA3[alpha2];
+
+    if (!alpha3) {
+      throw new Error(`No alpha-3 territory for storefront country ${alpha2}`);
+    }
+
+    territories.add(alpha3);
+  }
+
+  return [...territories].sort();
 }

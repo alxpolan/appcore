@@ -21,6 +21,7 @@ import {
 } from "./asc-analytics-core";
 import { parseCampaignPurchasesSegment, storeCampaignMetricsSegment } from "./asc-analytics-campaign";
 import { MAX_TRIAL_CANCELLATION_BACKFILL_DAYS, type AnalyticsSyncResult } from "./asc-analytics-trials";
+import { allReviewTerritories } from "./utils/asc-storefronts";
 import { AscAnalyticsServiceBase } from "./asc-analytics-service-base";
 
 export class AscAnalyticsService extends AscAnalyticsServiceBase {
@@ -375,6 +376,21 @@ export class AscAnalyticsService extends AscAnalyticsServiceBase {
   }
 
   async fetchReviews(ascAppId: string, bundleId: string): Promise<number> {
+    const territories = allReviewTerritories();
+    let total = 0;
+
+    for (const territory of territories) {
+      try {
+        total += await this.fetchReviewsForTerritory(ascAppId, bundleId, territory);
+      } catch (err: any) {
+        logger.warn(`Reviews fetch failed for territory ${territory}: ${err?.message ?? err}`);
+      }
+    }
+
+    return total;
+  }
+
+  private async fetchReviewsForTerritory(ascAppId: string, bundleId: string, territory: string): Promise<number> {
     const headers = this.authHeaders();
     let cursor: string | null = null;
     let total = 0;
@@ -384,6 +400,7 @@ export class AscAnalyticsService extends AscAnalyticsServiceBase {
       const params: Record<string, any> = {
         sort: "-createdDate",
         limit: 200,
+        "filter[territory]": territory,
         "fields[customerReviews]": "rating,title,body,reviewerNickname,territory,createdDate",
       };
 
