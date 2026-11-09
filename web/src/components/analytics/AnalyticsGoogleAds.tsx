@@ -269,6 +269,7 @@ export default function AnalyticsGoogleAds({ addToast }: Props) {
             loading={dailyLoading}
             actionLabel="Clicks"
             rateLabel="CTR"
+            storageKey={`google-ads:${activeBundleId ?? "default"}`}
           />
 
           <div

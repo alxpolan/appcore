@@ -411,6 +411,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
     }
     return points;
   }, [dailySpend, campaignRevenue]);
+  const lastDayOpen = (dailySpend?.endDate ?? "") >= new Date().toISOString().slice(0, 10);
 
   const TEXT_SORT_COLS: KeywordSortCol[] = ["keyword", "matchType"];
   function handleKwSort(col: KeywordSortCol) {
@@ -561,6 +562,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => d.spend)}
           icon={<DollarSign className="w-4 h-4" />}
           color="#f59e0b"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Impressions"
@@ -569,6 +571,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => d.impressions)}
           icon={<Eye className="w-4 h-4" />}
           color="#0ea5e9"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Taps"
@@ -577,6 +580,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => d.taps)}
           icon={<MousePointerClick className="w-4 h-4" />}
           color="#6366f1"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="TTR"
@@ -585,6 +589,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => (d.impressions > 0 ? (d.taps / d.impressions) * 100 : 0))}
           icon={<TrendingUp className="w-4 h-4" />}
           color="#8b5cf6"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Installs"
@@ -593,6 +598,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => d.installs)}
           icon={<Download className="w-4 h-4" />}
           color="#10b981"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Avg CPT"
@@ -601,6 +607,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => (d.taps > 0 ? d.spend / d.taps : 0))}
           icon={<Tag className="w-4 h-4" />}
           color="#14b8a6"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Avg CPA"
@@ -609,6 +616,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => (d.installs > 0 ? d.spend / d.installs : 0))}
           icon={<Receipt className="w-4 h-4" />}
           color="#f43f5e"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Conv. Rate"
@@ -623,6 +631,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => (d.taps > 0 ? (d.installs / d.taps) * 100 : 0))}
           icon={<Percent className="w-4 h-4" />}
           color="#D94412"
+          dashedTail={lastDayOpen}
         />
         <StatCard
           label="Proceeds"
@@ -633,6 +642,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           sparkline={statDays.map((d) => d.proceeds)}
           icon={<CircleDollarSign className="w-4 h-4" />}
           color="#16a34a"
+          dashedTail={lastDayOpen}
         />
       </div>
 
@@ -645,6 +655,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
         loading={spendLoading || revenueLoading}
         error={!!spendError}
         revenueError={!!revenueError}
+        campaignId={campaignId}
       />
 
       <AppleAdsProfitCalculator

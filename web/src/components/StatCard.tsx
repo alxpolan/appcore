@@ -2,7 +2,17 @@ import { useId, type ReactNode } from "react";
 import { Clock } from "lucide-react";
 import { borderDefault, textMuted, textPrimary } from "../styles";
 
-export function Sparkline({ data, color, id }: { data: number[]; color: string; id: string }) {
+export function Sparkline({
+  data,
+  color,
+  id,
+  dashedTail = false,
+}: {
+  data: number[];
+  color: string;
+  id: string;
+  dashedTail?: boolean;
+}) {
   if (!data || data.length < 2) return null;
   const w = 200;
   const h = 60;
@@ -14,8 +24,12 @@ export function Sparkline({ data, color, id }: { data: number[]; color: string; 
     x: (i / (data.length - 1)) * w,
     y: allZero ? h - 2 : h - ((v - min) / range) * (h - 8) - 4,
   }));
-  const linePoints = pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const solidPts = dashedTail ? pts.slice(0, -1) : pts;
+  const linePoints = solidPts.map((p) => `${p.x},${p.y}`).join(" ");
   const areaPath = `M0,${h} ${pts.map((p) => `L${p.x},${p.y}`).join(" ")} L${w},${h} Z`;
+  const tailStart = pts[pts.length - 2];
+  const tailEnd = pts[pts.length - 1];
+
   return (
     <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
@@ -34,6 +48,18 @@ export function Sparkline({ data, color, id }: { data: number[]; color: string; 
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
+      {dashedTail && tailStart && tailEnd && (
+        <polyline
+          points={`${tailStart.x},${tailStart.y} ${tailEnd.x},${tailEnd.y}`}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          strokeDasharray="5 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
     </svg>
   );
 }
@@ -47,6 +73,7 @@ export function StatCard({
   sparkline,
   icon,
   color = "#6366f1",
+  dashedTail = false,
 }: {
   label: string;
   value: string | number;
@@ -56,6 +83,7 @@ export function StatCard({
   sparkline?: number[];
   icon?: ReactNode;
   color?: string;
+  dashedTail?: boolean;
 }) {
   const hasSparkline = !dim && sparkline && sparkline.length >= 2;
   const gradId = `sg_${useId().replace(/\W/g, "")}`;
@@ -77,7 +105,9 @@ export function StatCard({
         )}
         {note && <div className="text-[11px] text-[#c4c9d4] dark:text-[#3a4050] mt-1 leading-tight">{note}</div>}
       </div>
-      <div className="h-16">{hasSparkline && <Sparkline data={sparkline!} color={color} id={gradId} />}</div>
+      <div className="h-16">
+        {hasSparkline && <Sparkline data={sparkline!} color={color} id={gradId} dashedTail={dashedTail} />}
+      </div>
     </div>
   );
 }

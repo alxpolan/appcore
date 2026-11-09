@@ -199,6 +199,7 @@ export default function AnalyticsAds({ addToast }: Props) {
     false,
   );
   const days = dailyData?.days ?? [];
+  const lastDayOpen = (dailyData?.endDate ?? "") >= new Date().toISOString().slice(0, 10);
 
   const campaigns = campaignsData?.campaigns ?? [];
   const totals = campaigns.reduce(
@@ -779,6 +780,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => d.spend)}
               icon={<DollarSign className="w-4 h-4" />}
               color="#f59e0b"
+              dashedTail={lastDayOpen}
             />
             <StatCard
               label="Impressions"
@@ -787,6 +789,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => d.impressions)}
               icon={<Eye className="w-4 h-4" />}
               color="#0ea5e9"
+              dashedTail={lastDayOpen}
             />
             <StatCard
               label="Taps"
@@ -795,6 +798,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => d.taps)}
               icon={<MousePointerClick className="w-4 h-4" />}
               color="#6366f1"
+              dashedTail={lastDayOpen}
             />
             <StatCard
               label="Installs"
@@ -803,6 +807,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => d.installs)}
               icon={<Download className="w-4 h-4" />}
               color="#10b981"
+              dashedTail={lastDayOpen}
             />
             <StatCard
               label="TTR"
@@ -811,6 +816,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => (d.impressions > 0 ? (d.taps / d.impressions) * 100 : 0))}
               icon={<TrendingUp className="w-4 h-4" />}
               color="#8b5cf6"
+              dashedTail={lastDayOpen}
             />
             <StatCard
               label="Conversion Rate"
@@ -819,6 +825,7 @@ export default function AnalyticsAds({ addToast }: Props) {
               sparkline={days.map((d) => (d.taps > 0 ? (d.installs / d.taps) * 100 : 0))}
               icon={<Percent className="w-4 h-4" />}
               color="#D94412"
+              dashedTail={lastDayOpen}
             />
           </div>
 
@@ -830,6 +837,7 @@ export default function AnalyticsAds({ addToast }: Props) {
             loading={dailyLoading}
             actionLabel="Taps"
             rateLabel="TTR"
+            storageKey={`apple-ads:${bundleId ?? "default"}`}
           />
 
           <div
