@@ -216,6 +216,8 @@ export function PerformanceCard({
 
   const lineMetrics = metrics.filter((m) => m.render === "line");
   const barMetrics = metrics.filter((m) => m.render === "bar");
+  const tickStep = Math.max(1, Math.ceil(chartData.length / 10));
+  const ticks = chartData.filter((_, index) => index % tickStep === 0).map((day) => String(day.date));
   const points = chartData.map((day, index) => {
     const isFinalDay = openEnd && index === chartData.length - 1;
     const isTailPoint = openEnd && index >= chartData.length - 2;
@@ -291,8 +293,7 @@ export function PerformanceCard({
                 tickLine={false}
                 tick={{ fontSize: 11, fill: "#9ca3af" }}
                 tickFormatter={chartDate}
-                minTickGap={28}
-                interval="preserveStartEnd"
+                ticks={ticks}
               />
               {axisGroups.map((group) => {
                 const visible = group.alwaysVisible || metrics.some((m) => m.axis === group.id && activeKeys.has(m.key));
