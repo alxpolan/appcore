@@ -246,10 +246,17 @@ export function buildWinBackOfferBody(input: WinBackOfferInput) {
           data: { type: "subscriptions", id: input.subscriptionId },
         },
         prices: {
-          data: priceIds.map((id) => ({ type: "winBackOfferPrices", id })),
+          data: priceIds.map((_, i) => ({ type: "winBackOfferPrices", id: `\${winBackOfferPrice${i + 1}}` })),
         },
       },
     },
+    included: priceIds.map((pricePointId, i) => ({
+      type: "winBackOfferPrices",
+      id: `\${winBackOfferPrice${i + 1}}`,
+      relationships: {
+        subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: pricePointId } },
+      },
+    })),
   };
 }
 

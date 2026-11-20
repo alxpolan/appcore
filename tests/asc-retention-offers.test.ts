@@ -28,10 +28,25 @@ describe("retention offer payload", () => {
     assert.equal(body.data.attributes.customerEligibilityPaidSubscriptionDurationInMonths, 2);
     assert.equal(body.data.relationships.subscription.data.id, "sub1");
     assert.deepEqual(body.data.relationships.prices.data, [
-      { type: "retentionOfferPrices", id: "price1" },
-      { type: "retentionOfferPrices", id: "price2" },
+      { type: "retentionOfferPrices", id: "${retentionOfferPrice1}" },
+      { type: "retentionOfferPrices", id: "${retentionOfferPrice2}" },
     ]);
-    assert.equal(body.included, undefined);
+    assert.deepEqual(body.included, [
+      {
+        type: "retentionOfferPrices",
+        id: "${retentionOfferPrice1}",
+        relationships: {
+          subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: "price1" } },
+        },
+      },
+      {
+        type: "retentionOfferPrices",
+        id: "${retentionOfferPrice2}",
+        relationships: {
+          subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: "price2" } },
+        },
+      },
+    ]);
   });
 
   it("passes optional eligibility wait and plan type through", () => {

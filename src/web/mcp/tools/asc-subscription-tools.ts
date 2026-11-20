@@ -3,6 +3,7 @@ import { registerAscSubscriptionGroupTools } from "./asc-subscription-groups";
 import { registerAscSubscriptionsTools } from "./asc-subscription-subscriptions";
 import { registerAscSubscriptionPriceTools } from "./asc-subscription-prices";
 import { registerAscSubscriptionRetentionOfferTools } from "./asc-subscription-retention-offers";
+import { registerAscSubscriptionRetentionMessageTools } from "./asc-subscription-retention-messages";
 import { registerAscSubscriptionReviewTools } from "./asc-subscription-review";
 import { registerAscSubscriptionWinBackOfferTools } from "./asc-subscription-win-back-offers";
 
@@ -11,6 +12,7 @@ export function registerAscSubscriptionTools(server: McpServer, userId: string) 
   registerAscSubscriptionsTools(server, userId);
   registerAscSubscriptionPriceTools(server, userId);
   registerAscSubscriptionRetentionOfferTools(server, userId);
+  registerAscSubscriptionRetentionMessageTools(server, userId);
   registerAscSubscriptionReviewTools(server, userId);
   registerAscSubscriptionWinBackOfferTools(server, userId);
 }

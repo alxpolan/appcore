@@ -148,10 +148,17 @@ export function buildRetentionOfferBody(input: RetentionOfferInput) {
           data: { type: "subscriptions", id: input.subscriptionId },
         },
         prices: {
-          data: priceIds.map((id) => ({ type: "retentionOfferPrices", id })),
+          data: priceIds.map((_, i) => ({ type: "retentionOfferPrices", id: `\${retentionOfferPrice${i + 1}}` })),
         },
       },
     },
+    included: priceIds.map((pricePointId, i) => ({
+      type: "retentionOfferPrices",
+      id: `\${retentionOfferPrice${i + 1}}`,
+      relationships: {
+        subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: pricePointId } },
+      },
+    })),
   };
 }
 

@@ -1,9 +1,10 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execAsync } from "./routes/shared";
-import { SnapshotRunner, type SnapshotParams } from "./services/SnapshotRunner";
-import type { SnapshotJobResult } from "./log-bus";
+import { execAsync } from "./shared";
+import { SnapshotRunner } from "./services/SnapshotRunner";
+import type { SnapshotParams } from "./services/SnapshotRunner-types";
+import type { SnapshotJobResult } from "./types";
 
 const RESULT_CACHE_PATH = path.join(process.cwd(), ".marteso-capture-result.json");
 
@@ -12,7 +13,7 @@ const apiToken = process.env.MARTESO_API_TOKEN;
 const bundleId = process.env.BUNDLE_ID;
 
 if (!apiUrl || !apiToken || !bundleId) {
-  console.error("Usage: MARTESO_API_URL=... MARTESO_API_TOKEN=... BUNDLE_ID=... npm run capture:local");
+  console.error("Usage: MARTESO_API_URL=... MARTESO_API_TOKEN=... BUNDLE_ID=... npm run capture");
   process.exit(1);
 }
 
@@ -107,7 +108,7 @@ async function runCapture(): Promise<ResultCache> {
 
   const maxConcurrency = Number(process.env.MAX_CONCURRENCY) || Math.max(4, Math.min(8, os.cpus().length - 2));
 
-  console.log(`[local-capture] Using maxConcurrency=${maxConcurrency} (${os.cpus().length} cores detected)`);
+  console.log(`[local-worker] Using maxConcurrency=${maxConcurrency} (${os.cpus().length} cores detected)`);
 
   const params: SnapshotParams = {
     localRepoDir: process.cwd(),
@@ -144,12 +145,12 @@ async function main(): Promise<void> {
       throw new Error(`REDELIVER_ONLY set but no cached result found at ${RESULT_CACHE_PATH}`);
     }
 
-    console.log(`[local-capture] Re-delivering cached result from ${RESULT_CACHE_PATH} (skipping capture)`);
+    console.log(`[local-worker] Re-delivering cached result from ${RESULT_CACHE_PATH} (skipping capture)`);
     cache = JSON.parse(fs.readFileSync(RESULT_CACHE_PATH, "utf8")) as ResultCache;
   } else {
     cache = await runCapture();
     fs.writeFileSync(RESULT_CACHE_PATH, JSON.stringify(cache));
-    console.log(`[local-capture] Saved capture result to ${RESULT_CACHE_PATH} (safe to retry delivery with REDELIVER_ONLY=1 if this fails)`);
+    console.log(`[local-worker] Saved capture result to ${RESULT_CACHE_PATH} (safe to retry delivery with REDELIVER_ONLY=1 if this fails)`);
   }
 
   await deliver(cache.result, cache.branch, cache.commitSha);

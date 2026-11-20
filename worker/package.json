@@ -5,8 +5,7 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "tsx src/server.ts",
-    "dev": "tsx watch src/server.ts",
-    "capture:local": "tsx src/local-capture.ts"
+    "dev": "tsx watch src/server.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

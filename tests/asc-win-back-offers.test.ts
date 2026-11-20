@@ -33,7 +33,18 @@ describe("win-back offer payload", () => {
     });
     assert.equal(body.data.attributes.startDate, "2026-12-01");
     assert.equal(body.data.attributes.priority, "HIGH");
-    assert.deepEqual(body.data.relationships.prices.data, [{ type: "winBackOfferPrices", id: "price1" }]);
+    assert.deepEqual(body.data.relationships.prices.data, [
+      { type: "winBackOfferPrices", id: "${winBackOfferPrice1}" },
+    ]);
+    assert.deepEqual(body.included, [
+      {
+        type: "winBackOfferPrices",
+        id: "${winBackOfferPrice1}",
+        relationships: {
+          subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: "price1" } },
+        },
+      },
+    ]);
     assert.equal(body.data.attributes.endDate, undefined);
     assert.equal(body.data.attributes.promotionIntent, undefined);
   });
