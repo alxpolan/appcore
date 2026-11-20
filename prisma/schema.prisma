@@ -171,6 +171,12 @@ model TeamSettings {
   googleAdsDeveloperToken     String?
   googleAdsCustomerId         String?
   googleAdsConnectedAt        DateTime?
+  posthogHost                 String?
+  posthogApiKey               String?
+  posthogOrganizationName     String?
+  posthogProjectId            String?
+  posthogProjectName          String?
+  posthogConnectedAt          DateTime?
   mcpEnabled                  Boolean   @default(false)
   githubAccessToken           String?
   githubUsername              String?

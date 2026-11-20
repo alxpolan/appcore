@@ -4,11 +4,12 @@ import { BarChart2, Megaphone, DollarSign, CheckCircle2 } from "lucide-react";
 import { useApi, apiPost, getActiveBundleId } from "../hooks/useApi";
 import { borderDefault, btnPrimary, cardCls, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../styles";
 import { fmtRelativeDateTime } from "../utils/formatters";
-import type { AppleAdsOrgsResponse, AppleAdsStatus, DashboardData, GoogleAdsStatus, RevenueCatStatus } from "../types";
+import type { AppleAdsOrgsResponse, AppleAdsStatus, DashboardData, GoogleAdsStatus, PostHogStatus, RevenueCatStatus } from "../types";
 import AppleAdsConnectModal from "./integrations/AppleAdsConnectModal";
 import GoogleAdsConnectModal from "./integrations/GoogleAdsConnectModal";
 import GoogleAdsCampaignMapping from "./integrations/GoogleAdsCampaignMapping";
 import RevenueCatConnectModal from "./integrations/RevenueCatConnectModal";
+import PostHogConnectModal from "./integrations/PostHogConnectModal";
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -52,6 +53,9 @@ export default function Integrations({ addToast }: Props) {
   const { data: revenueCat, refetch: refetchRevenueCat } = useApi<RevenueCatStatus>("/revenuecat/status");
   const [showRevenueCatModal, setShowRevenueCatModal] = useState(false);
   const [disconnectingRevenueCat, setDisconnectingRevenueCat] = useState(false);
+  const { data: postHog, refetch: refetchPostHog } = useApi<PostHogStatus>("/posthog/status", [], true);
+  const [showPostHogModal, setShowPostHogModal] = useState(false);
+  const [disconnectingPostHog, setDisconnectingPostHog] = useState(false);
 
   const handleDisconnectAppleAds = async () => {
     if (!confirm("Disconnect Apple Search Ads?")) return;
@@ -108,6 +112,20 @@ export default function Integrations({ addToast }: Props) {
       addToast(err.message ?? "Failed to disconnect", "error");
     } finally {
       setDisconnectingRevenueCat(false);
+    }
+  };
+
+  const handleDisconnectPostHog = async () => {
+    if (!confirm("Disconnect PostHog?")) return;
+    setDisconnectingPostHog(true);
+    try {
+      await apiPost("/posthog/disconnect");
+      addToast("PostHog disconnected", "info");
+      refetchPostHog();
+    } catch (err: any) {
+      addToast(err.message ?? "Failed to disconnect", "error");
+    } finally {
+      setDisconnectingPostHog(false);
     }
   };
 
@@ -254,14 +272,31 @@ export default function Integrations({ addToast }: Props) {
       icon: BarChart2,
       iconBg: "bg-[#f9bd2b]",
       iconColor: "text-black/80",
-      render: () => (
-        <button
-          disabled
-          className={`inline-flex items-center gap-1.5 px-3 py-[7px] rounded-xl border ${borderDefault} text-[13px] font-medium ${textSecondary} cursor-not-allowed`}
-        >
-          Coming soon
-        </button>
-      ),
+      render: () =>
+        postHog?.connected ? (
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-emerald-800 dark:text-emerald-400 truncate">
+                {postHog.projectName ?? "Connected"}
+              </div>
+              <div className={`text-[11px] ${textMuted} mt-0.5`}>
+                Connected {postHog.connectedAt ? fmtRelativeDateTime(postHog.connectedAt) : ""}
+              </div>
+              <button
+                onClick={handleDisconnectPostHog}
+                disabled={disconnectingPostHog}
+                className="mt-1.5 text-[12px] font-medium text-[#595DD2] hover:underline disabled:opacity-60"
+              >
+                {disconnectingPostHog ? "Disconnecting…" : "Disconnect"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowPostHogModal(true)} className={btnPrimary}>
+            Connect
+          </button>
+        ),
     },
   ];
 
@@ -312,6 +347,14 @@ export default function Integrations({ addToast }: Props) {
           bundleId={bundleId}
           onClose={() => setShowRevenueCatModal(false)}
           onConnected={refetchRevenueCat}
+          addToast={addToast}
+        />
+      )}
+
+      {showPostHogModal && (
+        <PostHogConnectModal
+          onClose={() => setShowPostHogModal(false)}
+          onConnected={refetchPostHog}
           addToast={addToast}
         />
       )}

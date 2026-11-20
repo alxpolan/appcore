@@ -430,6 +430,15 @@ export interface RevenueCatStatus {
   connectedAt: string | null;
 }
 
+export interface PostHogStatus {
+  connected: boolean;
+  host: string | null;
+  organizationName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  connectedAt: string | null;
+}
+
 export interface AppleAdsOrgOption {
   orgId: string;
   orgName: string;
