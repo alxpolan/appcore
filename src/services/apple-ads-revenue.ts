@@ -256,11 +256,17 @@ export async function getAppleAdsCampaignRevenue(
   return { byCampaign };
 }
 
+export interface AppleAdsCustomerIdFilters {
+  adGroupId?: string;
+  keywordId?: string;
+}
+
 export async function getAppleAdsCampaignCustomerIds(
   bundleId: string,
   orgId: string,
   campaignId: string,
   range: AppleAdsReportRange,
+  filters: AppleAdsCustomerIdFilters = {},
 ): Promise<string[]> {
   const start = new Date(`${range.startDate}T00:00:00Z`);
   const until = new Date(`${range.endDate}T00:00:00Z`);
@@ -279,6 +285,8 @@ export async function getAppleAdsCampaignCustomerIds(
 
     if (!attribution || attribution.campaignId !== campaignId) continue;
     if (attribution.orgId && attribution.orgId !== orgId) continue;
+    if (filters.adGroupId && attribution.adGroupId !== filters.adGroupId) continue;
+    if (filters.keywordId && attribution.keywordId !== filters.keywordId) continue;
 
     matched.push(customer.customerId);
   }

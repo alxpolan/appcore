@@ -545,45 +545,4 @@ export function registerAppleAdsCampaignTools(server: McpServer, userId: string)
     },
     { summarize: summarizeUpdateCampaign },
   );
-
-  registerAdsReadTool(
-    server,
-    userId,
-    "get_ads_campaign_revenue",
-    {
-      description:
-        "Get RevenueCat proceeds (USD) attributed to Apple Search Ads campaigns via Apple attribution, " +
-        "grouped by campaign and keyword with individual transactions. " +
-        "Open trials carry potentialProceedsUsd (avg paid proceeds of their product); trial conversions attribute " +
-        "their proceeds back to the trial-start day (cohortDate). " +
-        "Use list_ads_campaigns first to find campaign IDs.",
-      inputSchema: {
-        campaignId: z
-          .string()
-          .optional()
-          .describe("Restrict the result to one campaign ID. Returns all attributed campaigns if omitted."),
-        ...rangeSchema,
-      },
-    },
-    async ({ campaignId, days, period, startDate, endDate }) => {
-      const ctx = await getAppleAdsContext(userId);
-      if ("error" in ctx) return textResult(ctx.error);
-
-      try {
-        const accessibleApps = await getMcpRevenueApps(userId, ctx.teamId);
-        const range = resolveAppleAdsRange({ days, period, startDate, endDate });
-        const { byCampaign } = await getAppleAdsCampaignRevenue(accessibleApps, ctx.orgIds, range);
-
-        if (campaignId) {
-          const bucket = byCampaign[campaignId] ?? { proceedsUsd: 0, transactions: [], byKeyword: {}, byCountry: {} };
-
-          return jsonResult({ range, campaignId, ...bucket });
-        }
-
-        return jsonResult({ range, byCampaign });
-      } catch (err) {
-        return adsError("get_ads_campaign_revenue", err);
-      }
-    },
-  );
 }

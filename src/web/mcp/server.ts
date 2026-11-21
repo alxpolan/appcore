@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withDefaultToolAnnotations } from "./tool-annotations";
 import { registerAdsTools } from "./tools/ads-tools";
 import { registerGoogleAdsTools } from "./tools/google-ads-tools";
 import { registerAppTools } from "./tools/app-tools";
@@ -13,12 +14,15 @@ import { registerAscGameCenterTools } from "./tools/asc-gamecenter-tools";
 import { registerSuggestionTools } from "./tools/suggestion-tools";
 import { registerScreenshotStudioTools } from "./tools/screenshot-studio-tools";
 import { registerCppTools } from "./tools/cpp-tools";
+import { registerPostHogTools } from "./tools/posthog-tools";
 
 export function createMcpServer(userId: string): McpServer {
-  const server = new McpServer({
-    name: "Marteso",
-    version: "1.0.0",
-  });
+  const server = withDefaultToolAnnotations(
+    new McpServer({
+      name: "Marteso",
+      version: "1.0.0",
+    }),
+  );
 
   registerAdsTools(server, userId);
   registerGoogleAdsTools(server, userId);
@@ -34,6 +38,7 @@ export function createMcpServer(userId: string): McpServer {
   registerSuggestionTools(server, userId);
   registerScreenshotStudioTools(server, userId);
   registerCppTools(server, userId);
+  registerPostHogTools(server, userId);
 
   return server;
 }
