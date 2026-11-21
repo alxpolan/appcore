@@ -13,7 +13,8 @@ web/.claude
 seed-demo.ts
 # Demo recordings
 tmp/
-scripts/
+scripts/*
+!scripts/build-backend.cjs
 c3.txt
 c4.txt
 CLAUDE.md
