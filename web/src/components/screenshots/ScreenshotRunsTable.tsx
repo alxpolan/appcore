@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Archive, ArchiveRestore, SlidersHorizontal } from "lucide-react";
+import { Archive, ArchiveRestore, SlidersHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
 import { TD, TH, borderDefault, btnSecSm, textMuted, textPrimary, textSecondary } from "../../styles";
 import { apiPatch } from "../../hooks/useApi";
+import { SortIcon } from "../SortIcon";
 import type { FramedJob } from "../../utils/screenshotUtils";
 
 type SortKey = "date" | "screenshots" | "locales";
@@ -12,15 +13,6 @@ interface Props {
   archived: boolean;
   addToast: (msg: string, type: "success" | "error" | "info") => void;
   onChanged: () => void;
-}
-
-function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
-  return (
-    <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
-      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
-    </span>
-  );
 }
 
 function screenshotCount(job: FramedJob): number {

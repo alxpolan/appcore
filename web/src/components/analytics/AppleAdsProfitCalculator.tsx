@@ -1,17 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, RotateCcw } from "lucide-react";
 import { borderDefault, btnSecSm, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber } from "../../utils/formatters";
+import { fmtMoney, fmtNumber } from "../../utils/formatters";
 import { applyBump, economics, parseNum, type ProfitDrivers } from "../../utils/profitModel";
 import type { AppleAdsCampaign } from "../../types";
-
-function money(value: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 function pct(ratio: number): string {
   return `${(ratio * 100).toFixed(2)}%`;
@@ -142,7 +134,7 @@ export default function AppleAdsProfitCalculator({
 
   const inputs: { key: keyof ProfitDrivers; label: string; currentLabel: string; hint?: string }[] = [
     { key: "taps", label: "Taps", currentLabel: fmtNumber(current.taps) },
-    { key: "cpt", label: `Avg CPT (${currency})`, currentLabel: money(current.cpt, currency) },
+    { key: "cpt", label: `Avg CPT (${currency})`, currentLabel: fmtMoney(current.cpt, currency) },
     { key: "convRate", label: "Conv. rate", currentLabel: pct(current.convRate) },
     {
       key: "trialRate",
@@ -159,7 +151,7 @@ export default function AppleAdsProfitCalculator({
     {
       key: "proceedsPerConverted",
       label: "Ø proceeds / conv. trial (USD)",
-      currentLabel: money(current.proceedsPerConverted, "USD"),
+      currentLabel: fmtMoney(current.proceedsPerConverted, "USD"),
     },
   ];
 
@@ -170,23 +162,23 @@ export default function AppleAdsProfitCalculator({
     format: (v: number) => string;
     goodDown?: boolean;
   }[] = [
-    { label: `Spend (${currency})`, cur: cur.spend, scn: scn.spend, format: (v) => money(v, currency), goodDown: true },
+    { label: `Spend (${currency})`, cur: cur.spend, scn: scn.spend, format: (v) => fmtMoney(v, currency), goodDown: true },
     { label: "Installs", cur: cur.installs, scn: scn.installs, format: (v) => fmtNumber(Math.round(v)) },
     { label: "Trial starts", cur: cur.trials, scn: scn.trials, format: (v) => fmtNumber(Math.round(v)) },
     { label: "Conv. trials", cur: cur.converted, scn: scn.converted, format: (v) => fmtNumber(Math.round(v)) },
-    { label: "Proceeds (USD)", cur: cur.proceeds, scn: scn.proceeds, format: (v) => money(v, "USD") },
+    { label: "Proceeds (USD)", cur: cur.proceeds, scn: scn.proceeds, format: (v) => fmtMoney(v, "USD") },
     {
       label: mixedCurrency ? "Profit (~USD)" : "Profit (USD)",
       cur: cur.profit,
       scn: scn.profit,
-      format: (v) => (mixedCurrency ? `~${money(v, "USD")}` : money(v, "USD")),
+      format: (v) => (mixedCurrency ? `~${fmtMoney(v, "USD")}` : fmtMoney(v, "USD")),
     },
     { label: "ROAS", cur: cur.roas, scn: scn.roas, format: (v) => `${v.toFixed(2)}×` },
     {
       label: `CPA (${currency})`,
       cur: cur.cpa,
       scn: scn.cpa,
-      format: (v) => money(v, currency),
+      format: (v) => fmtMoney(v, currency),
       goodDown: true,
     },
   ];
@@ -249,7 +241,7 @@ export default function AppleAdsProfitCalculator({
           </div>
           {current.directBase > 0 && (
             <div className={`text-[11px] ${textMuted} mt-3 tabular-nums`}>
-              Incl. {money(current.directBase, "USD")} direct proceeds (fixed).
+              Incl. {fmtMoney(current.directBase, "USD")} direct proceeds (fixed).
             </div>
           )}
         </div>

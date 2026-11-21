@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   ExternalLink,
   FolderPlus,
   MoreHorizontal,
@@ -32,21 +31,14 @@ import type {
   AppleAdsStatus,
 } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { fmtMoney, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsAdsCreateCampaign from "./AnalyticsAdsCreateCampaign";
 import AdsOverviewChart from "./AdsOverviewChart";
 import { StatCard } from "../StatCard";
 import { StatusDot } from "../StatusDot";
+import { SortIcon } from "../SortIcon";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
-
-function fmtMoney(amount: number, currency: string | null): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 const UNGROUPED = "__ungrouped__";
 
@@ -64,14 +56,6 @@ interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
 
-function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
-  return (
-    <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
-      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
-    </span>
-  );
-}
 
 const COLLAPSED_GROUPS_KEY = "appcore_ads_collapsed_groups";
 

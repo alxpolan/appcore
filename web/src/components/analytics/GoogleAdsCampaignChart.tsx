@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsDailySpendResponse } from "../../types";
 import { borderDefault, textMuted, textPrimary } from "../../styles";
-import { fmtNumber } from "../../utils/formatters";
+import { fmtMoney, fmtNumber } from "../../utils/formatters";
 
 type ChartDay = {
   date: string;
@@ -11,10 +11,6 @@ type ChartDay = {
   trialPotential: number;
   trials: number;
 };
-
-function money(value: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
-}
 
 function axisMoney(value: number): string {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -42,14 +38,14 @@ function DailyTooltip({
   return (
     <div className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl px-3 py-2 shadow-lg text-[12px]`}>
       <div className={`font-semibold ${textPrimary} mb-1`}>{day.date}</div>
-      <div className={textMuted}>Spend: {money(day.spend, currency)}</div>
-      {hasRevenue && <div className={textMuted}>Proceeds: {money(day.proceeds, "USD")}</div>}
+      <div className={textMuted}>Spend: {fmtMoney(day.spend, currency)}</div>
+      {hasRevenue && <div className={textMuted}>Proceeds: {fmtMoney(day.proceeds, "USD")}</div>}
       {hasRevenue && showTrials && (
         <div className={textMuted}>
-          Trial potential: {money(day.trialPotential, "USD")} ({fmtNumber(day.trials)} trials)
+          Trial potential: {fmtMoney(day.trialPotential, "USD")} ({fmtNumber(day.trials)} trials)
         </div>
       )}
-      {hasRevenue && showTrials && <div className={textMuted}>Total: {money(day.proceeds + day.trialPotential, "USD")}</div>}
+      {hasRevenue && showTrials && <div className={textMuted}>Total: {fmtMoney(day.proceeds + day.trialPotential, "USD")}</div>}
     </div>
   );
 }

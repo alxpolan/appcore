@@ -5,6 +5,7 @@ import { Keyword } from "./KeywordTable";
 import { borderDefault, btnSecSm, textMuted, textPrimary, textSecondary } from "../../styles";
 import { apiPost } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useDarkMode } from "../../hooks/useDarkMode";
 import type { KeywordHistoryData } from "../../types";
 
 export type { KeywordHistoryData as HistoryData };
@@ -48,18 +49,6 @@ interface AppSeries {
   bestRank: number | null;
 }
 
-function useDarkMode() {
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() => setDark(el.classList.contains("dark")));
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return dark;
-}
 
 function ChartTooltip({ active, payload, label, dark }: any) {
   if (!active || !payload?.length) return null;

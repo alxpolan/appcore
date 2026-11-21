@@ -68,6 +68,15 @@ export function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
+export function fmtMoney(amount: number | null | undefined, currency?: string | null): string {
+  if (amount == null) return "—";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency ?? "USD",
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 export function rateTrafficColor(rate: number | null | undefined): string | undefined {
   if (rate == null) return undefined;
   const pct = rate * 100;

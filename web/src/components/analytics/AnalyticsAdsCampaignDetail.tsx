@@ -22,13 +22,14 @@ import {
   Tag,
   TrendingUp,
 } from "lucide-react";
-import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
+import { apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useCountryBreakdown } from "../../hooks/useCountryBreakdown";
 import CppProposals from "../cpp/CppProposals";
 import AdGroupCppSettings from "./AdGroupCppSettings";
 import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignMilestonesResponse, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
-import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
+import { countryName, fmtMoney, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_KEYWORD_FILTERS,
@@ -47,15 +48,6 @@ import { KeywordDevices } from "./AppleAdsKeywordDevices";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 import { StatCard } from "../StatCard";
 import { StatusDot } from "../StatusDot";
-
-function fmtMoney(amount: number | null, currency: string | null): string {
-  if (amount == null) return "—";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 function StatCells({
   stats,
@@ -90,40 +82,6 @@ function StatCells({
 
 const STAT_HEADERS = ["Spend", "Impressions", "Taps", "TTR", "Installs", "Avg CPT", "Avg CPA", "Conv. Rate"];
 
-function fmtMoneyUsd(amount: number): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
-    amount,
-  );
-}
-
-/** Like useApi, but surfaces the server's error message (Apple's report
- * errors carry the reason, e.g. when a grouping is unsupported). */
-function useCountryBreakdown(path: string | null) {
-  const [data, setData] = useState<AppleAdsCountryBreakdownResponse | null>(null);
-  const [loading, setLoading] = useState(path != null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (path == null) return;
-    let live = true;
-    setLoading(true);
-    setError(null);
-    apiGet<AppleAdsCountryBreakdownResponse>(path)
-      .then((d) => {
-        if (!live) return;
-        setData(d);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (!live) return;
-        setError(e.message);
-        setLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [path]);
-  return { data, loading, error };
-}
 
 function CountryStatsTable({
   countries,
@@ -170,7 +128,7 @@ function CountryStatsTable({
               <>
                 <td className={`${TD} text-right tabular-nums ${textPrimary}`}>{fmtNumber(c.trials)}</td>
                 <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
-                  {fmtMoneyUsd(c.proceedsUsd)}
+                  {fmtMoney(c.proceedsUsd, "USD")}
                 </td>
               </>
             )}
@@ -194,7 +152,7 @@ function KeywordCountries({
   currency: string | null;
   query: string;
 }) {
-  const { data, loading, error } = useCountryBreakdown(
+  const { data, loading, error } = useCountryBreakdown<AppleAdsCountryBreakdownResponse>(
     `/apple-ads/campaigns/${campaignId}/adgroups/${adGroupId}/keywords/${keywordId}/countries${query}`,
   );
   if (loading) return <div className={`text-[12px] ${textMuted}`}>Loading…</div>;
@@ -295,7 +253,9 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
     data: countriesData,
     loading: countriesLoading,
     error: countriesError,
-  } = useCountryBreakdown(campaignId ? `/apple-ads/campaigns/${campaignId}/countries${query}` : null);
+  } = useCountryBreakdown<AppleAdsCountryBreakdownResponse>(
+    campaignId ? `/apple-ads/campaigns/${campaignId}/countries${query}` : null,
+  );
 
   const {
     data: milestonesData,
@@ -606,7 +566,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
         <StatCard
           label="Proceeds"
           value={
-            revenueLoading ? "—" : revenueError || !campaignRevenue ? "—" : fmtMoneyUsd(campaignRevenue.proceedsUsd)
+            revenueLoading ? "—" : revenueError || !campaignRevenue ? "—" : fmtMoney(campaignRevenue.proceedsUsd, "USD")
           }
           sub={rangeLabel(range)}
           sparkline={statDays.map((d) => d.proceeds)}
@@ -918,7 +878,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                                               {revenueLoading ? "…" : revenueError ? "—" : fmtNumber(kwRevenue?.transactions.length ?? 0)}
                                             </td>
                                             <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
-                                              {revenueLoading ? "…" : revenueError ? "—" : fmtMoneyUsd(kwRevenue?.proceedsUsd ?? 0)}
+                                              {revenueLoading ? "…" : revenueError ? "—" : fmtMoney(kwRevenue?.proceedsUsd ?? 0, "USD")}
                                             </td>
                                           </tr>
                                           {kwExpanded && campaignId && (
@@ -995,7 +955,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                                                                 <span className={textMuted}>—</span>
                                                               )}
                                                             </td>
-                                                            <td className={`${TD} text-right tabular-nums`}>{fmtMoneyUsd(t.proceedsUsd)}</td>
+                                                            <td className={`${TD} text-right tabular-nums`}>{fmtMoney(t.proceedsUsd, "USD")}</td>
                                                           </tr>
                                                         ))}
                                                       </tbody>

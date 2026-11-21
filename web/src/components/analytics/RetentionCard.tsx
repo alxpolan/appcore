@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useApi } from "../../hooks/useApi";
 import { borderDefault, textMuted, textPrimary } from "../../styles";
 import { fmtNumber } from "../../utils/formatters";
+import { useDarkMode } from "../../hooks/useDarkMode";
 import type { RetentionData } from "../../types";
 
 interface Props {
@@ -10,19 +10,6 @@ interface Props {
 }
 
 const ACCENT = "#D94412";
-
-function useDarkMode() {
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() => setDark(el.classList.contains("dark")));
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return dark;
-}
 
 function fmtDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtShortDate, fmtLargeNum } from "../../utils/formatters";
+import { useDarkMode } from "../../hooks/useDarkMode";
 import type { DownloadsData } from "../../types";
 
 interface Props {
@@ -10,19 +10,6 @@ interface Props {
 
 const INSTALLS_COLOR = "#D94412";
 const DELETIONS_COLOR = { light: "#2a78d6", dark: "#3987e5" };
-
-function useDarkMode() {
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() => setDark(el.classList.contains("dark")));
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return dark;
-}
 
 function DeletionsTooltip({ active, payload, label, dark }: any) {
   if (!active || !payload?.length) return null;

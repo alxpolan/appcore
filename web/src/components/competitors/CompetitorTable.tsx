@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { TD, TH, borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
-import { ChevronUp, ChevronDown, Columns3, X } from "lucide-react";
+import { Columns3, X } from "lucide-react";
 import { useClickOutside } from "../../hooks/useClickOutside";
+import { SortIcon } from "../SortIcon";
 import { AppItem } from "./OwnAppCard";
 
 type SortKey = "name" | "rating" | "ratingsCount" | "languagesCount" | "competitorCount";
@@ -31,14 +32,6 @@ interface Props {
   onToggleSelectAll?: () => void;
 }
 
-function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
-  return (
-    <span className={`inline-flex flex-col ml-1 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-4 h-4 -mb-1.5 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
-      <ChevronDown className={`w-4 h-4 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
-    </span>
-  );
-}
 
 export default function CompetitorTable({
   competitors,

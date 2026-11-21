@@ -2,11 +2,12 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Ban, Megaphone, Pause, Play, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
-import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
+import { apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useCountryBreakdown } from "../../hooks/useCountryBreakdown";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsSearchTermsResponse, GoogleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
-import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
+import { countryName, fmtMoney, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import {
   EMPTY_GOOGLE_KEYWORD_FILTERS,
@@ -25,15 +26,6 @@ import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
 import { StatCard } from "../StatCard";
 import { StatusDot } from "../StatusDot";
-
-function fmtMoney(amount: number | null, currency: string | null): string {
-  if (amount == null) return "—";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 function statusBadge(status: string) {
   const isOn = status === "ENABLED" || status === "ACTIVE";
@@ -63,12 +55,6 @@ function searchTermStatusBadge(status: string) {
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${tone}`}>
       {status.replace(/_/g, " ")}
     </span>
-  );
-}
-
-function fmtMoneyUsd(amount: number): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
-    amount,
   );
 }
 
@@ -135,39 +121,12 @@ function CountryStatCells({ country, currency }: { country: GoogleAdsCountryStat
         {country.trials == null ? "—" : fmtNumber(country.trials)}
       </td>
       <td className={`${TD} text-right pr-5 tabular-nums font-medium ${textPrimary}`}>
-        {country.proceedsUsd == null ? "—" : fmtMoneyUsd(country.proceedsUsd)}
+        {country.proceedsUsd == null ? "—" : fmtMoney(country.proceedsUsd, "USD")}
       </td>
     </>
   );
 }
 
-/** Like useApi, but surfaces the server's error message. */
-function useCountryBreakdown(path: string | null) {
-  const [data, setData] = useState<GoogleAdsCountryBreakdownResponse | null>(null);
-  const [loading, setLoading] = useState(path != null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (path == null) return;
-    let live = true;
-    setLoading(true);
-    setError(null);
-    apiGet<GoogleAdsCountryBreakdownResponse>(path)
-      .then((d) => {
-        if (!live) return;
-        setData(d);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (!live) return;
-        setError(e.message);
-        setLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [path]);
-  return { data, loading, error };
-}
 
 function CountryStatsTable({
   countries,
@@ -289,7 +248,9 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
     data: countriesData,
     loading: countriesLoading,
     error: countriesError,
-  } = useCountryBreakdown(campaignId ? `/google-ads/campaigns/${campaignId}/countries${query}` : null);
+  } = useCountryBreakdown<GoogleAdsCountryBreakdownResponse>(
+    campaignId ? `/google-ads/campaigns/${campaignId}/countries${query}` : null,
+  );
 
   const { canManageTeam } = usePermissions();
   const {
@@ -599,7 +560,7 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
         <StatCard
           label="Proceeds"
           value={
-            revenueLoading ? "—" : revenueError || !revenueTotals ? "—" : fmtMoneyUsd(revenueTotals.proceedsUsd)
+            revenueLoading ? "—" : revenueError || !revenueTotals ? "—" : fmtMoney(revenueTotals.proceedsUsd, "USD")
           }
           sub={rangeLabel(range)}
           dim={!revenueLoading && !revenueTotals}

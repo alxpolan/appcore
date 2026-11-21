@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { apiPatch, useApi } from "../../hooks/useApi";
 import { borderDefault, btnPrimSm, btnSecSm, btnSecondary, textMuted, textPrimary } from "../../styles";
+import { fmtMoney } from "../../utils/formatters";
 import type { GoogleAdsCampaignBidding } from "../../types";
 import {
   BiddingStrategyFields,
@@ -27,16 +28,9 @@ const STRATEGY_LABELS: Record<string, string> = {
 function describeBidding(bidding: GoogleAdsCampaignBidding | null, currency: string | null): string {
   if (!bidding || !bidding.strategy) return "Unknown";
 
-  const money = (value: number): string =>
-    new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency ?? "USD",
-      maximumFractionDigits: 2,
-    }).format(value);
-
   const parts = [STRATEGY_LABELS[bidding.strategy] ?? bidding.strategy];
-  if (bidding.cpcBidCeiling != null) parts.push(`max CPC ${money(bidding.cpcBidCeiling)}`);
-  if (bidding.targetCpa != null) parts.push(`target CPA ${money(bidding.targetCpa)}`);
+  if (bidding.cpcBidCeiling != null) parts.push(`max CPC ${fmtMoney(bidding.cpcBidCeiling, currency)}`);
+  if (bidding.targetCpa != null) parts.push(`target CPA ${fmtMoney(bidding.targetCpa, currency)}`);
   if (bidding.targetRoasPercent != null) parts.push(`target ROAS ${bidding.targetRoasPercent}%`);
 
   return parts.join(" · ");

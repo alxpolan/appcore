@@ -4,9 +4,10 @@ import { useApi, getActiveBundleId, authHeaders } from "../../hooks/useApi";
 import type { DashboardData, DownloadsData, CountryData } from "../../types";
 import { TD, TH, borderDefault, pageTitle, textMuted, textPrimary } from "../../styles";
 import { fmtNumber, countryName, fmtLargeNum } from "../../utils/formatters";
-import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 import DemoModeFrame from "../DemoModeFrame";
 import AscConnectCard from "../AscConnectCard";
+import { SortIcon } from "../SortIcon";
 import { generateDemoDownloads } from "../../utils/demoAnalyticsData";
 import {
   BarChart,
@@ -32,14 +33,6 @@ function countrySeriesColor(series: string[], code: string): string {
   return COUNTRY_LINE_COLORS[series.indexOf(code)] ?? OTHER_LINE_COLOR;
 }
 
-function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
-  return (
-    <span className={`inline-flex flex-col ml-0.5 leading-none ${active ? "opacity-100" : "opacity-25"}`}>
-      <ChevronUp className={`w-3 h-3 -mb-1 ${active && dir === "asc" ? "text-[#595DD2]" : "text-current"}`} />
-      <ChevronDown className={`w-3 h-3 -mt-1 ${active && dir === "desc" ? "text-[#595DD2]" : "text-current"}`} />
-    </span>
-  );
-}
 
 function TrendBadge({ current, prev }: { current: number; prev: number | undefined }) {
   if (prev === undefined || prev === null) return null;
@@ -175,7 +168,7 @@ export default function AnalyticsCountries({ addToast }: Props) {
     >
       <span className={`inline-flex items-center gap-0.5 ${align === "right" ? "justify-end" : ""}`}>
         {label}
-        <SortIcon active={sortBy === sortKey} dir={sortDir} />
+        <SortIcon active={sortBy === sortKey} dir={sortDir} compact />
       </span>
     </th>
   );

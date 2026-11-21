@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, usePlotArea } from "recharts";
 import { borderDefault, textMuted, textPrimary, textSecondary } from "../../styles";
 import { fmtNumber, fmtShortDate, fmtLargeNum } from "../../utils/formatters";
+import { useDarkMode } from "../../hooks/useDarkMode";
 import type { DownloadsData } from "../../types";
 
 interface Props {
@@ -72,18 +73,6 @@ function SourceClipDefs({ byDay, orderedTypes }: { byDay: DownloadsData["bySourc
   );
 }
 
-function useDarkMode() {
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() => setDark(el.classList.contains("dark")));
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return dark;
-}
 
 function SourceTooltip({ active, payload, label, dark }: any) {
   if (!active || !payload?.length) return null;

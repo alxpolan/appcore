@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { borderDefault, textMuted, textPrimary } from "../../styles";
-import { fmtShortDateWithWeekday } from "../../utils/formatters";
+import { fmtMoney, fmtShortDateWithWeekday } from "../../utils/formatters";
 
 export type MetricFormat = "money" | "count" | "percent";
 
@@ -68,17 +68,13 @@ function loadAnnotations(storageKey: string): ChartAnnotation[] {
   }
 }
 
-function money(value: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
-}
-
 function axisMoney(value: number): string {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
 function formatMetricValue(value: number, def: MetricDef, currency: string): string {
   if (def.format === "percent") return `${value.toFixed(1)}%`;
-  if (def.format === "money") return money(value, def.usd ? "USD" : currency);
+  if (def.format === "money") return fmtMoney(value, def.usd ? "USD" : currency);
 
   return value.toLocaleString();
 }

@@ -18,7 +18,6 @@ import { authHeaders, getActiveBundleId } from "../../hooks/useApi";
 import {
   TD,
   TH,
-  badgeOutline,
   borderDefault,
   btnPrimary,
   btnSecSm,
@@ -32,6 +31,7 @@ import {
 } from "../../styles";
 import type { ProductItem, ProductLocalization, ProductPrice, ProductPricePoint } from "../../types";
 import { territoryFlagSrc } from "../../utils/territoryFlags";
+import { StatusBadge } from "../StatusBadge";
 import SmartPricingModal from "./SmartPricingModal";
 
 interface Props {
@@ -45,28 +45,6 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPES = Object.keys(TYPE_LABELS);
-
-const STATE_SHORT: Record<string, string> = {
-  APPROVED: "Approved",
-  READY_TO_SUBMIT: "Ready",
-  MISSING_METADATA: "Missing Metadata",
-  WAITING_FOR_REVIEW: "In Review Queue",
-  IN_REVIEW: "In Review",
-  REJECTED: "Rejected",
-  DEVELOPER_ACTION_NEEDED: "Action Needed",
-  DEVELOPER_REMOVED_FROM_SALE: "Removed",
-  REMOVED_FROM_SALE: "Removed",
-  PENDING_BINARY_APPROVAL: "Pending",
-};
-
-function StatusBadge({ state }: { state: string }) {
-  const label = STATE_SHORT[state] ?? state;
-  const isApproved = state === "APPROVED" || state === "READY_TO_SUBMIT";
-  const isError = state === "REJECTED" || state === "DEVELOPER_ACTION_NEEDED";
-  const isWarning = state === "MISSING_METADATA";
-  const variant = isApproved ? "success_tonal" : isError ? "danger_tonal" : isWarning ? "warning_tonal" : "info_tonal";
-  return <span className={badgeOutline(variant)}>{label}</span>;
-}
 
 interface ProductFormState {
   name: string;

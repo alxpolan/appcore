@@ -18,20 +18,12 @@ import { apiPatch, getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { AppItem, GoogleAdsCampaign, GoogleAdsDailyStatsResponse, GoogleAdsStatus } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
-import { fmtNumber, fmtPct } from "../../utils/formatters";
+import { fmtMoney, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AnalyticsGoogleAdsCreateCampaign from "./AnalyticsGoogleAdsCreateCampaign";
 import AdsOverviewChart from "./AdsOverviewChart";
 import { StatCard } from "../StatCard";
 import { StatusDot } from "../StatusDot";
-
-function fmtMoney(amount: number, currency: string | null): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;

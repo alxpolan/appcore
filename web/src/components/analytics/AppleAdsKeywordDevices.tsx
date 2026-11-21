@@ -3,19 +3,9 @@ import { Smartphone, Tablet } from "lucide-react";
 import { apiGet } from "../../hooks/useApi";
 import type { AppleAdsDeviceBreakdownResponse, AppleAdsDeviceStats } from "../../types";
 import { TD, TH, textMuted, textPrimary } from "../../styles";
-import { fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
+import { fmtMoney, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 
 const DEVICE_STAT_HEADERS = ["Spend", "Impressions", "Taps", "TTR", "Installs", "Avg CPT", "Avg CPA", "Conv. Rate"];
-
-function fmtMoney(amount: number | null, currency: string | null): string {
-  if (amount == null) return "—";
-
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 function DeviceStatCells({ stats, currency }: { stats: AppleAdsDeviceStats; currency: string | null }) {
   const ttrColor = rateTrafficColor(stats.ttr);
