@@ -316,6 +316,12 @@ const SUBMIT_STATUS_COLORS: Record<string, { dot: string; text: string }> = {
   failed: { dot: "bg-red-500", text: "text-red-600" },
 };
 
+function normalizeSubmitKind(action: string): SubmitKind {
+  if (action === "submit_for_review") return "review";
+
+  return action as SubmitKind;
+}
+
 function StateBadge({ state }: { state: string }) {
   const label = state.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return <span className={badgeOutline(state)}>{label}</span>;
@@ -1412,18 +1418,45 @@ export default function Versions({ addToast }: Props) {
         logs: string[];
         errors: string[];
         phases?: SubmissionPhases;
-        action?: SubmitKind;
+        action?: string;
         jobId?: string;
+        bundleId?: string;
       }>("/submissions/status");
-      setSubmitStatus(s);
-      if (s.action && !submitKind) setSubmitKind(s.action);
+
+      const activeBundle = getActiveBundleId();
+
+      if (s.bundleId && activeBundle && s.bundleId !== activeBundle) {
+        setSubmitStatus(null);
+
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+
+        return false;
+      }
+
+      if (s.action) setSubmitKind((prev) => prev ?? normalizeSubmitKind(s.action as string));
+
+      setSubmitStatus({
+        active: s.active,
+        status: s.status,
+        logs: s.logs,
+        errors: s.errors,
+        phases: s.phases,
+        action: s.action ? normalizeSubmitKind(s.action) : undefined,
+        jobId: s.jobId,
+      });
+
       if (!s.active && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
         refetch();
       }
+
+      return s.active === true;
     } catch {
-      /* ignore */
+      return false;
     }
   }, [refetch]);
 
@@ -1431,6 +1464,20 @@ export default function Versions({ addToast }: Props) {
     if (pollRef.current) clearInterval(pollRef.current);
     pollStatus();
     pollRef.current = setInterval(pollStatus, 1000);
+  }, [pollStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    pollStatus().then((active) => {
+      if (cancelled || !active || pollRef.current) return;
+
+      pollRef.current = setInterval(pollStatus, 1000);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [pollStatus]);
 
   useEffect(() => {

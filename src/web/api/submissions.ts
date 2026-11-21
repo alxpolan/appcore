@@ -154,6 +154,7 @@ submissionsRouter.get("/status", requireAuth, async (_req, res) => {
     res.json({
       active: submission.status === "preparing" || submission.status === "running",
       jobId: submission.jobId,
+      bundleId: submission.bundleId,
       status: submission.status,
       action: submission.action,
       phases: submission.phases,

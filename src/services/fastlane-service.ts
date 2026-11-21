@@ -79,6 +79,7 @@ export class FastlaneService extends FastlaneUploads {
     const jobId = randomUUID();
     const submission: ActiveSubmission = {
       jobId,
+      bundleId: this.bundleId,
       logs: [],
       errors: [],
       status: "preparing",

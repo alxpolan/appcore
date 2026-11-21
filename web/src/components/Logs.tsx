@@ -26,6 +26,7 @@ const LOG_PREFIX_COLORS: { prefix: string; color: string }[] = [
   { prefix: "[framing]", color: "#b9fc00" },
   { prefix: "[signing]", color: "#38c600" },
   { prefix: "[config]", color: "#0169fb" },
+  { prefix: "[!]", color: "#f87171" },
 ];
 
 function renderLogLine(line: string, i: number) {
@@ -45,7 +46,7 @@ function renderLogLine(line: string, i: number) {
   );
 }
 
-function workerLabelOf(line: string): string | null {
+export function workerLabelOf(line: string): string | null {
   const match = line.match(/^\[([^\]]+)\] /);
 
   if (!match) return null;
@@ -57,13 +58,19 @@ function workerLabelOf(line: string): string | null {
   return label;
 }
 
-function groupLogsByWorker(lines: string[]): Map<string, string[]> {
+export function groupLogsByWorker(lines: string[]): Map<string, string[]> {
   const workers = new Map<string, string[]>();
 
   for (const line of lines) {
     const label = workerLabelOf(line);
 
-    if (!label) continue;
+    if (!label) {
+      const bucket = workers.get("") ?? [];
+
+      bucket.push(line);
+      workers.set("", bucket);
+      continue;
+    }
 
     const rest = line.slice(label.length + 3);
     const bucket = workers.get(label) ?? [];
@@ -78,7 +85,15 @@ function groupLogsByWorker(lines: string[]): Map<string, string[]> {
 const logPaneCls =
   "text-[11px] bg-[#111827] rounded-lg p-3 overflow-x-auto max-h-[400px] overflow-y-auto font-mono leading-relaxed";
 
-function WorkerLogSections({ lines, autoScroll }: { lines: string[]; autoScroll: boolean }) {
+function WorkerLogSections({
+  lines,
+  autoScroll,
+  groupSuffix = " Worker",
+}: {
+  lines: string[];
+  autoScroll: boolean;
+  groupSuffix?: string;
+}) {
   const workers = groupLogsByWorker(lines);
   const workerEntries = [...workers.entries()];
   const [openWorker, setOpenWorker] = useState<string | null>(null);
@@ -112,7 +127,7 @@ function WorkerLogSections({ lines, autoScroll }: { lines: string[]; autoScroll:
               className={`w-full flex items-center justify-between px-3 py-2 text-[12px] font-medium ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-white/[0.03]`}
               onClick={() => setOpenWorker(isOpen ? null : label)}
             >
-              <span>{label} Worker</span>
+              <span>{label ? `${label}${groupSuffix}` : "General"}</span>
               <ChevronDown
                 className={`w-4 h-4 ${textSecondary} shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
               />
@@ -246,7 +261,17 @@ function useStreamingLogs(jobId: string | null, appId: string | null, active: bo
   return { lines, done, liveCount };
 }
 
-function LogsBlock({ logs, loading, error }: { logs: string[] | null; loading: boolean; error: string | null }) {
+function LogsBlock({
+  logs,
+  loading,
+  error,
+  groupSuffix,
+}: {
+  logs: string[] | null;
+  loading: boolean;
+  error: string | null;
+  groupSuffix?: string;
+}) {
   if (loading) {
     return (
       <div className={`flex items-center gap-2 text-[12px] ${textSecondary} py-2`}>
@@ -265,7 +290,7 @@ function LogsBlock({ logs, loading, error }: { logs: string[] | null; loading: b
       <div className={`text-[11px] font-medium ${textSecondary} uppercase tracking-wide mb-1`}>
         Logs ({logs.length} lines)
       </div>
-      <WorkerLogSections lines={logs} autoScroll={false} />
+      <WorkerLogSections lines={logs} autoScroll={false} groupSuffix={groupSuffix} />
     </div>
   );
 }
@@ -1075,7 +1100,7 @@ function BuildJobRow({ job, expanded, onToggle }: { job: BuildJob; expanded: boo
               </pre>
             </details>
           )}
-          <LogsBlock logs={logs} loading={logsLoading} error={logsError} />
+          <LogsBlock logs={logs} loading={logsLoading} error={logsError} groupSuffix="" />
         </div>
       )}
     </div>

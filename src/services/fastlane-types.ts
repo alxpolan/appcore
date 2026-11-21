@@ -57,6 +57,7 @@ export interface SubmissionPhases {
 
 export interface ActiveSubmission {
   jobId: string;
+  bundleId: string;
   logs: string[];
   errors: string[];
   status: "preparing" | "running" | "completed" | "failed";
