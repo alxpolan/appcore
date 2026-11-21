@@ -67,3 +67,26 @@ export async function listPostHogProjects(host: string, apiKey: string): Promise
 
   return options;
 }
+
+export interface PostHogHogQLResult {
+  columns: unknown[];
+  results: unknown[][];
+}
+
+export async function queryPostHogHogQL(
+  host: string,
+  apiKey: string,
+  projectId: string,
+  hogql: string,
+  values: Record<string, unknown>,
+): Promise<PostHogHogQLResult> {
+  const base = normalizePostHogHost(host);
+
+  const res = await axios.post<{ columns: unknown[]; results: unknown[][] }>(
+    `${base}/api/projects/${projectId}/query/`,
+    { query: { kind: "HogQLQuery", query: hogql, values } },
+    { headers: authHeaders(apiKey) },
+  );
+
+  return { columns: res.data.columns ?? [], results: res.data.results ?? [] };
+}

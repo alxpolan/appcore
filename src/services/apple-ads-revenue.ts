@@ -255,3 +255,33 @@ export async function getAppleAdsCampaignRevenue(
 
   return { byCampaign };
 }
+
+export async function getAppleAdsCampaignCustomerIds(
+  bundleId: string,
+  orgId: string,
+  campaignId: string,
+  range: AppleAdsReportRange,
+): Promise<string[]> {
+  const start = new Date(`${range.startDate}T00:00:00Z`);
+  const until = new Date(`${range.endDate}T00:00:00Z`);
+
+  until.setUTCDate(until.getUTCDate() + 1);
+
+  const customers = await prisma.revenueCatCustomer.findMany({
+    where: { bundleId, firstSeenAt: { gte: start, lt: until } },
+    select: { customerId: true, appleAttribution: true, attributes: true },
+  });
+
+  const matched: string[] = [];
+
+  for (const customer of customers) {
+    const attribution = appleAdsCampaignAttribution(customer.appleAttribution, customer.attributes);
+
+    if (!attribution || attribution.campaignId !== campaignId) continue;
+    if (attribution.orgId && attribution.orgId !== orgId) continue;
+
+    matched.push(customer.customerId);
+  }
+
+  return matched;
+}

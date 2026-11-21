@@ -439,6 +439,23 @@ export interface PostHogStatus {
   connectedAt: string | null;
 }
 
+export interface PostHogMilestoneDefinition {
+  eventName: string;
+  minCount: number;
+  label: string;
+}
+
+export interface PostHogMilestoneCompletion extends PostHogMilestoneDefinition {
+  completed: number;
+}
+
+export interface AppleAdsCampaignMilestonesResponse {
+  available: boolean;
+  reason?: "no-app-mapped" | "no-revenuecat" | "no-posthog" | "no-milestones";
+  totalInstalls: number;
+  milestones: PostHogMilestoneCompletion[];
+}
+
 export interface AppleAdsOrgOption {
   orgId: string;
   orgName: string;

@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { logger } from "../../config";
+import { prisma, logger } from "../../config";
 import { requireTeamAdmin, loadTeamSettings } from "../auth";
+import { decryptNullable } from "../../config/encryption";
 import { logActivity } from "../../services/activity-log";
 import {
   listAppleAdsAdGroups,
@@ -15,7 +16,8 @@ import {
   AppleAdsCampaignNotFoundError,
   type CreateAppleAdsNegativeKeywordInput,
 } from "../../services/apple-ads";
-import { getAppleAdsCampaignRevenue, mergeCountryRevenue } from "../../services/apple-ads-revenue";
+import { getAppleAdsCampaignRevenue, getAppleAdsCampaignCustomerIds, mergeCountryRevenue } from "../../services/apple-ads-revenue";
+import { computeMilestoneCompletions, type MilestoneDefinition } from "../../services/posthog-milestones";
 import { webActor, bestEffort } from "./ads-shared";
 import { appleAdsKeyMissing, appleAdsKeyCreds, orgCredsForCampaign, appleWriteErrorMessage, countryBreakdownError, accessibleRevenueApps } from "./apple-ads-helpers";
 
@@ -348,5 +350,86 @@ appleAdsInsightsRouter.get("/campaign-revenue", loadTeamSettings, async (req, re
   } catch (err: any) {
     logger.error("[apple-ads] campaign revenue error", { err: String(err?.message ?? err) });
     res.status(500).json({ error: "Failed to load campaign revenue" });
+  }
+});
+
+appleAdsInsightsRouter.get("/campaigns/:campaignId/milestones", loadTeamSettings, async (req, res) => {
+  const s = req.teamSettings;
+
+  if (appleAdsKeyMissing(s)) {
+    res.status(400).json({ error: "Apple Search Ads is not connected" });
+
+    return;
+  }
+
+  try {
+    const campaignId = req.params.campaignId as string;
+    const creds = await orgCredsForCampaign(req.user!.teamId, appleAdsKeyCreds(s), campaignId);
+    const app = await prisma.app.findFirst({
+      where: { teamId: req.user!.teamId, appleAdsOrgId: creds.orgId },
+      select: { id: true, bundleId: true, revenueCatConnectedAt: true, postHogMilestones: true },
+    });
+
+    if (!app) {
+      res.json({ available: false, reason: "no-app-mapped", totalInstalls: 0, milestones: [] });
+
+      return;
+    }
+
+    if (!app.revenueCatConnectedAt) {
+      res.json({ available: false, reason: "no-revenuecat", totalInstalls: 0, milestones: [] });
+
+      return;
+    }
+
+    if (!s!.posthogConnectedAt) {
+      res.json({ available: false, reason: "no-posthog", totalInstalls: 0, milestones: [] });
+
+      return;
+    }
+
+    const milestoneDefs = (app.postHogMilestones as MilestoneDefinition[] | null) ?? [];
+
+    if (milestoneDefs.length === 0) {
+      res.json({ available: true, reason: "no-milestones", totalInstalls: 0, milestones: [] });
+
+      return;
+    }
+
+    const customerIds = await getAppleAdsCampaignCustomerIds(
+      app.bundleId,
+      creds.orgId,
+      campaignId,
+      resolveAppleAdsRange(req.query),
+    );
+
+    if (customerIds.length === 0) {
+      res.json({
+        available: true,
+        totalInstalls: 0,
+        milestones: milestoneDefs.map((m) => ({ ...m, completed: 0 })),
+      });
+
+      return;
+    }
+
+    const milestones = await computeMilestoneCompletions(
+      s!.posthogHost!,
+      decryptNullable(s!.posthogApiKey)!,
+      s!.posthogProjectId!,
+      customerIds,
+      milestoneDefs,
+    );
+
+    res.json({ available: true, totalInstalls: customerIds.length, milestones });
+  } catch (err: any) {
+    if (err instanceof AppleAdsCampaignNotFoundError) {
+      res.status(404).json({ error: err.message });
+
+      return;
+    }
+
+    logger.error("[apple-ads] campaign milestones error", { err: String(err?.message ?? err) });
+    res.status(500).json({ error: "Failed to load PostHog milestones" });
   }
 });

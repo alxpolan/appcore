@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma, logger } from "../../config";
-import { requireAuth, requireTeamAdmin, loadTeamSettings } from "../auth";
+import { requireAuth, requireTeamAdmin, loadTeamSettings, bundleAccess } from "../auth";
 import { encrypt } from "../../config/encryption";
 import { listPostHogProjects, normalizePostHogHost } from "../../services/posthog";
+import type { MilestoneDefinition } from "../../services/posthog-milestones";
 
 export const postHogRouter = Router();
 
@@ -128,6 +130,50 @@ postHogRouter.post("/disconnect", async (req, res) => {
     });
 
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+postHogRouter.get("/milestones", bundleAccess("query", "bundleId"), async (req, res) => {
+  const milestones = (req.bundleApp!.postHogMilestones as MilestoneDefinition[] | null) ?? [];
+
+  res.json({ milestones });
+});
+
+postHogRouter.put("/milestones", bundleAccess("body", "bundleId"), async (req, res) => {
+  try {
+    const ownApp = req.bundleApp!;
+    const { milestones } = req.body as { milestones: unknown };
+
+    if (!Array.isArray(milestones)) {
+      res.status(400).json({ error: "milestones must be an array" });
+
+      return;
+    }
+
+    const cleaned: MilestoneDefinition[] = [];
+
+    for (const entry of milestones as Record<string, unknown>[]) {
+      const eventName = typeof entry?.eventName === "string" ? entry.eventName.trim() : "";
+      const label = typeof entry?.label === "string" ? entry.label.trim() : "";
+      const minCount = Number(entry?.minCount);
+
+      if (!eventName || !label || !Number.isFinite(minCount) || minCount < 1) {
+        res.status(400).json({ error: "Each milestone needs an event name, a label and a minimum count of at least 1" });
+
+        return;
+      }
+
+      cleaned.push({ eventName, label, minCount: Math.trunc(minCount) });
+    }
+
+    await prisma.app.update({
+      where: { id: ownApp.id },
+      data: { postHogMilestones: cleaned as unknown as Prisma.InputJsonValue },
+    });
+
+    res.json({ ok: true, milestones: cleaned });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

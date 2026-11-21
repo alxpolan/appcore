@@ -171,7 +171,7 @@ export class BossScheduler {
       }
     });
     await this.boss.work(SYNC_REVENUECAT_QUEUE, syncRevenueCatHandler);
-    await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "0 3 * * *", {}, { tz: "Europe/Berlin" });
+    await this.boss.schedule(`${SYNC_REVENUECAT_QUEUE}/dispatch`, "*/30 * * * *", {}, { tz: "Europe/Berlin" });
 
     await this.boss.createQueue(SYNC_ASC_WEB_ANALYTICS_QUEUE);
     await this.boss.work(SYNC_ASC_WEB_ANALYTICS_QUEUE, syncAscWebAnalyticsHandler);

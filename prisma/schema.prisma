@@ -240,6 +240,7 @@ model App {
   revenueCatConnectedAt      DateTime?
   appleAdsOrgId              String?
   appleAdsOrgName            String?
+  postHogMilestones          Json?
   accentColor                String?
   accentColorIconUrl         String?
   supportedLanguages         String[]                  @default([])

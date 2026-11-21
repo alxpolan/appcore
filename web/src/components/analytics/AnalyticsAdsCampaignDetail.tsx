@@ -27,7 +27,7 @@ import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import CppProposals from "../cpp/CppProposals";
 import AdGroupCppSettings from "./AdGroupCppSettings";
-import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
+import type { AppleAdsCampaign, AppleAdsCampaignDetail, AppleAdsCampaignMilestonesResponse, AppleAdsCampaignRevenue, AppleAdsCountryBreakdownResponse, AppleAdsCountryStats, AppleAdsDailySpendResponse, AppleAdsNegativesResponse, AppleAdsSearchTermsResponse, AppleAdsStats } from "../../types";
 import { TD, TH, borderDefault, btnSecSm, pageTitle, textMuted, textPrimary } from "../../styles";
 import { countryName, fmtNumber, fmtPct, rateTrafficColor } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
@@ -336,6 +336,16 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
     loading: countriesLoading,
     error: countriesError,
   } = useCountryBreakdown(campaignId ? `/apple-ads/campaigns/${campaignId}/countries${query}` : null);
+
+  const {
+    data: milestonesData,
+    loading: milestonesLoading,
+    error: milestonesError,
+  } = useApi<AppleAdsCampaignMilestonesResponse>(
+    `/apple-ads/campaigns/${campaignId}/milestones${query}`,
+    [campaignId, ...rangeDeps],
+    true,
+  );
 
   const { canManageTeam, canWrite } = usePermissions();
   const {
@@ -691,6 +701,51 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
               currency={currency}
               revenueAvailable={countriesData.revenueAvailable}
             />
+          </div>
+        )}
+      </div>
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Product Engagement</div>
+          <div className={`text-[12px] ${textMuted} mt-0.5`}>
+            How far installs from this campaign actually got in the app, from PostHog
+          </div>
+        </div>
+        {milestonesLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : milestonesError || !milestonesData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {milestonesError ?? "Failed to load PostHog milestones"}
+          </div>
+        ) : !milestonesData.available ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {milestonesData.reason === "no-app-mapped"
+              ? "No app mapped to this campaign's org — map one in Integrations."
+              : milestonesData.reason === "no-revenuecat"
+                ? "Connect RevenueCat for this app to track engagement."
+                : "Connect PostHog in Integrations to track engagement."}
+          </div>
+        ) : milestonesData.milestones.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            No milestones configured yet — add some in App Settings.
+          </div>
+        ) : (
+          <div className="px-5 py-4 flex flex-wrap gap-6">
+            {milestonesData.milestones.map((m) => {
+              const pct = milestonesData.totalInstalls > 0 ? (m.completed / milestonesData.totalInstalls) * 100 : 0;
+              return (
+                <div key={m.label} className="min-w-[160px]">
+                  <div className={`text-[12px] ${textMuted}`}>{m.label}</div>
+                  <div className={`text-[20px] font-semibold ${textPrimary} tabular-nums`}>
+                    {fmtNumber(m.completed)} / {fmtNumber(milestonesData.totalInstalls)}
+                  </div>
+                  <div className={`text-[12px] ${textMuted} tabular-nums`}>{fmtPct(pct)} reached</div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
