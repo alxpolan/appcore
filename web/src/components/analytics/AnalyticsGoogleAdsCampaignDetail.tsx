@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Ban, Check, Megaphone, Pause, Play, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
+import { ArrowLeft, Ban, Megaphone, Pause, Play, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, X, CircleDollarSign, DollarSign, Download, Eye, Link2, MousePointerClick, Percent, Receipt, Tag, TrendingUp } from "lucide-react";
 import { apiGet, apiPatch, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
 import type { GoogleAdsAppleRevenueResponse, GoogleAdsCampaign, GoogleAdsCampaignDetail, GoogleAdsCountryBreakdownResponse, GoogleAdsCountryStats, GoogleAdsDailySpendResponse, GoogleAdsNegativesResponse, GoogleAdsSearchTermsResponse, GoogleAdsStats } from "../../types";
@@ -24,6 +24,7 @@ import GoogleAdsAppleMapping from "./GoogleAdsAppleMapping";
 import { GoogleNegativeKeywordManager } from "./GoogleAdsNegativeKeywords";
 import GoogleAdsCampaignHistory from "./GoogleAdsCampaignHistory";
 import { StatCard } from "../StatCard";
+import { StatusDot } from "../StatusDot";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -61,31 +62,6 @@ function searchTermStatusBadge(status: string) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${tone}`}>
       {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
-function statusDot(status: string) {
-  const isOn = status === "ENABLED" || status === "ACTIVE";
-  const isPaused = status === "PAUSED";
-  return (
-    <span
-      title={status.replace(/_/g, " ")}
-      className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
-        isOn
-          ? "bg-emerald-100 dark:bg-emerald-900/30"
-          : isPaused
-            ? "bg-gray-100 dark:bg-[#252b38]"
-            : "bg-red-100 dark:bg-red-900/30"
-      }`}
-    >
-      {isOn ? (
-        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
-      ) : isPaused ? (
-        <Pause className="w-3 h-3 text-gray-600 dark:text-[#8b93a5]" fill="currentColor" strokeWidth={0} />
-      ) : (
-        <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={3} />
-      )}
     </span>
   );
 }
@@ -463,7 +439,7 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className={`${pageTitle} leading-tight truncate`}>{campaign?.name ?? "Campaign"}</h1>
-            {campaignStatus && statusDot(campaignStatus)}
+            {campaignStatus && <StatusDot status={campaignStatus} />}
           </div>
         </div>
       </div>
@@ -805,7 +781,7 @@ export default function AnalyticsGoogleAdsCampaignDetail({ addToast }: Props) {
                                       <tr key={k.id} className="hover:bg-[#f7f8fa] dark:hover:bg-[#252b38]">
                                         <td className={TD}>
                                           <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
-                                            {statusDot(k.status)}
+                                            <StatusDot status={k.status} />
                                             {k.text}
                                           </span>
                                         </td>

@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  Check,
   Megaphone,
   Pause,
   Play,
@@ -47,6 +46,7 @@ import AppleAdsCampaignHistory from "./AppleAdsCampaignHistory";
 import { KeywordDevices } from "./AppleAdsKeywordDevices";
 import { TransactionTypeBadge, adsTransactionType, prettyProductName } from "../TransactionTypeBadge";
 import { StatCard } from "../StatCard";
+import { StatusDot } from "../StatusDot";
 
 function fmtMoney(amount: number | null, currency: string | null): string {
   if (amount == null) return "—";
@@ -55,46 +55,6 @@ function fmtMoney(amount: number | null, currency: string | null): string {
     currency: currency ?? "USD",
     maximumFractionDigits: 2,
   }).format(amount);
-}
-
-function statusBadge(status: string) {
-  const isOn = status === "ENABLED" || status === "ACTIVE";
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${
-        isOn
-          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-          : "bg-gray-100 text-gray-600 dark:bg-[#252b38] dark:text-[#8b93a5]"
-      }`}
-    >
-      {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
-function statusDot(status: string) {
-  const isOn = status === "ENABLED" || status === "ACTIVE";
-  const isPaused = status === "PAUSED";
-  return (
-    <span
-      title={status.replace(/_/g, " ")}
-      className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
-        isOn
-          ? "bg-emerald-100 dark:bg-emerald-900/30"
-          : isPaused
-            ? "bg-gray-100 dark:bg-[#252b38]"
-            : "bg-red-100 dark:bg-red-900/30"
-      }`}
-    >
-      {isOn ? (
-        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
-      ) : isPaused ? (
-        <Pause className="w-3 h-3 text-gray-600 dark:text-[#8b93a5]" fill="currentColor" strokeWidth={0} />
-      ) : (
-        <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={3} />
-      )}
-    </span>
-  );
 }
 
 function StatCells({
@@ -501,7 +461,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className={`${pageTitle} leading-tight truncate`}>{campaign?.name ?? "Campaign"}</h1>
-            {campaignStatus && statusDot(campaignStatus)}
+            {campaignStatus && <StatusDot status={campaignStatus} />}
           </div>
         </div>
       </div>
@@ -768,7 +728,6 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
               <thead>
                 <tr>
                   <th className={TH}>Ad Group</th>
-                  <th className={TH}>Status</th>
                   <th className={`${TH} text-right`}>Default Bid</th>
                   {STAT_HEADERS.map((h) => (
                     <th key={h} className={`${TH} text-right ${h === "Conv. Rate" ? "pr-5" : ""}`}>
@@ -791,10 +750,10 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                             <ChevronRight
                               className={`w-3.5 h-3.5 ${textMuted} transition-transform shrink-0 ${expanded ? "rotate-90" : ""}`}
                             />
+                            <StatusDot status={g.status} />
                             {g.name}
                           </span>
                         </td>
-                        <td className={TD}>{statusBadge(g.status)}</td>
                         <td className={`${TD} text-right tabular-nums ${textPrimary}`}>
                           {fmtMoney(g.defaultBidAmount, g.currency ?? currency)}
                         </td>
@@ -802,7 +761,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                       </tr>
                       {expanded && (
                         <tr className="bg-[#fafbfc] dark:bg-[#161920]">
-                          <td colSpan={11} className="px-5 py-4">
+                          <td colSpan={10} className="px-5 py-4">
                             <div className="mb-3 flex items-center gap-3 flex-wrap">
                               <button
                                 onClick={() => setNegativesModal({ scope: "adGroup", id: g.id, name: g.name })}
@@ -942,7 +901,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                                             </td>
                                             <td className={TD}>
                                               <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
-                                                {statusDot(k.status)}
+                                                <StatusDot status={k.status} />
                                                 {k.text}
                                               </span>
                                             </td>

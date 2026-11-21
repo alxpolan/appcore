@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Megaphone,
   ArrowRight,
-  Check,
   DollarSign,
   Download,
   ExternalLink,
@@ -14,7 +13,6 @@ import {
   Play,
   Plus,
   TrendingUp,
-  X,
 } from "lucide-react";
 import { apiPatch, getActiveBundleId, useApi } from "../../hooks/useApi";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -25,6 +23,7 @@ import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../u
 import AnalyticsGoogleAdsCreateCampaign from "./AnalyticsGoogleAdsCreateCampaign";
 import AdsOverviewChart from "./AdsOverviewChart";
 import { StatCard } from "../StatCard";
+import { StatusDot } from "../StatusDot";
 
 function fmtMoney(amount: number, currency: string | null): string {
   return new Intl.NumberFormat(undefined, {
@@ -32,31 +31,6 @@ function fmtMoney(amount: number, currency: string | null): string {
     currency: currency ?? "USD",
     maximumFractionDigits: 2,
   }).format(amount);
-}
-
-function statusDot(status: string) {
-  const isOn = status === "ENABLED";
-  const isPaused = status === "PAUSED";
-  return (
-    <span
-      title={status.replace(/_/g, " ")}
-      className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
-        isOn
-          ? "bg-emerald-100 dark:bg-emerald-900/30"
-          : isPaused
-            ? "bg-gray-100 dark:bg-[#252b38]"
-            : "bg-red-100 dark:bg-red-900/30"
-      }`}
-    >
-      {isOn ? (
-        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
-      ) : isPaused ? (
-        <Pause className="w-3 h-3 text-gray-600 dark:text-[#8b93a5]" fill="currentColor" strokeWidth={0} />
-      ) : (
-        <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={3} />
-      )}
-    </span>
-  );
 }
 
 interface Props {
@@ -337,7 +311,7 @@ export default function AnalyticsGoogleAds({ addToast }: Props) {
                       >
                         <td className={TD}>
                           <span className={`inline-flex items-center gap-2 font-medium ${textPrimary}`}>
-                            {statusDot(c.status)}
+                            <StatusDot status={c.status} />
                             {c.name}
                           </span>
                         </td>
