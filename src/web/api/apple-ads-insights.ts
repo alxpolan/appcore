@@ -406,12 +406,12 @@ appleAdsInsightsRouter.get("/campaigns/:campaignId/milestones", loadTeamSettings
       return;
     }
 
-    const customerIds = await getAppleAdsCampaignCustomerIds(
-      app.bundleId,
-      creds.orgId,
-      campaignId,
-      resolveAppleAdsRange(req.query),
-    );
+    const scopeAdGroupId = typeof req.query.adGroupId === "string" && req.query.adGroupId ? req.query.adGroupId : undefined;
+    const scopeKeywordId = typeof req.query.keywordId === "string" && req.query.keywordId ? req.query.keywordId : undefined;
+    const customerIds = await getAppleAdsCampaignCustomerIds(app.bundleId, creds.orgId, campaignId, resolveAppleAdsRange(req.query), {
+      ...(scopeAdGroupId ? { adGroupId: scopeAdGroupId } : {}),
+      ...(scopeKeywordId ? { keywordId: scopeKeywordId } : {}),
+    });
 
     if (customerIds.length === 0) {
       res.json({

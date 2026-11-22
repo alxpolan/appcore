@@ -36,6 +36,7 @@ import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
 import AnalyticsAds from "./components/analytics/AnalyticsAds";
 import AnalyticsAdsCampaignDetail from "./components/analytics/AnalyticsAdsCampaignDetail";
+import AnalyticsAdsAdGroupDetail from "./components/analytics/AnalyticsAdsAdGroupDetail";
 import AnalyticsGoogleAds from "./components/analytics/AnalyticsGoogleAds";
 import AnalyticsGoogleAdsCampaignDetail from "./components/analytics/AnalyticsGoogleAdsCampaignDetail";
 import Versions from "./components/Versions";
@@ -1564,6 +1565,10 @@ export default function App() {
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
               <Route path="/apple-ads" element={<AnalyticsAds addToast={addToast} />} />
               <Route path="/apple-ads/:campaignId" element={<AnalyticsAdsCampaignDetail addToast={addToast} />} />
+        <Route
+          path="/apple-ads/:campaignId/adgroups/:adGroupId"
+          element={<AnalyticsAdsAdGroupDetail addToast={addToast} />}
+        />
               <Route path="/google-ads" element={<AnalyticsGoogleAds addToast={addToast} />} />
               <Route path="/google-ads/:campaignId" element={<AnalyticsGoogleAdsCampaignDetail addToast={addToast} />} />
               {/* Legacy /analytics/* ads URLs (bookmarks, MCP links) */}
