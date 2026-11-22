@@ -490,6 +490,10 @@ export default function SigningSection({ appId, addToast }: Props) {
               <button className={btnSecondary} onClick={handleGenerateProfile} disabled={generatingProfile}>
                 {generatingProfile ? "Generating…" : "Generate via App Store Connect"}
               </button>
+              <p className={`text-[11px] ${textMuted} mt-1.5`}>
+                Finds the main bundle plus extensions (widgets, watch apps, tests) in the linked repo and
+                creates or renews one App Store profile per bundle ID.
+              </p>
             </div>
           )}
         </div>

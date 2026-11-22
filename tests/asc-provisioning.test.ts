@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   collectTargetBundles,
+  extractBundleIdsFromPbxproj,
   normalizeSerial,
   profileUsable,
   upsertStoredProfile,
@@ -43,6 +44,38 @@ describe("collectTargetBundles", () => {
 
   it("ignores unparseable stored profiles", () => {
     assert.deepEqual(collectTargetBundles("com.a.App", ["GARBAGE"], bundleIdOf), ["com.a.App"]);
+  });
+});
+
+describe("extractBundleIdsFromPbxproj", () => {
+  const pbxproj = `
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.fringelo.dartly.Dartly;
+    };
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.fringelo.dartly.Dartly.widgets;
+    };
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).watchapp";
+    };
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.other.Unrelated;
+    };
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = "$(CUSTOM_VAR).weird";
+    };
+  `;
+
+  it("finds literal, variable-resolved and nested bundle ids", () => {
+    assert.deepEqual(extractBundleIdsFromPbxproj(pbxproj, "com.fringelo.dartly.Dartly"), [
+      "com.fringelo.dartly.Dartly",
+      "com.fringelo.dartly.Dartly.watchapp",
+      "com.fringelo.dartly.Dartly.widgets",
+    ]);
+  });
+
+  it("returns empty for projects without bundle ids", () => {
+    assert.deepEqual(extractBundleIdsFromPbxproj("buildSettings = {};", "com.a.App"), []);
   });
 });
 

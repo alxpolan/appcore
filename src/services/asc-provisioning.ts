@@ -2,10 +2,12 @@ import { execFileSync } from "child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { logger, prisma } from "../config";
+import { getTeamSettings, logger, prisma } from "../config";
+import { decryptNullable } from "../config/encryption";
 import { ascClientForTeam } from "./asc-client";
 import { parseProvisioningProfiles, resolveSigningCredentials } from "./utils/provisioning-profiles";
 import type { ASCProfile } from "./appstore-connect-types";
+import axios from "./utils/http";
 
 const RENEW_BEFORE_DAYS = 30;
 
@@ -106,6 +108,85 @@ export function collectTargetBundles(
   return targets;
 }
 
+export function extractBundleIdsFromPbxproj(content: string, mainBundleId: string): string[] {
+  const found = new Set<string>();
+  const pattern = /PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;\n]+);/g;
+
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(content)) !== null) {
+    found.add(match[1].trim().replace(/^"|"$/g, ""));
+  }
+
+  const resolved: string[] = [];
+
+  for (const raw of found) {
+    let value = raw;
+
+    for (let i = 0; i < 5 && value.includes("$(PRODUCT_BUNDLE_IDENTIFIER)"); i++) {
+      value = value.replace(/\$\(PRODUCT_BUNDLE_IDENTIFIER\)/g, mainBundleId);
+    }
+
+    if (!value || value.includes("$(") || value.includes("$")) continue;
+    if (value !== mainBundleId && !value.startsWith(`${mainBundleId}.`)) continue;
+    if (!resolved.includes(value)) resolved.push(value);
+  }
+
+  return resolved.sort((a, b) => (a === mainBundleId ? -1 : b === mainBundleId ? 1 : a.localeCompare(b)));
+}
+
+async function fetchRepoBundleIds(
+  repoFullName: string,
+  iosDir: string | null,
+  mainBundleId: string,
+  accessToken: string,
+): Promise<string[]> {
+  const base = `https://api.github.com/repos/${repoFullName}/contents`;
+  const dirPath = (iosDir ?? "").replace(/^\/+|\/+$/g, "");
+  const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" };
+
+  const { data: entries } = await axios.get<Array<{ name: string; type: string }>>(
+    dirPath ? `${base}/${dirPath}` : base,
+    { headers },
+  );
+
+  const project = entries.find((entry) => entry.type === "dir" && entry.name.endsWith(".xcodeproj"));
+
+  if (!project) return [];
+
+  const projectPath = dirPath ? `${dirPath}/${project.name}` : project.name;
+  const { data: file } = await axios.get<{ content?: string; encoding?: string }>(
+    `${base}/${projectPath}/project.pbxproj`,
+    { headers },
+  );
+
+  if (!file.content || file.encoding !== "base64") return [];
+
+  return extractBundleIdsFromPbxproj(Buffer.from(file.content, "base64").toString("utf8"), mainBundleId);
+}
+
+async function detectRepoBundleIds(app: {
+  teamId: string | null;
+  githubRepoFullName: string | null;
+  githubIosDir: string | null;
+  bundleId: string;
+}): Promise<string[]> {
+  if (!app.teamId || !app.githubRepoFullName) return [];
+
+  try {
+    const settings = await getTeamSettings(app.teamId);
+    const token = decryptNullable(settings?.githubAccessToken);
+
+    if (!token) return [];
+
+    return await fetchRepoBundleIds(app.githubRepoFullName, app.githubIosDir, app.bundleId, token);
+  } catch (err) {
+    logger.warn(`[asc-provisioning] Repo bundle detection skipped: ${String(err)}`);
+
+    return [];
+  }
+}
+
 export function upsertStoredProfile(
   existing: string[],
   bundleId: string,
@@ -164,6 +245,8 @@ export async function ensureAppStoreProfiles(appId: string): Promise<EnsuredProf
       name: true,
       bundleId: true,
       teamId: true,
+      githubRepoFullName: true,
+      githubIosDir: true,
       signingCertificate: {
         select: { name: true, certP12: true, certPassword: true, appleTeamId: true },
       },
@@ -201,6 +284,15 @@ export async function ensureAppStoreProfiles(appId: string): Promise<EnsuredProf
 
   const stored = parseProvisioningProfiles(app);
   const targets = collectTargetBundles(app.bundleId, stored);
+
+  for (const detected of await detectRepoBundleIds(app)) {
+    if (!targets.includes(detected)) targets.push(detected);
+  }
+
+  if (targets.length > 1) {
+    logger.info(`[asc-provisioning] Bundle IDs for ${app.bundleId}: ${targets.join(", ")}`);
+  }
+
   const next = [...stored];
   const results: EnsuredProfile[] = [];
 
