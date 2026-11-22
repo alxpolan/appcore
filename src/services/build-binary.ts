@@ -4,7 +4,7 @@ import os from "os";
 import { logger, prisma } from "../config";
 import { workerClient } from "./worker-client";
 import { postCommitStatus } from "./github";
-import { parseProvisioningProfiles } from "./utils/provisioning-profiles";
+import { parseProvisioningProfiles, resolveSigningCredentials } from "./utils/provisioning-profiles";
 import { summarizeBuildError } from "./utils/build-error-summary";
 
 const BUILDS_BASE_DIR = path.join(os.homedir(), "appcore", "builds");
@@ -38,6 +38,9 @@ export async function runBuildJob(
   const app = await prisma.app.findUnique({
     where: { id: appId },
     select: {
+      signingCertificate: {
+        select: { name: true, certP12: true, certPassword: true, appleTeamId: true },
+      },
       signingCertP12: true,
       signingCertPassword: true,
       signingProvisioningProfile: true,
@@ -76,14 +79,16 @@ export async function runBuildJob(
   }
 
   const signingProfiles = parseProvisioningProfiles(app);
-  const hasSigning = !!(app?.signingCertP12 && app?.signingCertPassword && signingProfiles.length > 0);
+  const signing = resolveSigningCredentials(app);
+  const hasSigning = !!signing && signingProfiles.length > 0;
 
   if (!hasSigning) {
     logger.warn(
       `[build:${appId}] No signing credentials configured — binary build will likely fail at code-signing step`,
     );
   } else {
-    logger.info(`[build:${appId}] Signing credentials found (teamId: ${app?.signingTeamId ?? "not set"})`);
+    const source = signing?.certificateName ? `certificate "${signing.certificateName}"` : "app credentials";
+    logger.info(`[build:${appId}] Signing credentials found (${source}, teamId: ${signing?.teamId ?? "not set"})`);
   }
 
   await prisma.buildJob.update({
@@ -111,11 +116,11 @@ export async function runBuildJob(
       framework: params.framework ?? app?.githubFramework ?? undefined,
       versionString,
       ...(hasSigning &&
-        app && {
-          signingCertP12: app.signingCertP12 as string,
-          signingCertPassword: app.signingCertPassword as string,
+        signing && {
+          signingCertP12: signing.certP12,
+          signingCertPassword: signing.certPassword,
           signingProvisioningProfiles: signingProfiles,
-          signingTeamId: app.signingTeamId ?? undefined,
+          signingTeamId: signing.teamId ?? app?.signingTeamId ?? undefined,
         }),
     });
 

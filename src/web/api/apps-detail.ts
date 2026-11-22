@@ -1,6 +1,7 @@
 import { prisma } from "../../config";
 import { requireAuth, bundleAccess, appAccess } from "../auth";
 import { parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
+import { encrypt } from "../../config/encryption";
 import { appsRouter } from "./apps-list";
 
 appsRouter.get("/:id", appAccess("params", "id"), async (req, res) => {
@@ -325,6 +326,11 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
     const app = await prisma.app.findUnique({
       where: { id: req.bundleApp!.id },
       select: {
+        teamId: true,
+        signingCertificateId: true,
+        signingCertificate: {
+          select: { id: true, name: true, appleTeamId: true },
+        },
         signingCertP12: true,
         signingProvisioningProfile: true,
         signingProvisioningProfiles: true,
@@ -334,11 +340,23 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
 
     const profiles = parseProvisioningProfiles(app);
 
+    const certificates = app?.teamId
+      ? await prisma.signingCertificate.findMany({
+          where: { teamId: app.teamId },
+          select: { id: true, name: true, appleTeamId: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+        })
+      : [];
+
     res.json({
-      hasCert: !!app?.signingCertP12,
+      hasCert: !!(app?.signingCertificateId || app?.signingCertP12),
       hasProfile: profiles.length > 0,
       profileCount: profiles.length,
-      teamId: app?.signingTeamId ?? null,
+      teamId: app?.signingCertificate?.appleTeamId ?? app?.signingTeamId ?? null,
+      appTeamId: app?.teamId ?? null,
+      certificateId: app?.signingCertificateId ?? null,
+      certificateName: app?.signingCertificate?.name ?? null,
+      certificates,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -347,7 +365,45 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
 
 appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {
-    const { p12Base64, p12Password, profileBase64, profilesBase64, teamId } = req.body;
+    const { p12Base64, p12Password, profileBase64, profilesBase64, teamId, signingCertificateId } = req.body;
+
+    if (signingCertificateId !== undefined) {
+      if (signingCertificateId === null) {
+        await prisma.app.update({
+          where: { id: req.bundleApp!.id },
+          data: { signingCertificateId: null },
+        });
+        res.json({ ok: true });
+        return;
+      }
+
+      const app = await prisma.app.findUnique({
+        where: { id: req.bundleApp!.id },
+        select: { teamId: true },
+      });
+
+      if (!app?.teamId) {
+        res.status(400).json({ error: "App must belong to a team before using a team certificate" });
+        return;
+      }
+
+      const certificate = await prisma.signingCertificate.findFirst({
+        where: { id: signingCertificateId, teamId: app.teamId },
+        select: { id: true },
+      });
+
+      if (!certificate) {
+        res.status(404).json({ error: "Certificate not found in this team" });
+        return;
+      }
+
+      await prisma.app.update({
+        where: { id: req.bundleApp!.id },
+        data: { signingCertificateId: certificate.id },
+      });
+      res.json({ ok: true });
+      return;
+    }
 
     const profiles: string[] = Array.isArray(profilesBase64)
       ? profilesBase64.filter((p): p is string => typeof p === "string" && p.length > 0)
@@ -355,29 +411,138 @@ appsRouter.put("/:id/signing", requireAuth, appAccess("params", "id"), async (re
         ? [profileBase64]
         : [];
 
-    if (!p12Base64 || !p12Password || profiles.length === 0) {
-      res.status(400).json({
-        error: "p12Base64, p12Password, and at least one provisioning profile are required",
-      });
+    if (profiles.length === 0) {
+      res.status(400).json({ error: "At least one provisioning profile is required" });
       return;
     }
 
-    await prisma.app.update({
-      where: { id: req.bundleApp!.id },
-      data: {
-        signingCertP12: p12Base64,
-        signingCertPassword: p12Password,
-        signingProvisioningProfiles: JSON.stringify(profiles),
-        signingProvisioningProfile: null,
-        signingTeamId: teamId ?? null,
-      },
-    });
+    if (p12Base64 || p12Password) {
+      if (!p12Base64 || !p12Password) {
+        res.status(400).json({
+          error: "p12Base64, p12Password, and at least one provisioning profile are required",
+        });
+        return;
+      }
+
+      await prisma.app.update({
+        where: { id: req.bundleApp!.id },
+        data: {
+          signingCertP12: p12Base64,
+          signingCertPassword: encrypt(p12Password),
+          signingProvisioningProfiles: JSON.stringify(profiles),
+          signingProvisioningProfile: null,
+          signingTeamId: teamId ?? null,
+        },
+      });
+    } else {
+      await prisma.app.update({
+        where: { id: req.bundleApp!.id },
+        data: {
+          signingProvisioningProfiles: JSON.stringify(profiles),
+          signingProvisioningProfile: null,
+        },
+      });
+    }
 
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
+
+appsRouter.post("/:id/signing/certificates", requireAuth, appAccess("params", "id"), async (req, res) => {
+  try {
+    const { name, p12Base64, p12Password, appleTeamId } = req.body;
+
+    const app = await prisma.app.findUnique({
+      where: { id: req.bundleApp!.id },
+      select: { teamId: true },
+    });
+
+    if (!app?.teamId) {
+      res.status(400).json({ error: "App must belong to a team before adding a team certificate" });
+      return;
+    }
+
+    if (!name?.trim() || !p12Base64 || !p12Password) {
+      res.status(400).json({ error: "name, p12Base64, and p12Password are required" });
+      return;
+    }
+
+    const certificate = await prisma.signingCertificate.create({
+      data: {
+        teamId: app.teamId,
+        name: name.trim(),
+        certP12: p12Base64,
+        certPassword: encrypt(p12Password),
+        appleTeamId: appleTeamId?.trim() || null,
+      },
+      select: { id: true, name: true, appleTeamId: true, createdAt: true },
+    });
+
+    await prisma.app.update({
+      where: { id: req.bundleApp!.id },
+      data: { signingCertificateId: certificate.id },
+    });
+
+    res.json({ ok: true, certificate });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+appsRouter.delete(
+  "/:id/signing/certificates/:certificateId",
+  requireAuth,
+  appAccess("params", "id"),
+  async (req, res) => {
+    try {
+      const app = await prisma.app.findUnique({
+        where: { id: req.bundleApp!.id },
+        select: { teamId: true },
+      });
+
+      if (!app?.teamId) {
+        res.status(400).json({ error: "App must belong to a team" });
+        return;
+      }
+
+      const certificateId = req.params.certificateId;
+
+      if (typeof certificateId !== "string" || certificateId.length === 0) {
+        res.status(400).json({ error: "Invalid certificate id" });
+        return;
+      }
+
+      const certificate = await prisma.signingCertificate.findFirst({
+        where: { id: certificateId, teamId: app.teamId },
+        select: { id: true, name: true },
+      });
+
+      if (!certificate) {
+        res.status(404).json({ error: "Certificate not found in this team" });
+        return;
+      }
+
+      const linkedApps = await prisma.app.count({
+        where: { signingCertificateId: certificate.id },
+      });
+
+      if (linkedApps > 0) {
+        res.status(400).json({
+          error: `Certificate is still used by ${linkedApps} app${linkedApps === 1 ? "" : "s"} — unlink it there first`,
+        });
+        return;
+      }
+
+      await prisma.signingCertificate.delete({ where: { id: certificate.id } });
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  },
+);
 
 appsRouter.get("/:id/build-screenshot-selection", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {
@@ -501,6 +666,7 @@ appsRouter.delete("/:id/signing", requireAuth, appAccess("params", "id"), async 
     await prisma.app.update({
       where: { id: req.bundleApp!.id },
       data: {
+        signingCertificateId: null,
         signingCertP12: null,
         signingCertPassword: null,
         signingProvisioningProfile: null,
