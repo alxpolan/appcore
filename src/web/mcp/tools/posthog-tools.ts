@@ -5,7 +5,11 @@ import { prisma } from "../../../config";
 import { decryptNullable } from "../../../config/encryption";
 import { resolveAppleAdsRange } from "../../../services/apple-ads";
 import { getAppleAdsCampaignCustomerIds } from "../../../services/apple-ads-revenue";
-import { computeMilestoneCompletions, type MilestoneDefinition } from "../../../services/posthog-milestones";
+import {
+  computeMilestoneCompletions,
+  type MilestoneDefinition,
+  type MilestoneVariant,
+} from "../../../services/posthog-milestones";
 import {
   appNotFoundWithListApps,
   getSettingsWithBundleId,
@@ -125,7 +129,12 @@ export function registerPostHogTools(server: McpServer, userId: string) {
       try {
         const app = await prisma.app.findFirst({
           where: { teamId: ctx.teamId, appleAdsOrgId: ctx.orgId },
-          select: { bundleId: true, revenueCatConnectedAt: true, postHogMilestones: true },
+          select: {
+            bundleId: true,
+            revenueCatConnectedAt: true,
+            postHogMilestones: true,
+            postHogMilestoneVariants: true,
+          },
         });
 
         if (!app) return unavailable("no-app-mapped");
@@ -139,7 +148,13 @@ export function registerPostHogTools(server: McpServer, userId: string) {
         const milestoneDefs = (app.postHogMilestones as MilestoneDefinition[] | null) ?? [];
 
         if (milestoneDefs.length === 0) {
-          return jsonResult({ available: true, reason: "no-milestones", totalInstalls: 0, milestones: [] });
+          return jsonResult({
+            available: true,
+            reason: "no-milestones",
+            totalInstalls: 0,
+            milestones: [],
+            variants: [],
+          });
         }
 
         const range = resolveAppleAdsRange({ days, period, startDate, endDate });
@@ -161,15 +176,17 @@ export function registerPostHogTools(server: McpServer, userId: string) {
 
         if (!apiKey || !settings.posthogHost || !settings.posthogProjectId) return unavailable("no-posthog");
 
-        const milestones = await computeMilestoneCompletions(
+        const variantDefs = (app.postHogMilestoneVariants as MilestoneVariant[] | null) ?? [];
+        const { milestones, variants } = await computeMilestoneCompletions(
           settings.posthogHost,
           apiKey,
           settings.posthogProjectId,
           customerIds,
           milestoneDefs,
+          variantDefs,
         );
 
-        return jsonResult({ available: true, range, totalInstalls: customerIds.length, milestones });
+        return jsonResult({ available: true, range, totalInstalls: customerIds.length, milestones, variants });
       } catch (err) {
         return adsError("get_ads_campaign_milestones", err);
       }

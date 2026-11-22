@@ -449,11 +449,20 @@ export interface PostHogMilestoneCompletion extends PostHogMilestoneDefinition {
   completed: number;
 }
 
+export interface AppleAdsCampaignVariantBreakdown {
+  key: string;
+  label: string;
+  totalInstalls: number;
+  completed: number[];
+  funnel: (number | null)[];
+}
+
 export interface AppleAdsCampaignMilestonesResponse {
   available: boolean;
   reason?: "no-app-mapped" | "no-revenuecat" | "no-posthog" | "no-milestones";
   totalInstalls: number;
   milestones: PostHogMilestoneCompletion[];
+  variants?: AppleAdsCampaignVariantBreakdown[];
 }
 
 export interface AppleAdsOrgOption {

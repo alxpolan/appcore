@@ -4,7 +4,7 @@ import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, bundleAccess } from "../auth";
 import { encrypt } from "../../config/encryption";
 import { listPostHogProjects, normalizePostHogHost } from "../../services/posthog";
-import type { MilestoneDefinition } from "../../services/posthog-milestones";
+import type { MilestoneDefinition, MilestoneVariant } from "../../services/posthog-milestones";
 
 export const postHogRouter = Router();
 
@@ -137,14 +137,15 @@ postHogRouter.post("/disconnect", async (req, res) => {
 
 postHogRouter.get("/milestones", bundleAccess("query", "bundleId"), async (req, res) => {
   const milestones = (req.bundleApp!.postHogMilestones as MilestoneDefinition[] | null) ?? [];
+  const variants = (req.bundleApp!.postHogMilestoneVariants as MilestoneVariant[] | null) ?? [];
 
-  res.json({ milestones });
+  res.json({ milestones, variants });
 });
 
 postHogRouter.put("/milestones", bundleAccess("body", "bundleId"), async (req, res) => {
   try {
     const ownApp = req.bundleApp!;
-    const { milestones } = req.body as { milestones: unknown };
+    const { milestones, variants } = req.body as { milestones: unknown; variants?: unknown };
 
     if (!Array.isArray(milestones)) {
       res.status(400).json({ error: "milestones must be an array" });
@@ -166,6 +167,42 @@ postHogRouter.put("/milestones", bundleAccess("body", "bundleId"), async (req, r
       }
 
       cleaned.push({ eventName, label, minCount: Math.trunc(minCount) });
+    }
+
+    const cleanedVariants: MilestoneVariant[] = [];
+
+    if (variants !== undefined) {
+      if (!Array.isArray(variants)) {
+        res.status(400).json({ error: "variants must be an array" });
+
+        return;
+      }
+
+      for (const entry of variants as Record<string, unknown>[]) {
+        const label = typeof entry?.label === "string" ? entry.label.trim() : "";
+        const flagKey = typeof entry?.flagKey === "string" ? entry.flagKey.trim() : "";
+        const flagValue = typeof entry?.flagValue === "string" ? entry.flagValue.trim() : "";
+
+        if (!label || !flagKey || !flagValue) {
+          res.status(400).json({ error: "Each variant needs a label, a flag key and a flag value" });
+
+          return;
+        }
+
+        cleanedVariants.push({ key: `${flagKey}::${flagValue}`, label, flagKey, flagValue });
+      }
+
+      await prisma.app.update({
+        where: { id: ownApp.id },
+        data: {
+          postHogMilestones: cleaned as unknown as Prisma.InputJsonValue,
+          postHogMilestoneVariants: cleanedVariants as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      res.json({ ok: true, milestones: cleaned, variants: cleanedVariants });
+
+      return;
     }
 
     await prisma.app.update({

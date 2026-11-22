@@ -17,7 +17,11 @@ import {
   type CreateAppleAdsNegativeKeywordInput,
 } from "../../services/apple-ads";
 import { getAppleAdsCampaignRevenue, getAppleAdsCampaignCustomerIds, mergeCountryRevenue } from "../../services/apple-ads-revenue";
-import { computeMilestoneCompletions, type MilestoneDefinition } from "../../services/posthog-milestones";
+import {
+  computeMilestoneCompletions,
+  type MilestoneDefinition,
+  type MilestoneVariant,
+} from "../../services/posthog-milestones";
 import { webActor, bestEffort } from "./ads-shared";
 import { appleAdsKeyMissing, appleAdsKeyCreds, orgCredsForCampaign, appleWriteErrorMessage, countryBreakdownError, accessibleRevenueApps } from "./apple-ads-helpers";
 
@@ -367,7 +371,13 @@ appleAdsInsightsRouter.get("/campaigns/:campaignId/milestones", loadTeamSettings
     const creds = await orgCredsForCampaign(req.user!.teamId, appleAdsKeyCreds(s), campaignId);
     const app = await prisma.app.findFirst({
       where: { teamId: req.user!.teamId, appleAdsOrgId: creds.orgId },
-      select: { id: true, bundleId: true, revenueCatConnectedAt: true, postHogMilestones: true },
+      select: {
+        id: true,
+        bundleId: true,
+        revenueCatConnectedAt: true,
+        postHogMilestones: true,
+        postHogMilestoneVariants: true,
+      },
     });
 
     if (!app) {
@@ -391,7 +401,7 @@ appleAdsInsightsRouter.get("/campaigns/:campaignId/milestones", loadTeamSettings
     const milestoneDefs = (app.postHogMilestones as MilestoneDefinition[] | null) ?? [];
 
     if (milestoneDefs.length === 0) {
-      res.json({ available: true, reason: "no-milestones", totalInstalls: 0, milestones: [] });
+      res.json({ available: true, reason: "no-milestones", totalInstalls: 0, milestones: [], variants: [] });
 
       return;
     }
@@ -408,20 +418,23 @@ appleAdsInsightsRouter.get("/campaigns/:campaignId/milestones", loadTeamSettings
         available: true,
         totalInstalls: 0,
         milestones: milestoneDefs.map((m) => ({ ...m, completed: 0 })),
+        variants: [],
       });
 
       return;
     }
 
-    const milestones = await computeMilestoneCompletions(
+    const variantDefs = (app.postHogMilestoneVariants as MilestoneVariant[] | null) ?? [];
+    const { milestones, variants } = await computeMilestoneCompletions(
       s!.posthogHost!,
       decryptNullable(s!.posthogApiKey)!,
       s!.posthogProjectId!,
       customerIds,
       milestoneDefs,
+      variantDefs,
     );
 
-    res.json({ available: true, totalInstalls: customerIds.length, milestones });
+    res.json({ available: true, totalInstalls: customerIds.length, milestones, variants });
   } catch (err: any) {
     if (err instanceof AppleAdsCampaignNotFoundError) {
       res.status(404).json({ error: err.message });

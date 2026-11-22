@@ -259,6 +259,7 @@ model App {
   appleAdsOrgId              String?
   appleAdsOrgName            String?
   postHogMilestones          Json?
+  postHogMilestoneVariants   Json?
   accentColor                String?
   accentColorIconUrl         String?
   supportedLanguages         String[]                  @default([])
