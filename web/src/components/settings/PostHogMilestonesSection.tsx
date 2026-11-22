@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { apiGet, apiPut } from "../../hooks/useApi";
 import SectionCard from "./SectionCard";
 import { btnPrimary, btnSecondary, inputCls, textSecondary } from "../../styles";
@@ -10,8 +10,17 @@ interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
 
+type MilestoneRow = PostHogMilestoneDefinition & { key: string };
+
+const newRow = (): MilestoneRow => ({
+  eventName: "",
+  minCount: 1,
+  label: "",
+  key: Math.random().toString(36).slice(2),
+});
+
 export default function PostHogMilestonesSection({ bundleId, addToast }: Props) {
-  const [milestones, setMilestones] = useState<PostHogMilestoneDefinition[]>([]);
+  const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -20,7 +29,7 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
     setLoading(true);
     apiGet<{ milestones: PostHogMilestoneDefinition[] }>("/posthog/milestones", { bundleId })
       .then((d) => {
-        setMilestones(d.milestones);
+        setMilestones(d.milestones.map((m) => ({ ...m, key: Math.random().toString(36).slice(2) })));
         setDirty(false);
       })
       .finally(() => setLoading(false));
@@ -34,7 +43,7 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
   };
 
   const addRow = () => {
-    setMilestones((prev) => [...prev, { eventName: "", minCount: 1, label: "" }]);
+    setMilestones((prev) => [...prev, newRow()]);
     setDirty(true);
   };
 
@@ -43,15 +52,31 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
     setDirty(true);
   };
 
+  const moveRow = (index: number, dir: -1 | 1) => {
+    setMilestones((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+
+      if (target < 0 || target >= next.length) return prev;
+
+      [next[index], next[target]] = [next[target], next[index]];
+
+      return next;
+    });
+    setDirty(true);
+  };
+
   const handleSave = async () => {
-    const valid = milestones.filter((m) => m.eventName.trim() && m.label.trim() && m.minCount >= 1);
+    const valid = milestones
+      .filter((m) => m.eventName.trim() && m.label.trim() && m.minCount >= 1)
+      .map(({ key, ...rest }) => rest);
     setSaving(true);
     try {
       const result = await apiPut<{ milestones: PostHogMilestoneDefinition[] }>("/posthog/milestones", {
         bundleId,
         milestones: valid,
       });
-      setMilestones(result.milestones);
+      setMilestones(result.milestones.map((m) => ({ ...m, key: Math.random().toString(36).slice(2) })));
       setDirty(false);
       addToast("Milestones saved", "success");
     } catch (err: any) {
@@ -76,7 +101,25 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
         )}
 
         {milestones.map((m, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={m.key} className="flex items-center gap-2">
+            <div className="flex flex-col shrink-0">
+              <button
+                onClick={() => moveRow(i, -1)}
+                disabled={i === 0}
+                className="p-0.5 rounded text-[#9ca3af] hover:text-[#595DD2] transition-colors disabled:opacity-20 disabled:pointer-events-none"
+                title="Move up"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => moveRow(i, 1)}
+                disabled={i === milestones.length - 1}
+                className="p-0.5 rounded text-[#9ca3af] hover:text-[#595DD2] transition-colors disabled:opacity-20 disabled:pointer-events-none"
+                title="Move down"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <input
               type="text"
               className={`${inputCls} flex-1 min-w-0 font-mono text-[13px]`}
