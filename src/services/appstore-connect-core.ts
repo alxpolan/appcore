@@ -6,7 +6,10 @@ import type {
   ASCAppInfo,
   ASCAppInfoLocalization,
   ASCAppStoreVersion,
+  ASCBundleIdResource,
+  ASCCertificate,
   ASCCredentials,
+  ASCProfile,
   ASCRateLimit,
   ASCVersionLocalization,
 } from "./appstore-connect-types";
@@ -441,5 +444,99 @@ export class AppStoreConnectCore {
     logger.info(`No editable version found. Creating v${nextVersion}...`);
 
     return this.createNewVersion(appId, nextVersion);
+  }
+
+  async listCertificates(): Promise<ASCCertificate[]> {
+    try {
+      const { data } = await this.client.get("/certificates", {
+        params: { limit: 200 },
+      });
+
+      return data.data ?? [];
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async findBundleIdResource(identifier: string): Promise<ASCBundleIdResource | null> {
+    try {
+      const { data } = await this.client.get("/bundleIds", {
+        params: { "filter[identifier]": identifier, limit: 10 },
+      });
+
+      return data.data?.[0] ?? null;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async createBundleIdResource(identifier: string, name: string): Promise<ASCBundleIdResource> {
+    try {
+      const { data } = await this.client.post("/bundleIds", {
+        data: {
+          type: "bundleIds",
+          attributes: { identifier, name, platform: "IOS" },
+        },
+      });
+
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async listProfilesForBundleId(bundleIdResourceId: string): Promise<ASCProfile[]> {
+    try {
+      const { data } = await this.client.get(`/bundleIds/${bundleIdResourceId}/profiles`, {
+        params: { limit: 200 },
+      });
+
+      return data.data ?? [];
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async getProfile(profileId: string): Promise<ASCProfile> {
+    try {
+      const { data } = await this.client.get(`/profiles/${profileId}`);
+
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async createAppStoreProfile(
+    name: string,
+    bundleIdResourceId: string,
+    certificateIds: string[],
+  ): Promise<ASCProfile> {
+    try {
+      const { data } = await this.client.post("/profiles", {
+        data: {
+          type: "profiles",
+          attributes: { name, profileType: "IOS_APP_STORE" },
+          relationships: {
+            bundleId: { data: { type: "bundleIds", id: bundleIdResourceId } },
+            certificates: {
+              data: certificateIds.map((id) => ({ type: "certificates", id })),
+            },
+          },
+        },
+      });
+
+      return data.data;
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
+  }
+
+  async deleteProfile(profileId: string): Promise<void> {
+    try {
+      await this.client.delete(`/profiles/${profileId}`);
+    } catch (err: any) {
+      this.throwASCError(err);
+    }
   }
 }

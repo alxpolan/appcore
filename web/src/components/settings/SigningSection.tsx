@@ -11,6 +11,11 @@ interface TeamCertificate {
   createdAt: string;
 }
 
+interface StoredProfileBundle {
+  bundleId: string | null;
+  expiresAt: string | null;
+}
+
 interface SigningStatus {
   hasCert: boolean;
   hasProfile: boolean;
@@ -20,6 +25,7 @@ interface SigningStatus {
   certificateId: string | null;
   certificateName: string | null;
   certificates: TeamCertificate[];
+  profileBundles: StoredProfileBundle[];
 }
 
 interface Props {
@@ -54,6 +60,7 @@ export default function SigningSection({ appId, addToast }: Props) {
   const [profileFiles, setProfileFiles] = useState<File[]>([]);
   const [password, setPassword] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [generatingProfile, setGeneratingProfile] = useState(false);
   const [showCertModal, setShowCertModal] = useState(false);
   const [certName, setCertName] = useState("");
   const [certP12File, setCertP12File] = useState<File | null>(null);
@@ -174,6 +181,29 @@ export default function SigningSection({ appId, addToast }: Props) {
       addToast(err.message, "error");
     } finally {
       setCreatingCert(false);
+    }
+  };
+
+  const handleGenerateProfile = async () => {
+    setGeneratingProfile(true);
+    try {
+      const res = await fetch(`/api/apps/${appId}/signing/profiles`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate profiles");
+      const created = (data.profiles ?? []).filter((p: { reused: boolean }) => !p.reused).length;
+      const reused = (data.profiles ?? []).length - created;
+      addToast(
+        `${(data.profiles ?? []).length} bundle${(data.profiles ?? []).length === 1 ? "" : "s"}: ${created} created, ${reused} reused`,
+        "success",
+      );
+      fetchStatus();
+    } catch (err: any) {
+      addToast(err.message, "error");
+    } finally {
+      setGeneratingProfile(false);
     }
   };
 
@@ -427,6 +457,24 @@ export default function SigningSection({ appId, addToast }: Props) {
           <p className={`text-[11px] ${textMuted} mt-1.5`}>
             One profile per bundle ID. App extensions (widgets, share sheets, app clips) each need their own.
           </p>
+          {status.profileBundles.length > 0 && (
+            <div className="flex flex-col gap-1 mt-2">
+              {status.profileBundles.map((bundle, i) => {
+                const expired = bundle.expiresAt ? new Date(bundle.expiresAt).getTime() < Date.now() : false;
+
+                return (
+                  <div key={i} className={`flex items-center justify-between text-[12px] ${textSecondary}`}>
+                    <span className="font-mono truncate">{bundle.bundleId ?? "Unknown bundle"}</span>
+                    <span className={expired ? "text-red-500 font-medium" : textMuted}>
+                      {bundle.expiresAt
+                        ? `${expired ? "expired " : "valid until "}${new Date(bundle.expiresAt).toLocaleDateString()}`
+                        : "expiry unknown"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {profileFiles.length > 0 && (
             <div className="flex gap-2 mt-2">
               <button className={btnPrimary} onClick={handleSaveProfiles} disabled={saving}>
@@ -434,6 +482,13 @@ export default function SigningSection({ appId, addToast }: Props) {
               </button>
               <button className={btnSecondary} onClick={() => setProfileFiles([])}>
                 Cancel
+              </button>
+            </div>
+          )}
+          {status.certificateId && (
+            <div className="mt-2">
+              <button className={btnSecondary} onClick={handleGenerateProfile} disabled={generatingProfile}>
+                {generatingProfile ? "Generating…" : "Generate via App Store Connect"}
               </button>
             </div>
           )}

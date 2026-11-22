@@ -1,6 +1,7 @@
 import { prisma } from "../../config";
 import { requireAuth, bundleAccess, appAccess } from "../auth";
-import { parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
+import { parseMobileProvision, parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
+import { ensureAppStoreProfiles } from "../../services/asc-provisioning";
 import { encrypt } from "../../config/encryption";
 import { appsRouter } from "./apps-list";
 
@@ -357,6 +358,11 @@ appsRouter.get("/:id/signing", requireAuth, appAccess("params", "id"), async (re
       certificateId: app?.signingCertificateId ?? null,
       certificateName: app?.signingCertificate?.name ?? null,
       certificates,
+      profileBundles: profiles.map((raw) => {
+        const parsed = parseMobileProvision(raw);
+
+        return { bundleId: parsed?.bundleId ?? null, expiresAt: parsed?.expiresAt ?? null };
+      }),
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -543,6 +549,15 @@ appsRouter.delete(
     }
   },
 );
+
+appsRouter.post("/:id/signing/profiles", requireAuth, appAccess("params", "id"), async (req, res) => {
+  try {
+    const profiles = await ensureAppStoreProfiles(req.bundleApp!.id);
+    res.json({ ok: true, profiles });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
 
 appsRouter.get("/:id/build-screenshot-selection", requireAuth, appAccess("params", "id"), async (req, res) => {
   try {

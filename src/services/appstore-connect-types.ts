@@ -50,6 +50,40 @@ export interface ASCScreenshotSet {
   };
 }
 
+export interface ASCCertificate {
+  id: string;
+  type: string;
+  attributes: {
+    name: string;
+    displayName: string;
+    certificateType: string;
+    serialNumber: string;
+    expirationDate: string;
+  };
+}
+
+export interface ASCBundleIdResource {
+  id: string;
+  type: string;
+  attributes: {
+    identifier: string;
+    name: string;
+    platform: string;
+  };
+}
+
+export interface ASCProfile {
+  id: string;
+  type: string;
+  attributes: {
+    name: string;
+    profileType: string;
+    profileState: string;
+    expirationDate: string;
+    profileContent?: string;
+  };
+}
+
 export interface ASCUploadOperation {
   method: string;
   url: string;

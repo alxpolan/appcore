@@ -41,6 +41,7 @@ export async function runBuildJob(
       signingCertificate: {
         select: { name: true, certP12: true, certPassword: true, appleTeamId: true },
       },
+      signingCertificateId: true,
       signingCertP12: true,
       signingCertPassword: true,
       signingProvisioningProfile: true,
@@ -78,7 +79,25 @@ export async function runBuildJob(
     }
   }
 
-  const signingProfiles = parseProvisioningProfiles(app);
+  let signingProfiles = parseProvisioningProfiles(app);
+
+  if (app?.teamId && (app?.signingCertificateId || (app?.signingCertP12 && app?.signingCertPassword))) {
+    try {
+      const { ensureAppStoreProfiles } = await import("./asc-provisioning.js");
+
+      await ensureAppStoreProfiles(appId);
+
+      const fresh = await prisma.app.findUnique({
+        where: { id: appId },
+        select: { signingProvisioningProfile: true, signingProvisioningProfiles: true },
+      });
+
+      signingProfiles = parseProvisioningProfiles(fresh);
+    } catch (err) {
+      logger.warn(`[build:${appId}] Auto profile refresh failed, continuing with stored profiles: ${String(err)}`);
+    }
+  }
+
   const signing = resolveSigningCredentials(app);
   const hasSigning = !!signing && signingProfiles.length > 0;
 
