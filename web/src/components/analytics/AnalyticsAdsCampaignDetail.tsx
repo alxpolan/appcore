@@ -707,7 +707,8 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
             ) : (
               <div className="px-5 py-4 flex flex-col gap-5">
                 {milestonesData.milestones.map((m) => {
-                  const pct = milestonesData.totalInstalls > 0 ? (m.completed / milestonesData.totalInstalls) * 100 : 0;
+                  const basis = campaign?.installs ?? milestonesData.totalInstalls;
+                  const pct = basis > 0 ? Math.min(100, (m.completed / basis) * 100) : 0;
                   return (
                     <div key={m.label} className="flex items-center gap-4">
                       <div className="w-44 shrink-0">
@@ -715,7 +716,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                           {m.label}
                         </div>
                         <div className={`text-[20px] font-semibold ${textPrimary} tabular-nums`}>
-                          {fmtNumber(m.completed)} / {fmtNumber(milestonesData.totalInstalls)}
+                          {fmtNumber(m.completed)} / {fmtNumber(basis)}
                         </div>
                         <div className={`text-[12px] ${textMuted} tabular-nums`}>{fmtPct(pct)} reached</div>
                       </div>
