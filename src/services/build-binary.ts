@@ -54,7 +54,7 @@ export async function runBuildJob(
 
   if (app?.teamId) {
     try {
-      const { ascClientForTeam } = await import("./asc-client");
+      const { ascClientForTeam } = await import("./asc-client.js");
       const asc = await ascClientForTeam(app.teamId);
 
       if (asc) {

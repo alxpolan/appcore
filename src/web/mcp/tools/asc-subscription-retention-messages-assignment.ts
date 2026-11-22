@@ -142,7 +142,7 @@ export function registerAscSubscriptionRetentionMessageAssignmentTools(server: M
           },
         });
 
-        const { toRetentionOffer } = await import("../../../services/asc-retention-offers");
+        const { toRetentionOffer } = await import("../../../services/asc-retention-offers.js");
 
         return json((resp.data ?? []).map(toRetentionOffer));
       } catch (err: any) {

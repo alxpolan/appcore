@@ -130,7 +130,7 @@ export async function isTeamAdmin(userId: string, teamId: string): Promise<boole
 }
 
 export async function createAscClient(settings: EffectiveSettings) {
-  const { ascClientFromSettings } = await import("../../../services/asc-client");
+  const { ascClientFromSettings } = await import("../../../services/asc-client.js");
   const asc = ascClientFromSettings(settings);
   
   if (!asc) throw new Error("App Store Connect credentials missing.");

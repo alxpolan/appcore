@@ -102,7 +102,7 @@ analyticsRouter.get("/markers", ...requireBundleAccess("query"), async (req, res
     });
 
     if (versionChanges.length === 0 && app.isOwnApp && app.trackId) {
-      const { AppStoreScraper } = await import("../../services/appstore-scraper");
+      const { AppStoreScraper } = await import("../../services/appstore-scraper.js");
       const scraper = new AppStoreScraper();
       const history = await scraper.scrapeVersionHistory(Number(app.trackId));
 

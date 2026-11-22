@@ -4,6 +4,7 @@ import path from "path";
 import os from "os";
 import { logger, getEffectiveSettings } from "../../config";
 import { requireAuth, requireBundleAccess } from "../auth";
+import { FastlaneService, getActiveSubmission, getLatestSubmission } from "../../services/fastlane";
 import { submissionUpdate } from "../../services/notifications/templates.js";
 
 const BUILDS_BASE_DIR = path.join(os.homedir(), "appcore", "builds");
@@ -15,7 +16,6 @@ submissionsRouter.get("/preview", ...requireBundleAccess("query"), async (req, r
     const settings = await getEffectiveSettings(req.user!.userId);
     const bundleId = req.bundleApp!.bundleId;
 
-    const { FastlaneService } = await import("../../services/fastlane");
     const fl = new FastlaneService(bundleId, settings);
     const preview = await fl.preview();
 
@@ -32,7 +32,6 @@ submissionsRouter.post("/metadata", ...requireBundleAccess("body"), async (req, 
     const bundleId = req.bundleApp!.bundleId;
     const overrides = req.body.overrides ?? undefined;
 
-    const { FastlaneService } = await import("../../services/fastlane");
     const fl = new FastlaneService(bundleId, settings);
 
     res.json({
@@ -61,7 +60,6 @@ submissionsRouter.post("/binary", ...requireBundleAccess("body"), async (req, re
     const settings = await getEffectiveSettings(req.user!.userId);
     const bundleId = req.bundleApp!.bundleId;
 
-    const { FastlaneService } = await import("../../services/fastlane");
     const fl = new FastlaneService(bundleId, settings);
 
     res.json({
@@ -88,7 +86,6 @@ submissionsRouter.post("/screenshots", ...requireBundleAccess("body"), async (re
     const settings = await getEffectiveSettings(req.user!.userId);
     const bundleId = req.bundleApp!.bundleId;
 
-    const { FastlaneService } = await import("../../services/fastlane");
     const fl = new FastlaneService(bundleId, settings);
 
     res.json({
@@ -115,7 +112,6 @@ submissionsRouter.post("/review", ...requireBundleAccess("body"), async (req, re
     const settings = await getEffectiveSettings(req.user!.userId);
     const bundleId = req.bundleApp!.bundleId;
 
-    const { FastlaneService } = await import("../../services/fastlane");
     const fl = new FastlaneService(bundleId, settings);
 
     res.json({
@@ -141,7 +137,6 @@ submissionsRouter.post("/review", ...requireBundleAccess("body"), async (req, re
 
 submissionsRouter.get("/status", requireAuth, async (_req, res) => {
   try {
-    const { getLatestSubmission, getActiveSubmission } = await import("../../services/fastlane");
     const jobId = _req.query.jobId as string | undefined;
 
     const submission = jobId ? getActiveSubmission(jobId) : getLatestSubmission();
@@ -193,7 +188,7 @@ submissionsRouter.get("/build-info", ...requireBundleAccess("query"), async (req
 
     let iconUrl: string | null = null;
     try {
-      const { default: axios } = await import("../../services/utils/http");
+      const { default: axios } = await import("../../services/utils/http.js");
       const { data } = await axios.get(
         `https://itunes.apple.com/lookup?bundleId=${encodeURIComponent(bundleId)}&limit=1`,
         { timeout: 5000 },

@@ -70,7 +70,7 @@ ascRouter.get(
       return;
     }
 
-    const { AppStoreScraper } = await import("../../services/appstore-scraper");
+    const { AppStoreScraper } = await import("../../services/appstore-scraper.js");
     const scraper = new AppStoreScraper("us");
     const isUrl = /https?:\/\//i.test(q);
     const idMatch = q.match(/id(\d{5,})/) ?? q.match(/\/(\d{5,})(?:[/?#]|$)/);
@@ -151,11 +151,11 @@ ascRouter.post(
       },
     });
 
-    const { fillDisplayNameFromTitle } = await import("../../services/utils/app-display-name");
+    const { fillDisplayNameFromTitle } = await import("../../services/utils/app-display-name.js");
 
     await fillDisplayNameFromTitle(app.id, name);
 
-    const { AppStoreScraper } = await import("../../services/appstore-scraper");
+    const { AppStoreScraper } = await import("../../services/appstore-scraper.js");
 
     await new AppStoreScraper(app.country, undefined, bundleId).runFullScrapeJob();
 
