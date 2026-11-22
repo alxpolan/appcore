@@ -2,9 +2,16 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, bundleAccess } from "../auth";
-import { encrypt } from "../../config/encryption";
+import { decryptNullable, encrypt } from "../../config/encryption";
 import { listPostHogProjects, normalizePostHogHost } from "../../services/posthog";
 import type { MilestoneDefinition, MilestoneVariant } from "../../services/posthog-milestones";
+import {
+  buildUserOutcomes,
+  computePaywallTiming,
+  MATURITY_DAYS,
+  MAX_USERS,
+  summarizeBuckets,
+} from "../../services/paywall-timing";
 
 export const postHogRouter = Router();
 
@@ -213,5 +220,67 @@ postHogRouter.put("/milestones", bundleAccess("body", "bundleId"), async (req, r
     res.json({ ok: true, milestones: cleaned });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bundleId"), async (req, res) => {
+  const s = req.teamSettings;
+
+  if (!s?.posthogConnectedAt || !s.posthogHost || !s.posthogApiKey || !s.posthogProjectId) {
+    res.status(400).json({ error: "PostHog is not connected" });
+
+    return;
+  }
+
+  try {
+    const bundleId = req.bundleApp!.bundleId;
+    const apiKey = decryptNullable(s.posthogApiKey);
+
+    if (!apiKey) {
+      res.status(400).json({ error: "PostHog API key unavailable" });
+
+      return;
+    }
+
+    const customers = await prisma.revenueCatCustomer.findMany({
+      where: { bundleId },
+      orderBy: { firstSeenAt: "desc" },
+      take: MAX_USERS + 1,
+      select: { customerId: true },
+    });
+
+    const distinctIds = [...new Set(customers.map((c) => c.customerId))].slice(0, MAX_USERS);
+    const capped = customers.length > MAX_USERS;
+
+    const timings = await computePaywallTiming(s.posthogHost, apiKey, s.posthogProjectId, distinctIds);
+    const seenByUser = new Map(timings.map((t) => [t.distinctId, t.firstSeen] as const));
+    const paywallByUser = new Map(timings.map((t) => [t.distinctId, t.firstPaywall] as const));
+
+    const transactions = await prisma.revenueCatTransaction.findMany({
+      where: { bundleId, customerId: { in: distinctIds } },
+      select: {
+        customerId: true,
+        eventType: true,
+        periodType: true,
+        proceedsUsd: true,
+        isTrialConversion: true,
+        occurredAt: true,
+      },
+    });
+    const txByUser = new Map<string, typeof transactions>();
+
+    for (const tx of transactions) {
+      const list = txByUser.get(tx.customerId) ?? [];
+
+      list.push(tx);
+      txByUser.set(tx.customerId, list);
+    }
+
+    const buckets = summarizeBuckets(buildUserOutcomes(seenByUser, paywallByUser, txByUser));
+
+    res.json({ ok: true, buckets, totalUsers: distinctIds.length, capped, maturityDays: MATURITY_DAYS });
+  } catch (err) {
+    logger.error("[posthog] paywall timing failed", { err: String((err as Error)?.message ?? err) });
+    res.status(500).json({ error: "Failed to compute paywall timing" });
   }
 });

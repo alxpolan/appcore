@@ -34,6 +34,7 @@ import AnalyticsCountries from "./components/analytics/AnalyticsCountries";
 import AnalyticsCountryDetail from "./components/analytics/AnalyticsCountryDetail";
 import AnalyticsReviews from "./components/analytics/AnalyticsReviews";
 import AnalyticsFinancial from "./components/analytics/AnalyticsFinancial";
+import InAppOptimization from "./components/analytics/InAppOptimization";
 import AnalyticsAds from "./components/analytics/AnalyticsAds";
 import AnalyticsAdsCampaignDetail from "./components/analytics/AnalyticsAdsCampaignDetail";
 import AnalyticsAdsAdGroupDetail from "./components/analytics/AnalyticsAdsAdGroupDetail";
@@ -603,6 +604,7 @@ function AnalyticsSidebarSection({ navLinkClass }: { navLinkClass: (p: { isActiv
     { to: "/analytics/countries", label: "Countries" },
     { to: "/analytics/reviews", label: "Reviews" },
     { to: "/analytics/financial", label: "Financial" },
+    { to: "/analytics/in-app-optimization", label: "In-App Optimization" },
   ];
 
   const handleHeaderClick = () => {
@@ -1563,6 +1565,10 @@ export default function App() {
               <Route path="/analytics/countries/:country" element={<AnalyticsCountryDetail addToast={addToast} />} />
               <Route path="/analytics/reviews" element={<AnalyticsReviews addToast={addToast} />} />
               <Route path="/analytics/financial" element={<AnalyticsFinancial addToast={addToast} />} />
+              <Route
+                path="/analytics/in-app-optimization"
+                element={<InAppOptimization addToast={addToast} />}
+              />
               <Route path="/apple-ads" element={<AnalyticsAds addToast={addToast} />} />
               <Route path="/apple-ads/:campaignId" element={<AnalyticsAdsCampaignDetail addToast={addToast} />} />
         <Route
