@@ -1,7 +1,7 @@
 import { prisma } from "../../config";
 import { requireAuth, bundleAccess, appAccess } from "../auth";
-import { parseMobileProvision, parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
-import { ensureAppStoreProfiles } from "../../services/asc-provisioning";
+import { parseProvisioningProfiles } from "../../services/utils/provisioning-profiles";
+import { ensureAppStoreProfiles, parseMobileProvision } from "../../services/asc-provisioning";
 import { encrypt } from "../../config/encryption";
 import { appsRouter } from "./apps-list";
 
