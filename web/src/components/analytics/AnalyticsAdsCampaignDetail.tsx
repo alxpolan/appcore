@@ -1,11 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Megaphone,
-  Pause,
-  Play,
+  Settings,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -167,6 +166,15 @@ function KeywordCountries({
 
 type NegativesModalTarget = { scope: "campaign" } | { scope: "adGroup"; id: string; name: string };
 
+const DETAIL_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "keywords", label: "Keywords" },
+  { key: "countries", label: "Countries" },
+  { key: "activity", label: "Activity" },
+] as const;
+
+type DetailTabKey = (typeof DETAIL_TABS)[number]["key"];
+
 interface Props {
   addToast: (msg: string, type: "success" | "error" | "info") => void;
 }
@@ -174,6 +182,19 @@ interface Props {
 export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: DetailTabKey = DETAIL_TABS.some((t) => t.key === tabParam) ? (tabParam as DetailTabKey) : "overview";
+
+  const setTab = (next: DetailTabKey) => {
+    const params = new URLSearchParams(searchParams);
+
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+
+    setSearchParams(params, { replace: true });
+  };
+
   const [statusOverride, setStatusOverride] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
   const [expandedAdGroup, setExpandedAdGroup] = useState<string | null>(null);
@@ -280,6 +301,7 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
   );
   const [historyToken, setHistoryToken] = useState(0);
   const [negativesModal, setNegativesModal] = useState<NegativesModalTarget | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const handleNegativesChanged = useCallback(() => {
     refetchNegatives();
     setHistoryToken((t) => t + 1);
@@ -460,31 +482,34 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {canManageTeam && (campaignStatus === "ENABLED" || campaignStatus === "PAUSED") && (
-            <button
-              onClick={handleToggleStatus}
-              disabled={toggling}
-              className={btnSecSm}
-              title={campaignStatus === "ENABLED" ? "Pause campaign" : "Resume campaign"}
-            >
-              {campaignStatus === "ENABLED" ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              {campaignStatus === "ENABLED" ? "Pause" : "Resume"}
-            </button>
-          )}
-          <button
-            onClick={() => setNegativesModal({ scope: "campaign" })}
-            className={btnSecSm}
-            title="Campaign-level negative keywords"
-          >
-            <Ban className="w-3.5 h-3.5" /> Negative Keywords
-            {!negativesLoading && negativesData && (
+          <button onClick={() => setShowSettings(true)} className={btnSecSm} title="Campaign settings">
+            <Settings className="w-3.5 h-3.5" /> Settings
+            {!negativesLoading && negativesData && negativesData.campaign.length > 0 && (
               <span className={`text-[11px] ${textMuted} tabular-nums`}>({negativesData.campaign.length})</span>
             )}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+      <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl mb-5 self-start">
+        {DETAIL_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+              tab === t.key
+                ? `bg-white dark:bg-[#252b38] ${textPrimary} shadow-[0_1px_3px_rgba(0,0,0,0.08)]`
+                : `${textMuted} hover:text-[#6b7280] dark:hover:text-[#8b93a5]`
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
         <StatCard
           label="Spend"
           value={campaignsLoading || !campaign ? "—" : fmtMoney(campaign.spend, campaign.currency)}
@@ -596,8 +621,12 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
         directBase={trialEconomics.directBase}
         loading={campaignsLoading || revenueLoading}
       />
+        </>
+      )}
 
-      <div
+      {tab === "countries" && (
+        <>
+          <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
@@ -624,8 +653,12 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           </div>
         )}
       </div>
+        </>
+      )}
 
-      <div
+      {tab === "overview" && (
+        <>
+          <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
@@ -669,8 +702,12 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           </div>
         )}
       </div>
+        </>
+      )}
 
-      <div
+      {tab === "keywords" && (
+        <>
+          <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d] flex items-center gap-2">
@@ -983,10 +1020,16 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
           </div>
         )}
       </div>
+        </>
+      )}
 
-      {campaignId && <AppleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}
+      {tab === "activity" && (
+        <>{campaignId && <AppleAdsCampaignHistory campaignId={campaignId} refreshToken={historyToken} />}</>
+      )}
 
-      <div
+      {tab === "keywords" && (
+        <>
+          <div
         className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mb-5`}
       >
         <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
@@ -1040,7 +1083,9 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
         )}
       </div>
 
-      {campaignId && <CppProposals campaignId={campaignId} canWrite={canWrite} addToast={addToast} />}
+          {campaignId && <CppProposals campaignId={campaignId} canWrite={canWrite} addToast={addToast} />}
+        </>
+      )}
 
       {negativesModal &&
         createPortal(
@@ -1084,6 +1129,73 @@ export default function AnalyticsAdsCampaignDetail({ addToast }: Props) {
                     onChanged={handleNegativesChanged}
                   />
                 )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {showSettings &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-start justify-center pt-10 pb-10 px-4">
+            <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={() => setShowSettings(false)} />
+            <div
+              className={`relative w-full max-w-2xl max-h-[calc(100vh-5rem)] flex flex-col bg-white dark:bg-[#161920] border ${borderDefault} rounded-2xl shadow-2xl overflow-hidden`}
+            >
+              <div className={`flex items-center justify-between px-6 py-4 border-b ${borderDefault} shrink-0`}>
+                <div>
+                  <h2 className={`text-lg font-semibold ${textPrimary}`}>Campaign Settings</h2>
+                  <div className={`text-[12px] ${textMuted} mt-0.5`}>{campaign?.name ?? "Campaign"}</div>
+                </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 dark:text-[#5c6478] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex flex-col gap-6">
+                {canManageTeam && (campaignStatus === "ENABLED" || campaignStatus === "PAUSED") && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {campaignStatus && <StatusDot status={campaignStatus} />}
+                      <span className={`text-[13px] ${textPrimary}`}>
+                        {campaignStatus === "ENABLED" ? "Campaign is live and spending" : "Campaign is paused"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleToggleStatus}
+                      disabled={toggling}
+                      className={btnSecSm}
+                      title={campaignStatus === "ENABLED" ? "Pause campaign" : "Resume campaign"}
+                    >
+                      {campaignStatus === "ENABLED" ? "Pause" : "Resume"}
+                    </button>
+                  </div>
+                )}
+                <div>
+                  <div className={`text-[13px] font-semibold ${textPrimary} mb-1`}>
+                    Negative Keywords
+                    {!negativesLoading && negativesData && (
+                      <span className={`font-normal ${textMuted}`}> ({negativesData.campaign.length})</span>
+                    )}
+                  </div>
+                  <div className={`text-[12px] ${textMuted} mb-3`}>Campaign level — apply to all ad groups</div>
+                  {negativesLoading ? (
+                    <div className={`text-[13px] ${textMuted}`}>Loading…</div>
+                  ) : negativesError || !negativesData || !campaignId ? (
+                    <div className={`text-[13px] ${textMuted}`}>Failed to load negative keywords</div>
+                  ) : (
+                    <NegativeKeywordManager
+                      campaignId={campaignId}
+                      adGroupId={null}
+                      negatives={negativesData.campaign}
+                      canEdit={canManageTeam}
+                      onChanged={handleNegativesChanged}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </div>,
