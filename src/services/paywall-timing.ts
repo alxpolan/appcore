@@ -53,15 +53,20 @@ export interface UserOutcome {
 export function trialCancelled(
   outcome: Pick<UserOutcome, "trialStarted" | "converted" | "trialStartAt">,
   now = new Date(),
+  maturityDays: number = MATURITY_DAYS,
 ): boolean {
   if (!outcome.trialStarted || outcome.converted || !outcome.trialStartAt) return false;
 
   const ageMs = now.getTime() - outcome.trialStartAt.getTime();
 
-  return ageMs > MATURITY_DAYS * 24 * 60 * 60 * 1000;
+  return ageMs > maturityDays * 24 * 60 * 60 * 1000;
 }
 
-export function summarizeBuckets(outcomes: UserOutcome[], now = new Date()): PaywallTimingRow[] {
+export function summarizeBuckets(
+  outcomes: UserOutcome[],
+  now = new Date(),
+  maturityDays: number = MATURITY_DAYS,
+): PaywallTimingRow[] {
   const keys = [...BUCKETS.map((b) => b.key), "none"];
   const rows = new Map<string, TimingBucket>(
     keys.map((key) => [
@@ -85,7 +90,7 @@ export function summarizeBuckets(outcomes: UserOutcome[], now = new Date()): Pay
 
     if (outcome.converted) row.subscribed += 1;
     if (outcome.trialStarted) row.trialsStarted += 1;
-    if (trialCancelled(outcome, now)) row.cancelled += 1;
+    if (trialCancelled(outcome, now, maturityDays)) row.cancelled += 1;
   }
 
   return [...rows.values()]
@@ -107,19 +112,19 @@ export interface CustomerTx {
 }
 
 export function buildUserOutcomes(
-  firstSeenByUser: Map<string, Date | null>,
+  anchorByUser: Map<string, Date | null>,
   firstPaywallByUser: Map<string, Date | null>,
   transactionsByUser: Map<string, CustomerTx[]>,
 ): UserOutcome[] {
   const outcomes: UserOutcome[] = [];
 
-  for (const [distinctId, firstSeen] of firstSeenByUser) {
-    if (!firstSeen) continue;
+  for (const [distinctId, anchorAt] of anchorByUser) {
+    if (!anchorAt) continue;
 
     const firstPaywall = firstPaywallByUser.get(distinctId) ?? null;
     const secondsToPaywall =
-      firstPaywall && firstPaywall.getTime() >= firstSeen.getTime()
-        ? (firstPaywall.getTime() - firstSeen.getTime()) / 1000
+      firstPaywall && firstPaywall.getTime() >= anchorAt.getTime()
+        ? (firstPaywall.getTime() - anchorAt.getTime()) / 1000
         : null;
     const txs = transactionsByUser.get(distinctId) ?? [];
     const trialTxs = txs.filter((t) => t.eventType === "INITIAL_PURCHASE" && t.periodType === "TRIAL");
@@ -137,21 +142,27 @@ export async function computePaywallTiming(
   apiKey: string,
   projectId: string,
   distinctIds: string[],
-): Promise<Array<{ distinctId: string; firstSeen: Date | null; firstPaywall: Date | null }>> {
+  anchorEvent?: string | null,
+): Promise<Array<{ distinctId: string; firstSeen: Date | null; firstPaywall: Date | null; anchorAt: Date | null }>> {
   const { results } = await queryPostHogHogQL(
     host,
     apiKey,
     projectId,
-    "SELECT distinct_id, min(timestamp) AS first_seen, minIf(timestamp, event = 'paywall_shown') AS first_paywall FROM events WHERE distinct_id IN {distinctIds} GROUP BY distinct_id LIMIT 100000",
-    { distinctIds },
+    "SELECT distinct_id, min(timestamp) AS first_seen, minIf(timestamp, event = 'paywall_shown') AS first_paywall, minIf(timestamp, event = {anchorEvent}) AS anchor_at FROM events WHERE distinct_id IN {distinctIds} GROUP BY distinct_id HAVING countIf(NOT startsWith(event, 'rc_')) > 0 LIMIT 100000",
+    { distinctIds, anchorEvent: anchorEvent ?? "" },
   );
 
+  const useFirstSeenAsAnchor = !anchorEvent || anchorEvent === "$first_event";
+
   return results.map((row) => {
-    const [distinctId, firstSeen, firstPaywall] = row as [string, string | null, string | null];
+    const [distinctId, firstSeen, firstPaywall, anchorAt] = row as [string, string | null, string | null, string | null];
     const seen = firstSeen ? new Date(firstSeen) : null;
     const paywallTime = firstPaywall ? new Date(firstPaywall).getTime() : NaN;
     const paywall = !Number.isNaN(paywallTime) && paywallTime > 0 ? new Date(paywallTime) : null;
+    const anchorTime = anchorAt ? new Date(anchorAt).getTime() : NaN;
+    const anchorEventTime = !Number.isNaN(anchorTime) && anchorTime > 0 ? new Date(anchorTime) : null;
+    const anchor = useFirstSeenAsAnchor ? seen : anchorEventTime;
 
-    return { distinctId, firstSeen: seen, firstPaywall: paywall };
+    return { distinctId, firstSeen: seen, firstPaywall: paywall, anchorAt: anchor };
   });
 }

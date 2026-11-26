@@ -44,6 +44,22 @@ describe("trialCancelled", () => {
   });
 });
 
+describe("buildUserOutcomes anchor", () => {
+  it("skips users without an anchor event", () => {
+    const firstSeen = new Date("2026-11-20T10:00:00Z");
+    const [only] = buildUserOutcomes(
+      new Map([
+        ["a", firstSeen],
+        ["b", null],
+      ]),
+      new Map(),
+      new Map(),
+    );
+
+    assert.equal(only.distinctId, "a");
+  });
+});
+
 describe("summarizeBuckets", () => {
   const now = new Date("2026-11-22T00:00:00Z");
   const old = new Date("2026-10-01T00:00:00Z");

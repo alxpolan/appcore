@@ -242,8 +242,53 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       return;
     }
 
+    const now = new Date();
+    let since: Date | null = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    let until: Date | null = null;
+
+    const q = req.query as Record<string, string | undefined>;
+
+    if (typeof q.days === "string" && /^\d+$/.test(q.days)) {
+      since = new Date(now.getTime() - parseInt(q.days, 10) * 24 * 60 * 60 * 1000);
+    } else if (q.period === "all") {
+      since = null;
+    } else if (q.period === "ytd") {
+      since = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    } else if (q.startDate) {
+      const parsed = new Date(`${q.startDate}T00:00:00Z`);
+
+      if (Number.isNaN(parsed.getTime())) {
+        res.status(400).json({ error: "Invalid startDate, expected YYYY-MM-DD" });
+
+        return;
+      }
+
+      since = parsed;
+
+      if (q.endDate) {
+        const parsedEnd = new Date(`${q.endDate}T00:00:00Z`);
+
+        if (Number.isNaN(parsedEnd.getTime())) {
+          res.status(400).json({ error: "Invalid endDate, expected YYYY-MM-DD" });
+
+          return;
+        }
+
+        until = new Date(parsedEnd.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+
+    const anchorEvent = typeof q.anchorEvent === "string" && q.anchorEvent.length > 0 ? q.anchorEvent : "$first_event";
+    const maturityDaysRaw = typeof q.maturityDays === "string" ? parseInt(q.maturityDays, 10) : NaN;
+    const maturityDays = Number.isFinite(maturityDaysRaw)
+      ? Math.min(365, Math.max(1, maturityDaysRaw))
+      : MATURITY_DAYS;
+
     const customers = await prisma.revenueCatCustomer.findMany({
-      where: { bundleId },
+      where: {
+        bundleId,
+        ...(since ? { firstSeenAt: { gte: since, ...(until ? { lt: until } : {}) } } : {}),
+      },
       orderBy: { firstSeenAt: "desc" },
       take: MAX_USERS + 1,
       select: { customerId: true },
@@ -252,8 +297,12 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
     const distinctIds = [...new Set(customers.map((c) => c.customerId))].slice(0, MAX_USERS);
     const capped = customers.length > MAX_USERS;
 
-    const timings = await computePaywallTiming(s.posthogHost, apiKey, s.posthogProjectId, distinctIds);
-    const seenByUser = new Map(timings.map((t) => [t.distinctId, t.firstSeen] as const));
+    const timings = await computePaywallTiming(s.posthogHost, apiKey, s.posthogProjectId, distinctIds, anchorEvent);
+    const anchorByUser = new Map(
+      timings.filter((t) => t.anchorAt != null).map((t) => [t.distinctId, t.anchorAt as Date] as const),
+    );
+    const excludedNoAnchor = timings.filter((t) => t.anchorAt == null).length;
+    const excludedNoActivity = Math.max(0, distinctIds.length - timings.length);
     const paywallByUser = new Map(timings.map((t) => [t.distinctId, t.firstPaywall] as const));
 
     const transactions = await prisma.revenueCatTransaction.findMany({
@@ -276,9 +325,22 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       txByUser.set(tx.customerId, list);
     }
 
-    const buckets = summarizeBuckets(buildUserOutcomes(seenByUser, paywallByUser, txByUser));
+    const buckets = summarizeBuckets(
+      buildUserOutcomes(anchorByUser, paywallByUser, txByUser),
+      new Date(),
+      maturityDays,
+    );
 
-    res.json({ ok: true, buckets, totalUsers: distinctIds.length, capped, maturityDays: MATURITY_DAYS });
+    res.json({
+      ok: true,
+      buckets,
+      totalUsers: anchorByUser.size,
+      excludedNoAnchor,
+      excludedNoActivity,
+      capped,
+      maturityDays,
+      anchorEvent,
+    });
   } catch (err) {
     logger.error("[posthog] paywall timing failed", { err: String((err as Error)?.message ?? err) });
     res.status(500).json({ error: "Failed to compute paywall timing" });
