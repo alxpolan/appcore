@@ -315,4 +315,114 @@ export function registerAscWriteTools(server: McpServer, userId: string) {
       }
     },
   );
+
+  // @ts-ignore
+  server.registerTool(
+    "add_version_locale",
+    {
+      description:
+        "Add one or many locales to an App Store Connect version in a single call, each as an empty version " +
+        "localization (description, keywords, whatsNew, promotionalText, supportUrl, marketingUrl all blank) so " +
+        "they can be filled in with update_version_metadata. Does not translate or copy content from another " +
+        "locale — use bulk_translate_locales for that. A locale that already exists on this version is returned " +
+        "as existing rather than erroring. Omit versionId to use the current editable version.",
+      inputSchema: {
+        bundleId: z
+          .string()
+          .optional()
+          .describe("App bundle ID (e.g. 'com.example.myapp'). Uses the user's default app if omitted."),
+        versionId: z
+          .string()
+          .optional()
+          .describe("ASC version ID from list_app_versions. Uses the current editable version if omitted."),
+        locales: z
+          .array(z.string())
+          .min(1)
+          .describe("Locales to add, e.g. ['de-DE', 'fr-FR', 'ja']. Pass every locale you need in one call."),
+      },
+    },
+    async ({ bundleId, versionId, locales }) => {
+      const { settings, resolvedBundleId } = await getSettingsWithBundleId(userId, bundleId);
+
+      if (!hasAscCredentials(settings)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: mcpToolMessages.appStoreConnectCredentialsNotConfigured,
+            },
+          ],
+        };
+      }
+
+      try {
+        const asc = await createAscClient(settings);
+        const ascAppId = await resolveAscAppId(asc, settings, resolvedBundleId);
+
+        if (!ascAppId) {
+          return {
+            content: [{ type: "text", text: couldNotResolveAscAppId(resolvedBundleId) }],
+          };
+        }
+
+        let resolvedVersionId = versionId;
+
+        if (!resolvedVersionId) {
+          const editable = await asc.getEditableVersion(ascAppId);
+
+          if (!editable) {
+            return {
+              content: [{ type: "text", text: mcpToolMessages.noEditableVersionFound }],
+            };
+          }
+
+          resolvedVersionId = editable.id;
+        }
+
+        const created: { locale: string; versionLocalizationId: string }[] = [];
+        const existing: { locale: string; versionLocalizationId: string }[] = [];
+        const failed: { locale: string; error: string }[] = [];
+        let existingLocsCache: any[] | null = null;
+
+        for (const locale of locales) {
+          try {
+            const loc = await asc.createVersionLocalization(resolvedVersionId, locale);
+
+            created.push({ locale: loc.attributes.locale, versionLocalizationId: loc.id });
+          } catch (err: any) {
+            if (!String(err?.message ?? "").includes("409")) {
+              failed.push({ locale, error: err?.message ?? String(err) });
+              continue;
+            }
+
+            if (!existingLocsCache) {
+              existingLocsCache = await asc.getVersionLocalizations(resolvedVersionId);
+            }
+
+            const match = existingLocsCache.find((l) => l.attributes.locale === locale);
+
+            if (!match) {
+              failed.push({ locale, error: err?.message ?? String(err) });
+              continue;
+            }
+
+            existing.push({ locale: match.attributes.locale, versionLocalizationId: match.id });
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ versionId: resolvedVersionId, created, existing, failed }, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: `ASC error: ${err?.message ?? String(err)}` }],
+        };
+      }
+    },
+  );
 }
