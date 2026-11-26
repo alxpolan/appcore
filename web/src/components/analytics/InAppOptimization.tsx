@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { ChevronDown, Globe, Smartphone, Tag, type LucideIcon } from "lucide-react";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
+import { useClickOutside } from "../../hooks/useClickOutside";
 import SectionCard from "../settings/SectionCard";
-import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary } from "../../styles";
+import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary, textSecondary } from "../../styles";
 import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
 import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
 import AppleAdsMilestoneRows from "./AppleAdsMilestoneRows";
@@ -24,36 +26,98 @@ function appVersionOptionLabel(value: string): string {
   return value === UNKNOWN_FILTER_VALUE ? "Unknown version" : value;
 }
 
+function countryOptionIcon(value: string) {
+  if (value === UNKNOWN_FILTER_VALUE) return <Globe className={`w-4 h-4 ${textSecondary}`} />;
+
+  return (
+    <img
+      src={`/country-flags/${value.toLowerCase()}.svg`}
+      alt={value}
+      className="w-4 h-3 rounded-xs object-cover shrink-0"
+    />
+  );
+}
+
 function FilterSelect({
-  label,
+  icon: Icon,
+  allLabel,
   value,
   options,
   getLabel,
+  renderOptionIcon,
   onChange,
 }: {
-  label: string;
+  icon: LucideIcon;
+  allLabel: string;
   value: string;
   options: AudienceFilterOption[];
   getLabel: (value: string) => string;
+  renderOptionIcon?: (value: string) => React.ReactNode;
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(
+    ref,
+    useCallback(() => setOpen(false), []),
+  );
+
   if (options.length < 2) return null;
 
+  const selected = options.find((o) => o.value === value);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <span className={`text-[12px] ${textMuted}`}>{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${inputCls} h-8 !py-1 text-[12px] w-auto`}
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-2 pl-3 pr-2.5 py-[7px] rounded-full border bg-white dark:bg-[#1c2028] text-[13px] font-medium ${textPrimary} transition-all ${
+          open
+            ? "border-blue-500 ring-2 ring-blue-500/20 dark:border-blue-400 dark:ring-blue-400/25"
+            : `${borderDefault} hover:border-gray-300 dark:hover:border-[#3a4050]`
+        }`}
       >
-        <option value="">All</option>
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {getLabel(opt.value)} ({fmtNumber(opt.count)})
-          </option>
-        ))}
-      </select>
+        {selected && renderOptionIcon ? renderOptionIcon(selected.value) : <Icon className={`w-4 h-4 ${textSecondary}`} />}
+        <span>{selected ? getLabel(selected.value) : allLabel}</span>
+        <ChevronDown className={`w-3.5 h-3.5 ${textMuted} transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          className={`absolute left-0 top-full mt-1.5 z-50 bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-xl shadow-lg py-1 min-w-[220px] max-h-[320px] overflow-auto`}
+        >
+          <button
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left ${
+              value === "" ? "font-semibold" : ""
+            }`}
+          >
+            <Icon className={`w-4 h-4 ${textSecondary} shrink-0`} />
+            {allLabel}
+          </button>
+          <div className={`my-1 border-t ${borderDefault}`} />
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2 text-[13px] ${textPrimary} hover:bg-[#fafbfc] dark:hover:bg-[#252b38] transition-colors text-left ${
+                value === opt.value ? "font-semibold" : ""
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                {renderOptionIcon?.(opt.value)}
+                <span className="truncate">{getLabel(opt.value)}</span>
+              </span>
+              <span className={`text-[12px] ${textMuted} tabular-nums shrink-0`}>{fmtNumber(opt.count)}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -219,24 +283,27 @@ export default function InAppOptimization({ addToast }: Props) {
       </div>
 
       {filterOptions && (
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <span className={`text-[12px] ${textMuted}`}>Filter users</span>
+        <div className="flex flex-wrap items-center gap-2 mb-5">
           <FilterSelect
-            label="Country"
+            icon={Globe}
+            allLabel="All Countries"
             value={country}
             options={filterOptions.countries}
             getLabel={countryOptionLabel}
+            renderOptionIcon={countryOptionIcon}
             onChange={setCountry}
           />
           <FilterSelect
-            label="Platform"
+            icon={Smartphone}
+            allLabel="All Platforms"
             value={platform}
             options={filterOptions.platforms}
             getLabel={platformLabel}
             onChange={setPlatform}
           />
           <FilterSelect
-            label="App version"
+            icon={Tag}
+            allLabel="All Versions"
             value={appVersion}
             options={filterOptions.appVersions}
             getLabel={appVersionOptionLabel}
