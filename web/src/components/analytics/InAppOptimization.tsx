@@ -2,8 +2,61 @@ import { useState } from "react";
 import { useApi, getActiveBundleId } from "../../hooks/useApi";
 import SectionCard from "../settings/SectionCard";
 import { TD, TH, borderDefault, inputCls, pageTitle, textMuted, textPrimary } from "../../styles";
-import { fmtNumber, fmtPct } from "../../utils/formatters";
-import { type RangeKey, RANGE_OPTIONS, rangeToParams } from "../../utils/analyticsRange";
+import { countryName, fmtNumber, fmtPct } from "../../utils/formatters";
+import { type RangeKey, RANGE_OPTIONS, rangeLabel, rangeToParams } from "../../utils/analyticsRange";
+import AppleAdsMilestoneRows from "./AppleAdsMilestoneRows";
+import type { AudienceFilterOption, AudienceFilterOptions, ProductEngagementResponse } from "../../types";
+
+const UNKNOWN_FILTER_VALUE = "__unknown";
+
+function platformLabel(value: string): string {
+  if (value === UNKNOWN_FILTER_VALUE) return "Unknown platform";
+  if (value.toLowerCase() === "ios") return "iOS";
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function countryOptionLabel(value: string): string {
+  return value === UNKNOWN_FILTER_VALUE ? "Unknown country" : countryName(value);
+}
+
+function appVersionOptionLabel(value: string): string {
+  return value === UNKNOWN_FILTER_VALUE ? "Unknown version" : value;
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  getLabel,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: AudienceFilterOption[];
+  getLabel: (value: string) => string;
+  onChange: (value: string) => void;
+}) {
+  if (options.length < 2) return null;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={`text-[12px] ${textMuted}`}>{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputCls} h-8 !py-1 text-[12px] w-auto`}
+      >
+        <option value="">All</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {getLabel(opt.value)} ({fmtNumber(opt.count)})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 interface TimingBucketRow {
   key: string;
@@ -26,6 +79,7 @@ interface TimingResponse {
   capped: boolean;
   maturityDays: number;
   anchorEvent: string;
+  filterOptions?: AudienceFilterOptions;
 }
 
 interface Props {
@@ -43,7 +97,17 @@ export default function InAppOptimization({ addToast }: Props) {
   const [anchorDraft, setAnchorDraft] = useState("$first_event");
   const [maturityDays, setMaturityDays] = useState("14");
   const [appliedMaturity, setAppliedMaturity] = useState("14");
-  const query = `${rangeToParams(range, customStart, customEnd)}&anchorEvent=${encodeURIComponent(anchorEvent)}&maturityDays=${encodeURIComponent(appliedMaturity || "14")}`;
+
+  const [country, setCountry] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [appVersion, setAppVersion] = useState("");
+  const audienceFilterQuery =
+    (country ? `&country=${encodeURIComponent(country)}` : "") +
+    (platform ? `&platform=${encodeURIComponent(platform)}` : "") +
+    (appVersion ? `&appVersion=${encodeURIComponent(appVersion)}` : "");
+  const filterDeps = [country, platform, appVersion];
+
+  const query = `${rangeToParams(range, customStart, customEnd)}&anchorEvent=${encodeURIComponent(anchorEvent)}&maturityDays=${encodeURIComponent(appliedMaturity || "14")}${audienceFilterQuery}`;
 
   const { data, loading, error } = useApi<TimingResponse>(`/posthog/paywall-timing?bundleId=${encodeURIComponent(bundleId)}${query}`, [
     bundleId,
@@ -52,7 +116,20 @@ export default function InAppOptimization({ addToast }: Props) {
     customEnd,
     anchorEvent,
     appliedMaturity,
+    ...filterDeps,
   ]);
+
+  const rangeQuery = rangeToParams(range, customStart, customEnd);
+  const {
+    data: engagementData,
+    loading: engagementLoading,
+    error: engagementError,
+  } = useApi<ProductEngagementResponse>(
+    `/posthog/engagement?bundleId=${encodeURIComponent(bundleId)}${rangeQuery}${audienceFilterQuery}`,
+    [bundleId, range, customStart, customEnd, ...filterDeps],
+  );
+
+  const filterOptions = data?.filterOptions ?? engagementData?.filterOptions;
 
   const hasRows = !!data && data.buckets.some((b) => b.users > 0);
   const applyAnchor = () => setAnchorEvent(anchorDraft.trim() || "$first_event");
@@ -141,6 +218,33 @@ export default function InAppOptimization({ addToast }: Props) {
         </div>
       </div>
 
+      {filterOptions && (
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <span className={`text-[12px] ${textMuted}`}>Filter users</span>
+          <FilterSelect
+            label="Country"
+            value={country}
+            options={filterOptions.countries}
+            getLabel={countryOptionLabel}
+            onChange={setCountry}
+          />
+          <FilterSelect
+            label="Platform"
+            value={platform}
+            options={filterOptions.platforms}
+            getLabel={platformLabel}
+            onChange={setPlatform}
+          />
+          <FilterSelect
+            label="App version"
+            value={appVersion}
+            options={filterOptions.appVersions}
+            getLabel={appVersionOptionLabel}
+            onChange={setAppVersion}
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className={`text-[13px] ${textMuted}`}>Loading…</div>
       ) : error || !data ? (
@@ -201,6 +305,46 @@ export default function InAppOptimization({ addToast }: Props) {
           )}
         </>
       )}
+
+      <div
+        className={`bg-white dark:bg-[#1c2028] border ${borderDefault} rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)] mt-5`}
+      >
+        <div className="px-5 py-4 border-b border-[#f3f4f6] dark:border-[#2a2f3d]">
+          <div className={`text-[16px] font-semibold ${textPrimary}`}>Product Engagement</div>
+          <p className={`text-[12px] ${textMuted} mt-0.5`}>All users first seen {rangeLabel(range)}.</p>
+        </div>
+        {engagementLoading ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>Loading…</div>
+        ) : engagementError || !engagementData ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {engagementError ?? "Failed to load engagement"}
+          </div>
+        ) : !engagementData.available ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            {engagementData.reason === "no-revenuecat"
+              ? "Connect RevenueCat for this app to track engagement."
+              : "Connect PostHog in Integrations to track engagement."}
+          </div>
+        ) : engagementData.reason === "no-milestones" || engagementData.milestones.length === 0 ? (
+          <div className={`px-5 py-8 text-center text-[13px] ${textMuted}`}>
+            No milestones configured yet — add some in App Settings.
+          </div>
+        ) : (
+          <>
+            <AppleAdsMilestoneRows
+              milestones={engagementData.milestones}
+              variants={engagementData.variants}
+              basisInstalls={engagementData.totalUsers}
+              fallbackTotal={engagementData.totalUsers}
+            />
+            {engagementData.capped && (
+              <p className={`px-5 pb-4 text-[12px] ${textMuted}`}>
+                Analysis capped at the most recent users for performance.
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

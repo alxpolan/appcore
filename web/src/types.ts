@@ -465,6 +465,27 @@ export interface AppleAdsCampaignMilestonesResponse {
   variants?: AppleAdsCampaignVariantBreakdown[];
 }
 
+export interface AudienceFilterOption {
+  value: string;
+  count: number;
+}
+
+export interface AudienceFilterOptions {
+  countries: AudienceFilterOption[];
+  platforms: AudienceFilterOption[];
+  appVersions: AudienceFilterOption[];
+}
+
+export interface ProductEngagementResponse {
+  available: boolean;
+  reason?: "no-posthog" | "no-revenuecat" | "no-milestones";
+  totalUsers: number;
+  filterOptions?: AudienceFilterOptions;
+  milestones: PostHogMilestoneCompletion[];
+  variants?: AppleAdsCampaignVariantBreakdown[];
+  capped?: boolean;
+}
+
 export interface AppleAdsOrgOption {
   orgId: string;
   orgName: string;

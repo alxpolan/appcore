@@ -4,7 +4,7 @@ import { prisma, logger } from "../../config";
 import { requireAuth, requireTeamAdmin, loadTeamSettings, bundleAccess } from "../auth";
 import { decryptNullable, encrypt } from "../../config/encryption";
 import { listPostHogProjects, normalizePostHogHost } from "../../services/posthog";
-import type { MilestoneDefinition, MilestoneVariant } from "../../services/posthog-milestones";
+import { computeMilestoneCompletions, type MilestoneDefinition, type MilestoneVariant } from "../../services/posthog-milestones";
 import {
   buildUserOutcomes,
   computePaywallTiming,
@@ -16,6 +16,113 @@ import {
 export const postHogRouter = Router();
 
 postHogRouter.use(requireAuth);
+
+const UNKNOWN_FILTER_VALUE = "__unknown";
+
+interface AudienceFilters {
+  country?: string;
+  platform?: string;
+  appVersion?: string;
+}
+
+function parseAudienceFilters(q: Record<string, string | undefined>): AudienceFilters {
+  return {
+    country: typeof q.country === "string" && q.country ? q.country : undefined,
+    platform: typeof q.platform === "string" && q.platform ? q.platform : undefined,
+    appVersion: typeof q.appVersion === "string" && q.appVersion ? q.appVersion : undefined,
+  };
+}
+
+function resolveDateRange(
+  q: Record<string, string | undefined>,
+  now: Date,
+): { since: Date | null; until: Date | null; error?: undefined } | { since?: undefined; until?: undefined; error: string } {
+  let since: Date | null = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  let until: Date | null = null;
+
+  if (typeof q.days === "string" && /^\d+$/.test(q.days)) {
+    since = new Date(now.getTime() - parseInt(q.days, 10) * 24 * 60 * 60 * 1000);
+  } else if (q.period === "all") {
+    since = null;
+  } else if (q.period === "ytd") {
+    since = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  } else if (q.startDate) {
+    const parsed = new Date(`${q.startDate}T00:00:00Z`);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return { error: "Invalid startDate, expected YYYY-MM-DD" };
+    }
+
+    since = parsed;
+
+    if (q.endDate) {
+      const parsedEnd = new Date(`${q.endDate}T00:00:00Z`);
+
+      if (Number.isNaN(parsedEnd.getTime())) {
+        return { error: "Invalid endDate, expected YYYY-MM-DD" };
+      }
+
+      until = new Date(parsedEnd.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  return { since, until };
+}
+
+function buildFilterOptions(customers: { country: string | null; platform: string | null; appVersion: string | null }[]) {
+  const countryCounts = new Map<string, number>();
+  const platformCounts = new Map<string, number>();
+  const appVersionCounts = new Map<string, number>();
+
+  for (const c of customers) {
+    const country = c.country ?? UNKNOWN_FILTER_VALUE;
+    const platform = c.platform ?? UNKNOWN_FILTER_VALUE;
+    const appVersion = c.appVersion ?? UNKNOWN_FILTER_VALUE;
+
+    countryCounts.set(country, (countryCounts.get(country) ?? 0) + 1);
+    platformCounts.set(platform, (platformCounts.get(platform) ?? 0) + 1);
+    appVersionCounts.set(appVersion, (appVersionCounts.get(appVersion) ?? 0) + 1);
+  }
+
+  const toSortedOptions = (counts: Map<string, number>) =>
+    [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+
+  return {
+    countries: toSortedOptions(countryCounts),
+    platforms: toSortedOptions(platformCounts),
+    appVersions: toSortedOptions(appVersionCounts),
+  };
+}
+
+function matchesAudienceFilters(
+  customer: { country: string | null; platform: string | null; appVersion: string | null },
+  filters: AudienceFilters,
+): boolean {
+  return (
+    (!filters.country || (customer.country ?? UNKNOWN_FILTER_VALUE) === filters.country) &&
+    (!filters.platform || (customer.platform ?? UNKNOWN_FILTER_VALUE) === filters.platform) &&
+    (!filters.appVersion || (customer.appVersion ?? UNKNOWN_FILTER_VALUE) === filters.appVersion)
+  );
+}
+
+async function loadAudience(bundleId: string, since: Date | null, until: Date | null, filters: AudienceFilters) {
+  const customers = await prisma.revenueCatCustomer.findMany({
+    where: {
+      bundleId,
+      ...(since ? { firstSeenAt: { gte: since, ...(until ? { lt: until } : {}) } } : {}),
+    },
+    orderBy: { firstSeenAt: "desc" },
+    take: MAX_USERS + 1,
+    select: { customerId: true, country: true, platform: true, appVersion: true },
+  });
+
+  const capped = customers.length > MAX_USERS;
+  const scoped = customers.slice(0, MAX_USERS);
+  const filterOptions = buildFilterOptions(scoped);
+  const distinctIds = [...new Set(scoped.filter((c) => matchesAudienceFilters(c, filters)).map((c) => c.customerId))];
+
+  return { distinctIds, filterOptions, capped };
+}
 
 postHogRouter.get("/status", loadTeamSettings, async (req, res) => {
   const s = req.teamSettings;
@@ -242,40 +349,13 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       return;
     }
 
-    const now = new Date();
-    let since: Date | null = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    let until: Date | null = null;
-
     const q = req.query as Record<string, string | undefined>;
+    const range = resolveDateRange(q, new Date());
 
-    if (typeof q.days === "string" && /^\d+$/.test(q.days)) {
-      since = new Date(now.getTime() - parseInt(q.days, 10) * 24 * 60 * 60 * 1000);
-    } else if (q.period === "all") {
-      since = null;
-    } else if (q.period === "ytd") {
-      since = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-    } else if (q.startDate) {
-      const parsed = new Date(`${q.startDate}T00:00:00Z`);
+    if (range.error) {
+      res.status(400).json({ error: range.error });
 
-      if (Number.isNaN(parsed.getTime())) {
-        res.status(400).json({ error: "Invalid startDate, expected YYYY-MM-DD" });
-
-        return;
-      }
-
-      since = parsed;
-
-      if (q.endDate) {
-        const parsedEnd = new Date(`${q.endDate}T00:00:00Z`);
-
-        if (Number.isNaN(parsedEnd.getTime())) {
-          res.status(400).json({ error: "Invalid endDate, expected YYYY-MM-DD" });
-
-          return;
-        }
-
-        until = new Date(parsedEnd.getTime() + 24 * 60 * 60 * 1000);
-      }
+      return;
     }
 
     const anchorEvent = typeof q.anchorEvent === "string" && q.anchorEvent.length > 0 ? q.anchorEvent : "$first_event";
@@ -284,18 +364,12 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       ? Math.min(365, Math.max(1, maturityDaysRaw))
       : MATURITY_DAYS;
 
-    const customers = await prisma.revenueCatCustomer.findMany({
-      where: {
-        bundleId,
-        ...(since ? { firstSeenAt: { gte: since, ...(until ? { lt: until } : {}) } } : {}),
-      },
-      orderBy: { firstSeenAt: "desc" },
-      take: MAX_USERS + 1,
-      select: { customerId: true },
-    });
-
-    const distinctIds = [...new Set(customers.map((c) => c.customerId))].slice(0, MAX_USERS);
-    const capped = customers.length > MAX_USERS;
+    const { distinctIds, filterOptions, capped } = await loadAudience(
+      bundleId,
+      range.since,
+      range.until,
+      parseAudienceFilters(q),
+    );
 
     const timings = await computePaywallTiming(s.posthogHost, apiKey, s.posthogProjectId, distinctIds, anchorEvent);
     const anchorByUser = new Map(
@@ -340,9 +414,89 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       capped,
       maturityDays,
       anchorEvent,
+      filterOptions,
     });
   } catch (err) {
     logger.error("[posthog] paywall timing failed", { err: String((err as Error)?.message ?? err) });
     res.status(500).json({ error: "Failed to compute paywall timing" });
+  }
+});
+
+postHogRouter.get("/engagement", loadTeamSettings, bundleAccess("query", "bundleId"), async (req, res) => {
+  const s = req.teamSettings;
+  const app = req.bundleApp!;
+
+  if (!s?.posthogConnectedAt || !s.posthogHost || !s.posthogApiKey || !s.posthogProjectId) {
+    res.json({ available: false, reason: "no-posthog", totalUsers: 0, milestones: [], variants: [] });
+
+    return;
+  }
+
+  if (!app.revenueCatConnectedAt) {
+    res.json({ available: false, reason: "no-revenuecat", totalUsers: 0, milestones: [], variants: [] });
+
+    return;
+  }
+
+  const milestoneDefs = (app.postHogMilestones as MilestoneDefinition[] | null) ?? [];
+
+  if (milestoneDefs.length === 0) {
+    res.json({ available: true, reason: "no-milestones", totalUsers: 0, milestones: [], variants: [] });
+
+    return;
+  }
+
+  try {
+    const apiKey = decryptNullable(s.posthogApiKey);
+
+    if (!apiKey) {
+      res.status(400).json({ error: "PostHog API key unavailable" });
+
+      return;
+    }
+
+    const q = req.query as Record<string, string | undefined>;
+    const range = resolveDateRange(q, new Date());
+
+    if (range.error) {
+      res.status(400).json({ error: range.error });
+
+      return;
+    }
+
+    const { distinctIds, filterOptions, capped } = await loadAudience(
+      app.bundleId,
+      range.since,
+      range.until,
+      parseAudienceFilters(q),
+    );
+
+    if (distinctIds.length === 0) {
+      res.json({
+        available: true,
+        totalUsers: 0,
+        filterOptions,
+        milestones: milestoneDefs.map((m) => ({ ...m, completed: 0 })),
+        variants: [],
+        capped,
+      });
+
+      return;
+    }
+
+    const variantDefs = (app.postHogMilestoneVariants as MilestoneVariant[] | null) ?? [];
+    const { milestones, variants } = await computeMilestoneCompletions(
+      s.posthogHost,
+      apiKey,
+      s.posthogProjectId,
+      distinctIds,
+      milestoneDefs,
+      variantDefs,
+    );
+
+    res.json({ available: true, totalUsers: distinctIds.length, filterOptions, milestones, variants, capped });
+  } catch (err) {
+    logger.error("[posthog] engagement failed", { err: String((err as Error)?.message ?? err) });
+    res.status(500).json({ error: "Failed to compute engagement" });
   }
 });
