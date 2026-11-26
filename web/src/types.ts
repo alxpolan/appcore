@@ -443,6 +443,7 @@ export interface PostHogMilestoneDefinition {
   eventName: string;
   minCount: number;
   label: string;
+  splitByVariant?: boolean;
 }
 
 export interface PostHogMilestoneCompletion extends PostHogMilestoneDefinition {

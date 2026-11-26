@@ -33,7 +33,7 @@ export default function AppleAdsMilestoneRows({ milestones, variants, basisInsta
                 <div className="h-10 rounded-lg bg-[#595DD2] transition-all" style={{ width: `${pct}%` }} />
               </div>
             </div>
-            {(variants ?? []).map((v, vi) => {
+            {m.splitByVariant !== false && (variants ?? []).map((v, vi) => {
               if (v.totalInstalls === 0) return null;
 
               const completed = v.completed[mi] ?? 0;

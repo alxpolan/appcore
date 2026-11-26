@@ -4,6 +4,7 @@ export interface MilestoneDefinition {
   eventName: string;
   minCount: number;
   label: string;
+  splitByVariant?: boolean;
 }
 
 export interface MilestoneCompletion extends MilestoneDefinition {

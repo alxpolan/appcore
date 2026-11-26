@@ -30,6 +30,7 @@ const newRow = (): MilestoneRow => ({
   eventName: "",
   minCount: 1,
   label: "",
+  splitByVariant: true,
   key: Math.random().toString(36).slice(2),
 });
 
@@ -47,7 +48,13 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
       { bundleId },
     )
       .then((d) => {
-        setMilestones(d.milestones.map((m) => ({ ...m, key: Math.random().toString(36).slice(2) })));
+        setMilestones(
+          d.milestones.map((m) => ({
+            ...m,
+            splitByVariant: m.splitByVariant !== false,
+            key: Math.random().toString(36).slice(2),
+          })),
+        );
         setVariants(
           (d.variants ?? []).map((v) => ({
             key: v.key || Math.random().toString(36).slice(2),
@@ -65,6 +72,11 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
     setMilestones((prev) =>
       prev.map((m, i) => (i === index ? { ...m, [field]: field === "minCount" ? Number(value) || 0 : value } : m)),
     );
+    setDirty(true);
+  };
+
+  const toggleSplitByVariant = (index: number) => {
+    setMilestones((prev) => prev.map((m, i) => (i === index ? { ...m, splitByVariant: !m.splitByVariant } : m)));
     setDirty(true);
   };
 
@@ -210,6 +222,19 @@ export default function PostHogMilestonesSection({ bundleId, addToast }: Props) 
               value={m.label}
               onChange={(e) => update(i, "label", e.target.value)}
             />
+            {variants.length > 0 && (
+              <label
+                className={`flex items-center gap-1.5 text-[12px] ${textMuted} shrink-0 cursor-pointer`}
+                title="Show this milestone split by variant. Turn off for milestones where the variant doesn't matter yet, e.g. onboarding."
+              >
+                <input
+                  type="checkbox"
+                  checked={m.splitByVariant !== false}
+                  onChange={() => toggleSplitByVariant(i)}
+                />
+                Split by variant
+              </label>
+            )}
             <button
               onClick={() => removeRow(i)}
               className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#ef4444] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"

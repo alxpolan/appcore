@@ -280,7 +280,7 @@ postHogRouter.put("/milestones", bundleAccess("body", "bundleId"), async (req, r
         return;
       }
 
-      cleaned.push({ eventName, label, minCount: Math.trunc(minCount) });
+      cleaned.push({ eventName, label, minCount: Math.trunc(minCount), splitByVariant: entry?.splitByVariant !== false });
     }
 
     const cleanedVariants: MilestoneVariant[] = [];
