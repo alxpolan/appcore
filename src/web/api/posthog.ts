@@ -8,6 +8,7 @@ import { computeMilestoneCompletions, type MilestoneDefinition, type MilestoneVa
 import {
   buildUserOutcomes,
   computePaywallTiming,
+  latestSubscriptionByUser,
   MATURITY_DAYS,
   MAX_USERS,
   summarizeBuckets,
@@ -399,8 +400,21 @@ postHogRouter.get("/paywall-timing", loadTeamSettings, bundleAccess("query", "bu
       txByUser.set(tx.customerId, list);
     }
 
+    const subscriptionRows = await prisma.revenueCatSubscription.findMany({
+      where: { bundleId, customerId: { in: distinctIds } },
+      select: {
+        customerId: true,
+        autoRenewalStatus: true,
+        givesAccess: true,
+        currentPeriodEndsAt: true,
+        endsAt: true,
+        startsAt: true,
+      },
+    });
+    const subscriptionByUser = latestSubscriptionByUser(subscriptionRows);
+
     const buckets = summarizeBuckets(
-      buildUserOutcomes(anchorByUser, paywallByUser, txByUser),
+      buildUserOutcomes(anchorByUser, paywallByUser, txByUser, subscriptionByUser),
       new Date(),
       maturityDays,
     );

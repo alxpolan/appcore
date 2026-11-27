@@ -77,7 +77,11 @@ function FilterSelect({
             : `${borderDefault} hover:border-gray-300 dark:hover:border-[#3a4050]`
         }`}
       >
-        {selected && renderOptionIcon ? renderOptionIcon(selected.value) : <Icon className={`w-4 h-4 ${textSecondary}`} />}
+        {selected && renderOptionIcon ? (
+          renderOptionIcon(selected.value)
+        ) : (
+          <Icon className={`w-4 h-4 ${textSecondary}`} />
+        )}
         <span>{selected ? getLabel(selected.value) : allLabel}</span>
         <ChevronDown className={`w-3.5 h-3.5 ${textMuted} transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -159,8 +163,6 @@ export default function InAppOptimization({ addToast }: Props) {
   const [customEnd, setCustomEnd] = useState("");
   const [anchorEvent, setAnchorEvent] = useState("$first_event");
   const [anchorDraft, setAnchorDraft] = useState("$first_event");
-  const [maturityDays, setMaturityDays] = useState("14");
-  const [appliedMaturity, setAppliedMaturity] = useState("14");
 
   const [country, setCountry] = useState("");
   const [platform, setPlatform] = useState("");
@@ -171,17 +173,12 @@ export default function InAppOptimization({ addToast }: Props) {
     (appVersion ? `&appVersion=${encodeURIComponent(appVersion)}` : "");
   const filterDeps = [country, platform, appVersion];
 
-  const query = `${rangeToParams(range, customStart, customEnd)}&anchorEvent=${encodeURIComponent(anchorEvent)}&maturityDays=${encodeURIComponent(appliedMaturity || "14")}${audienceFilterQuery}`;
+  const query = `${rangeToParams(range, customStart, customEnd)}&anchorEvent=${encodeURIComponent(anchorEvent)}${audienceFilterQuery}`;
 
-  const { data, loading, error } = useApi<TimingResponse>(`/posthog/paywall-timing?bundleId=${encodeURIComponent(bundleId)}${query}`, [
-    bundleId,
-    range,
-    customStart,
-    customEnd,
-    anchorEvent,
-    appliedMaturity,
-    ...filterDeps,
-  ]);
+  const { data, loading, error } = useApi<TimingResponse>(
+    `/posthog/paywall-timing?bundleId=${encodeURIComponent(bundleId)}${query}`,
+    [bundleId, range, customStart, customEnd, anchorEvent, ...filterDeps],
+  );
 
   const rangeQuery = rangeToParams(range, customStart, customEnd);
   const {
@@ -197,7 +194,6 @@ export default function InAppOptimization({ addToast }: Props) {
 
   const hasRows = !!data && data.buckets.some((b) => b.users > 0);
   const applyAnchor = () => setAnchorEvent(anchorDraft.trim() || "$first_event");
-  const applyMaturity = () => setAppliedMaturity(maturityDays.trim() || "14");
 
   if (!bundleId) {
     return (
@@ -210,11 +206,7 @@ export default function InAppOptimization({ addToast }: Props) {
 
   return (
     <div className="max-w-[1200px] mx-auto">
-      <h1 className={pageTitle}>In-App Optimization</h1>
-      <p className={`text-[13px] ${textMuted} mt-1 mb-4`}>
-        How long users explore for free before the first paywall — and how it converts. Users are grouped by
-        the time from the anchor event to their first paywall view.
-      </p>
+      <h1 className={`${pageTitle} mb-4`}>In-App Optimization</h1>
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <div className="flex gap-1 p-1 bg-[#f3f4f6] dark:bg-[#1c2028] rounded-xl">
@@ -264,21 +256,6 @@ export default function InAppOptimization({ addToast }: Props) {
             className={`${inputCls} h-8 !py-1 font-mono text-[12px] w-44`}
             title="Event the free-usage time is measured from ($first_event = first tracked event)"
           />
-          <span className={`text-[12px] ${textMuted}`}>Cancel after</span>
-          <input
-            type="number"
-            min={1}
-            max={365}
-            value={maturityDays}
-            onChange={(e) => setMaturityDays(e.target.value)}
-            onBlur={applyMaturity}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") applyMaturity();
-            }}
-            className={`${inputCls} h-8 !py-1 text-[12px] w-20 tabular-nums`}
-            title="Trials older than this (days) without conversion count as cancelled"
-          />
-          <span className={`text-[12px] ${textMuted}`}>d</span>
         </div>
       </div>
 
@@ -324,7 +301,7 @@ export default function InAppOptimization({ addToast }: Props) {
         <>
           <SectionCard
             title="Time to paywall vs conversion"
-            desc={`Based on ${fmtNumber(data.totalUsers)} users${data.excludedNoActivity > 0 ? ` (${fmtNumber(data.excludedNoActivity)} without app activity excluded: test purchases and server-only events)` : ""}${data.excludedNoAnchor > 0 ? ` (${fmtNumber(data.excludedNoAnchor)} without anchor event excluded)` : ""}${data.capped ? " (most recent, capped)" : ""}. Cancelled = trial started but never converted after ${data.maturityDays} days.`}
+            desc={`Based on ${fmtNumber(data.totalUsers)} users${data.excludedNoActivity > 0 ? ` (${fmtNumber(data.excludedNoActivity)} without app activity excluded: test purchases and server-only events)` : ""}${data.excludedNoAnchor > 0 ? ` (${fmtNumber(data.excludedNoAnchor)} without anchor event excluded)` : ""}${data.capped ? " (most recent, capped)" : ""}. Cancelled = RevenueCat reports the trial won't renew, or it ended without converting.`}
           >
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-[12px]">
@@ -366,9 +343,7 @@ export default function InAppOptimization({ addToast }: Props) {
             </div>
           </SectionCard>
           {data.capped && (
-            <p className={`text-[12px] ${textMuted} mt-3`}>
-              Analysis capped at the most recent users for performance.
-            </p>
+            <p className={`text-[12px] ${textMuted} mt-3`}>Analysis capped at the most recent users for performance.</p>
           )}
         </>
       )}

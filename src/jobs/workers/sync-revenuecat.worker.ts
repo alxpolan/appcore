@@ -28,6 +28,6 @@ export async function handler([job]: Job<SyncRevenueCatData>[]): Promise<void> {
   );
 
   logger.info(
-    `[BOSS] "${QUEUE_NAME}" job ${id} completed — ${result.customers} customers, ${result.events} revenue events`,
+    `[BOSS] "${QUEUE_NAME}" job ${id} completed — ${result.customers} customers, ${result.events} revenue events, ${result.subscriptions} subscriptions`,
   );
 }

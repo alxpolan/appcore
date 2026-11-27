@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   bucketKey,
   buildUserOutcomes,
+  latestSubscriptionByUser,
   summarizeBuckets,
   trialCancelled,
   type UserOutcome,
@@ -27,20 +28,92 @@ describe("trialCancelled", () => {
   const old = new Date("2026-10-01T00:00:00Z");
   const recent = new Date("2026-11-20T00:00:00Z");
 
-  it("counts matured unconverted trials as cancelled", () => {
-    assert.equal(trialCancelled({ trialStarted: true, converted: false, trialStartAt: old }, now), true);
+  it("falls back to the maturity window when RevenueCat has no subscription record", () => {
+    assert.equal(
+      trialCancelled({ trialStarted: true, converted: false, trialStartAt: old, subscription: null }, now),
+      true,
+    );
+    assert.equal(
+      trialCancelled({ trialStarted: true, converted: false, trialStartAt: recent, subscription: null }, now),
+      false,
+    );
   });
 
-  it("does not count converted trials", () => {
-    assert.equal(trialCancelled({ trialStarted: true, converted: true, trialStartAt: old }, now), false);
-  });
-
-  it("does not count recent trials as cancelled", () => {
-    assert.equal(trialCancelled({ trialStarted: true, converted: false, trialStartAt: recent }, now), false);
+  it("does not count converted trials even if RevenueCat says will_not_renew", () => {
+    assert.equal(
+      trialCancelled(
+        {
+          trialStarted: true,
+          converted: true,
+          trialStartAt: old,
+          subscription: { autoRenewalStatus: "will_not_renew", givesAccess: true, currentPeriodEndsAt: null, endsAt: null },
+        },
+        now,
+      ),
+      false,
+    );
   });
 
   it("ignores users without trials", () => {
-    assert.equal(trialCancelled({ trialStarted: false, converted: false, trialStartAt: null }, now), false);
+    assert.equal(
+      trialCancelled({ trialStarted: false, converted: false, trialStartAt: null, subscription: null }, now),
+      false,
+    );
+  });
+
+  it("counts a trial as cancelled as soon as RevenueCat reports will_not_renew, even mid-trial", () => {
+    assert.equal(
+      trialCancelled(
+        {
+          trialStarted: true,
+          converted: false,
+          trialStartAt: recent,
+          subscription: { autoRenewalStatus: "will_not_renew", givesAccess: true, currentPeriodEndsAt: null, endsAt: null },
+        },
+        now,
+      ),
+      true,
+    );
+  });
+
+  it("does not count a still-open trial set to renew, no matter how old", () => {
+    assert.equal(
+      trialCancelled(
+        {
+          trialStarted: true,
+          converted: false,
+          trialStartAt: old,
+          subscription: {
+            autoRenewalStatus: "will_renew",
+            givesAccess: true,
+            currentPeriodEndsAt: new Date("2026-12-01T00:00:00Z"),
+            endsAt: null,
+          },
+        },
+        now,
+      ),
+      false,
+    );
+  });
+
+  it("counts a trial whose period has lapsed without access as cancelled", () => {
+    assert.equal(
+      trialCancelled(
+        {
+          trialStarted: true,
+          converted: false,
+          trialStartAt: old,
+          subscription: {
+            autoRenewalStatus: null,
+            givesAccess: false,
+            currentPeriodEndsAt: new Date("2026-11-01T00:00:00Z"),
+            endsAt: null,
+          },
+        },
+        now,
+      ),
+      true,
+    );
   });
 });
 
@@ -64,9 +137,9 @@ describe("summarizeBuckets", () => {
   const now = new Date("2026-11-22T00:00:00Z");
   const old = new Date("2026-10-01T00:00:00Z");
   const outcomes: UserOutcome[] = [
-    { distinctId: "a", secondsToPaywall: 30, trialStarted: true, converted: true, trialStartAt: old },
-    { distinctId: "b", secondsToPaywall: 120, trialStarted: true, converted: false, trialStartAt: old },
-    { distinctId: "c", secondsToPaywall: 45, trialStarted: false, converted: false, trialStartAt: null },
+    { distinctId: "a", secondsToPaywall: 30, trialStarted: true, converted: true, trialStartAt: old, subscription: null },
+    { distinctId: "b", secondsToPaywall: 120, trialStarted: true, converted: false, trialStartAt: old, subscription: null },
+    { distinctId: "c", secondsToPaywall: 45, trialStarted: false, converted: false, trialStartAt: null, subscription: null },
   ];
 
   it("aggregates per bucket with conversion and cancel rates", () => {
@@ -118,5 +191,48 @@ describe("buildUserOutcomes", () => {
 
     assert.equal(outcome.converted, true);
     assert.equal(outcome.trialStarted, false);
+  });
+
+  it("attaches the matching RevenueCat subscription status by customer id", () => {
+    const firstSeen = new Date("2026-11-20T10:00:00Z");
+
+    const [outcome] = buildUserOutcomes(
+      new Map([["a", firstSeen]]),
+      new Map(),
+      new Map(),
+      new Map([["a", { autoRenewalStatus: "will_renew", givesAccess: true, currentPeriodEndsAt: null, endsAt: null }]]),
+    );
+
+    assert.deepEqual(outcome.subscription, {
+      autoRenewalStatus: "will_renew",
+      givesAccess: true,
+      currentPeriodEndsAt: null,
+      endsAt: null,
+    });
+  });
+});
+
+describe("latestSubscriptionByUser", () => {
+  it("keeps only the most recently started subscription per customer", () => {
+    const byUser = latestSubscriptionByUser([
+      {
+        customerId: "a",
+        autoRenewalStatus: "will_not_renew",
+        givesAccess: true,
+        currentPeriodEndsAt: null,
+        endsAt: null,
+        startsAt: new Date("2026-01-01T00:00:00Z"),
+      },
+      {
+        customerId: "a",
+        autoRenewalStatus: "will_renew",
+        givesAccess: true,
+        currentPeriodEndsAt: null,
+        endsAt: null,
+        startsAt: new Date("2026-06-01T00:00:00Z"),
+      },
+    ]);
+
+    assert.equal(byUser.get("a")?.autoRenewalStatus, "will_renew");
   });
 });

@@ -696,6 +696,26 @@ model RevenueCatCustomer {
   @@index([bundleId, firstSeenAt])
 }
 
+model RevenueCatSubscription {
+  id                    String    @id @default(cuid())
+  bundleId              String
+  subscriptionId        String
+  customerId            String
+  productId             String
+  store                 String
+  environment           String
+  status                String
+  autoRenewalStatus     String?
+  givesAccess           Boolean   @default(false)
+  startsAt              DateTime?
+  currentPeriodEndsAt   DateTime?
+  endsAt                DateTime?
+  syncedAt              DateTime  @default(now())
+
+  @@unique([bundleId, subscriptionId], name: "revenueCatSubscriptionKey")
+  @@index([bundleId, customerId])
+}
+
 // A subscriber who turned off auto-renew during their free trial. Apple still
 // counts them as an "active" trial (they keep access) until the trial's
 // natural end date, so they'd otherwise be counted as a likely conversion in

@@ -77,9 +77,25 @@ interface RevenueCatEventRaw {
   occurred_at: number | null;
 }
 
+interface RevenueCatSubscriptionRaw {
+  object: "subscription";
+  id: string;
+  customer_id: string;
+  product_id: string;
+  starts_at: string | null;
+  current_period_ends_at: string | null;
+  ends_at: string | null;
+  gives_access: boolean;
+  auto_renewal_status: string | null;
+  status: string;
+  store: string;
+  environment: string;
+}
+
 export interface RevenueCatSyncResult {
   customers: number;
   events: number;
+  subscriptions: number;
 }
 
 function authHeaders(apiKey: string) {
@@ -178,8 +194,23 @@ async function getCustomerAttributes(
   return Object.fromEntries(attrs.map((a) => [a.name, a.value]));
 }
 
+async function listCustomerSubscriptions(
+  apiKey: string,
+  projectId: string,
+  customerId: string,
+): Promise<RevenueCatSubscriptionRaw[]> {
+  return paginate<RevenueCatSubscriptionRaw>(
+    `${API_BASE}/projects/${projectId}/customers/${customerId}/subscriptions?environment=production&limit=${EVENTS_PAGE_SIZE}`,
+    apiKey,
+  );
+}
+
 function toDate(ms: number): Date {
   return new Date(ms);
+}
+
+function toDateIso(value: string | null): Date | null {
+  return value ? new Date(value) : null;
 }
 
 export async function syncRevenueCatTransactions(
@@ -192,16 +223,18 @@ export async function syncRevenueCatTransactions(
   logger.info(`[revenuecat] syncing ${customers.length} customers for ${bundleId}`);
 
   let eventCount = 0;
+  let subscriptionCount = 0;
 
   await runConcurrent(customers, CUSTOMER_CONCURRENCY, async (customer) => {
     const customerId = customer.id;
-    const [events, attributes, customerDetail] = await Promise.all([
+    const [events, attributes, customerDetail, subscriptions] = await Promise.all([
       paginate<RevenueCatEventRaw>(
         `${API_BASE}/projects/${projectId}/customers/${customerId}/events?environment=production&limit=${EVENTS_PAGE_SIZE}`,
         apiKey,
       ),
       getCustomerAttributes(apiKey, projectId, customerId),
       getWithRetry<RevenueCatCustomerRaw>(`${API_BASE}/projects/${projectId}/customers/${customerId}`, apiKey),
+      listCustomerSubscriptions(apiKey, projectId, customerId),
     ]);
 
     const customerDims = { bundleId, customerId };
@@ -260,7 +293,33 @@ export async function syncRevenueCatTransactions(
       }),
     );
     eventCount += revenueEvents.length;
+
+    await Promise.all(
+      subscriptions.map((s) => {
+        const dims = { bundleId, subscriptionId: s.id };
+        const fields = {
+          customerId: s.customer_id,
+          productId: s.product_id,
+          store: s.store,
+          environment: s.environment,
+          status: s.status,
+          autoRenewalStatus: s.auto_renewal_status,
+          givesAccess: s.gives_access,
+          startsAt: toDateIso(s.starts_at),
+          currentPeriodEndsAt: toDateIso(s.current_period_ends_at),
+          endsAt: toDateIso(s.ends_at),
+          syncedAt: new Date(),
+        };
+
+        return prisma.revenueCatSubscription.upsert({
+          where: { revenueCatSubscriptionKey: dims },
+          create: { ...dims, ...fields },
+          update: fields,
+        });
+      }),
+    );
+    subscriptionCount += subscriptions.length;
   });
 
-  return { customers: customers.length, events: eventCount };
+  return { customers: customers.length, events: eventCount, subscriptions: subscriptionCount };
 }

@@ -42,20 +42,36 @@ export function bucketLabel(key: string): string {
   return BUCKETS.find((b) => b.key === key)?.label ?? key;
 }
 
+export interface SubscriptionStatus {
+  autoRenewalStatus: string | null;
+  givesAccess: boolean;
+  currentPeriodEndsAt: Date | null;
+  endsAt: Date | null;
+}
+
 export interface UserOutcome {
   distinctId: string;
   secondsToPaywall: number | null;
   trialStarted: boolean;
   converted: boolean;
   trialStartAt: Date | null;
+  subscription: SubscriptionStatus | null;
 }
 
 export function trialCancelled(
-  outcome: Pick<UserOutcome, "trialStarted" | "converted" | "trialStartAt">,
+  outcome: Pick<UserOutcome, "trialStarted" | "converted" | "trialStartAt" | "subscription">,
   now = new Date(),
   maturityDays: number = MATURITY_DAYS,
 ): boolean {
   if (!outcome.trialStarted || outcome.converted || !outcome.trialStartAt) return false;
+
+  if (outcome.subscription) {
+    if (outcome.subscription.autoRenewalStatus === "will_not_renew") return true;
+
+    const periodEnd = outcome.subscription.currentPeriodEndsAt ?? outcome.subscription.endsAt;
+
+    return !outcome.subscription.givesAccess && periodEnd != null && now.getTime() > periodEnd.getTime();
+  }
 
   const ageMs = now.getTime() - outcome.trialStartAt.getTime();
 
@@ -102,6 +118,39 @@ export function summarizeBuckets(
     }));
 }
 
+export interface SubscriptionRow {
+  customerId: string;
+  autoRenewalStatus: string | null;
+  givesAccess: boolean;
+  currentPeriodEndsAt: Date | null;
+  endsAt: Date | null;
+  startsAt: Date | null;
+}
+
+export function latestSubscriptionByUser(rows: SubscriptionRow[]): Map<string, SubscriptionStatus> {
+  const latestByUser = new Map<string, SubscriptionRow>();
+
+  for (const row of rows) {
+    const existing = latestByUser.get(row.customerId);
+
+    if (!existing || (row.startsAt?.getTime() ?? 0) > (existing.startsAt?.getTime() ?? 0)) {
+      latestByUser.set(row.customerId, row);
+    }
+  }
+
+  return new Map(
+    [...latestByUser.entries()].map(([customerId, row]) => [
+      customerId,
+      {
+        autoRenewalStatus: row.autoRenewalStatus,
+        givesAccess: row.givesAccess,
+        currentPeriodEndsAt: row.currentPeriodEndsAt,
+        endsAt: row.endsAt,
+      },
+    ]),
+  );
+}
+
 export interface CustomerTx {
   customerId: string;
   eventType: string;
@@ -115,6 +164,7 @@ export function buildUserOutcomes(
   anchorByUser: Map<string, Date | null>,
   firstPaywallByUser: Map<string, Date | null>,
   transactionsByUser: Map<string, CustomerTx[]>,
+  subscriptionByUser: Map<string, SubscriptionStatus> = new Map(),
 ): UserOutcome[] {
   const outcomes: UserOutcome[] = [];
 
@@ -130,8 +180,16 @@ export function buildUserOutcomes(
     const trialTxs = txs.filter((t) => t.eventType === "INITIAL_PURCHASE" && t.periodType === "TRIAL");
     const converted = txs.some((t) => t.isTrialConversion || t.proceedsUsd > 0);
     const trialStartAt = trialTxs.length > 0 ? new Date(Math.min(...trialTxs.map((t) => t.occurredAt.getTime()))) : null;
+    const subscription = subscriptionByUser.get(distinctId) ?? null;
 
-    outcomes.push({ distinctId, secondsToPaywall, trialStarted: trialTxs.length > 0, converted, trialStartAt });
+    outcomes.push({
+      distinctId,
+      secondsToPaywall,
+      trialStarted: trialTxs.length > 0,
+      converted,
+      trialStartAt,
+      subscription,
+    });
   }
 
   return outcomes;
